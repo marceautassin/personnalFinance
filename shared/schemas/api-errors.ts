@@ -12,6 +12,7 @@ export const ApiErrorCode = {
 
   // Domaine — Statements / Ingestion
   PdfAlreadyIngested: 'pdf_already_ingested',
+  PdfParseFailed: 'pdf_parse_failed',
   PeriodOverlap: 'period_overlap',
   LlmExtractionFailed: 'llm_extraction_failed',
   LlmUnavailable: 'llm_unavailable',

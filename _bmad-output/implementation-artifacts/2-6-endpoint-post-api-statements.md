@@ -1,6 +1,6 @@
 # Story 2.6: Endpoint `POST /api/statements` (orchestration du pipeline complet)
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -47,33 +47,31 @@ so that I can start using the app on real data within seconds.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Étendre `ApiErrorCode`** (AC: #4)
-  - [ ] Ajouter `PdfParseFailed: 'pdf_parse_failed'` dans `shared/schemas/api-errors.ts`
-  - [ ] Ajouter le mapping FR dans `app/composables/useApiError.ts` ("L'analyse du PDF a échoué. Vérifie qu'il s'agit bien d'un relevé Boursorama valide.")
+- [x] **Task 1 — Étendre `ApiErrorCode`** (AC: #4)
+  - [x] Ajouter `PdfParseFailed: 'pdf_parse_failed'` dans `shared/schemas/api-errors.ts`
+  - [x] Ajouter le mapping FR dans `app/composables/useApiError.ts`
 
-- [ ] **Task 2 — Créer le schéma de réponse + validation** (AC: #1)
-  - [ ] Créer `shared/schemas/ingestion-result.schema.ts` avec `IngestionResultSchema`
+- [x] **Task 2 — Créer le schéma de réponse + validation** (AC: #1)
+  - [x] Créer `shared/schemas/ingestion-result.schema.ts` avec `IngestionResultSchema`
 
-- [ ] **Task 3 — Implémenter l'endpoint** (AC: #1, #2, #3, #4, #5)
-  - [ ] Créer `server/api/statements/index.post.ts` selon le snippet Dev Notes
-  - [ ] Utiliser `db.transaction(async (tx) => { ... })` pour l'atomicité DB
-  - [ ] Wrap try/catch autour des appels LLM/extraction pour rollback FS si ils ont eu lieu après `savePdfByHash`
+- [x] **Task 3 — Implémenter l'endpoint** (AC: #1, #2, #3, #4, #5)
+  - [x] **Option B retenue** : logique extraite dans `server/services/statement-ingestion-orchestrator.ts`, handler `server/api/statements/index.post.ts` réduit au parsing multipart + délégation
+  - [x] Transactions Drizzle en mode synchrone (`db.transaction((tx) => ...)`) — meilleur fit pour `better-sqlite3` que le pattern `async tx` du snippet (qui ne garantit pas l'atomicité car le COMMIT s'exécute avant la résolution des promesses)
+  - [x] Try/catch autour de `db.transaction` → `deletePdfByHash(hash)` rollback FS si la persistance DB échoue après l'étape 8
 
-- [ ] **Task 4 — Tests d'intégration** (AC: #1, #2, #3)
-  - [ ] Créer `server/api/statements/index.post.test.ts` (test d'intégration avec DB en mémoire ou tmpdir)
-  - [ ] Mocker `extractStatement` et `categorizeStatement` pour ne pas faire d'appels réels
-  - [ ] Cas heureux : réponse 200 avec hash, transactionCount, isBalanced
-  - [ ] Cas dédup : 2e POST avec même PDF → `pdf_already_ingested`
-  - [ ] Cas chevauchement sans header → `period_overlap`
-  - [ ] Cas chevauchement avec `X-Confirm-Replace: true` → ancien supprimé, nouveau inséré
-  - [ ] Cas LLM down → 503 + pas de persistance + pas de PDF orphelin sur disque
+- [x] **Task 4 — Tests d'intégration** (AC: #1, #2, #3)
+  - [x] Créer `server/services/statement-ingestion-orchestrator.test.ts` (chemin ajusté pour Option B, cf. Dev Notes §Tests d'intégration)
+  - [x] Mocks `vi.mock` sur `pdf-extractor` et `llm-categorizer`
+  - [x] 11 tests couvrant : happy path, dédup, overlap sans header (409), overlap avec confirmReplace, LLM down (503), LLM extraction error (502), PDF parse failure (400), fallback période G3, soldes manquants, réconciliation déséquilibrée, rollback FS sur FK violation
 
-- [ ] **Task 5 — Test E2E (stub)** (AC: #6)
-  - [ ] Créer `tests/e2e/ingestion.spec.ts` comme stub `test.skip(...)` qui sera activé en Story 2.9
+- [x] **Task 5 — Test E2E (stub)** (AC: #6)
+  - [x] `tests/e2e/ingestion.spec.ts` créé en `test.skip(...)` avec TODO Story 2.9
 
-- [ ] **Task 6 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run` propres
-  - [ ] Commit unique
+- [x] **Task 6 — Sanity check final**
+  - [x] `yarn typecheck` propre
+  - [x] `yarn test:run` sur le périmètre Story 2.6 (orchestrator, reconciler, useApiError, shared) : 63/63 passent
+  - [x] `yarn lint` propre sur les fichiers de la story (les 4 erreurs restantes du repo concernent des fichiers d'autres stories en cours — `PeriodOverlapDialog.vue`, `useStatements.ts`)
+  - [ ] Commit unique (à effectuer par l'utilisateur)
 
 ## Dev Notes
 
@@ -356,16 +354,36 @@ Si Option B retenue : ajouter aussi `server/services/statement-ingestion-orchest
 
 ### Agent Model Used
 
-_(à remplir)_
+claude-opus-4-7 (1M context)
 
 ### Debug Log References
 
-_(à remplir — choix Option A vs B testing, comportement Drizzle transaction sur SQLite)_
+- `yarn test:run server/services/statement-ingestion-orchestrator.test.ts` → 11/11 passent
+- `yarn test:run app/composables/useApiError.test.ts server/services/statement-ingestion-orchestrator.test.ts server/services/reconciler.test.ts shared/` → 63/63 passent
+- `yarn typecheck` → propre
+- `yarn lint` → propre sur les fichiers Story 2.6 ; 4 erreurs résiduelles dans des fichiers d'autres stories non-touchés (PeriodOverlapDialog.vue, useStatements.ts)
+- 6 tests rouges ailleurs dans le repo : `useStatements.test.ts`, `disclaimer.test.ts`, `[id].patch.test.ts` — tous dans des fichiers d'autres stories non-committées (1.5, 2.8, et la partie client de 2.6 hors scope serveur)
 
 ### Completion Notes List
 
-_(à remplir — décisions architecturales prises, observations sur la durée totale du pipeline (vs NFR1 < 30s))_
+- **Option B retenue** (orchestrator extrait) : la logique pipeline vit dans `server/services/statement-ingestion-orchestrator.ts`, le handler HTTP est un thin wrapper. Justifications : mockabilité directe de `extractStatement`/`categorizeStatement` via `vi.mock`, et tests d'intégration exécutables sans démarrer Nitro. Ajustement par rapport au snippet : le nom de fichier de test devient `statement-ingestion-orchestrator.test.ts` au lieu de `index.post.test.ts`.
+- **Pattern transaction Drizzle / better-sqlite3** : utilisation de `db.transaction((tx) => { ... })` synchrone (avec `.run()`) plutôt que la version `async (tx)` du snippet. Raison : `better-sqlite3` étant 100% synchrone, un callback `async` provoque un COMMIT avant la résolution des promesses internes — atomicité non garantie. Toutes les opérations DB internes à la transaction sont `.run()` synchrones.
+- **Cleanup FS post-commit** : la suppression des PDFs des statements remplacés (cas `confirmReplace=true`) se fait APRÈS le commit DB, hors transaction. Cela évite le risque évoqué dans Dev Notes §"Note sur l'atomicité FS + DB" (DB rollback après suppression FS → orphelins). Trade-off : si le `unlink` échoue post-commit, on accepte un PDF orphelin (le statement DB est cohérent, le PDF reste reconstructible à la main — NFR11).
+- **Sémantique gap réconciliation** alignée sur `reconciler.ts` (Story 2.5) : `gap = expected - found`, donc `gap < 0` = il manque des transactions extraites, `gap > 0` = surplus extrait.
+- **AC#5 (rollback FS)** : couvert par le test "rollback FS si la tx DB échoue (FK violation)". Note : dans cette implé, le seul cas où `savePdfByHash` est suivi d'un échec est une transaction DB qui plante (ex. catégorie inconnue → FK violation). Les erreurs LLM/PDF surviennent avant `savePdfByHash`, donc pas de PDF orphelin possible à ce stade.
+- **Performance** : non profilée en V1 (pas de test de charge). Pour un PDF Boursobank typique (~30-80 transactions), le pipeline complet est dominé par l'appel LLM (`categorizeStatement`, ~5-10s). Largement sous le NFR1 (<30s) en pratique observée Story 2.4.
+- **Lint/tests rouges hors scope** : `useStatements.test.ts`, `PeriodOverlapDialog.vue`, `disclaimer.test.ts`, `[id].patch.test.ts` — fichiers d'autres stories en cours (2.6 client, 2.8, 1.5) présents dans le working tree mais hors périmètre de cette story serveur. À résoudre dans leurs propres stories.
 
 ### File List
 
-_(à remplir)_
+- `shared/schemas/ingestion-result.schema.ts` (nouveau)
+- `server/services/statement-ingestion-orchestrator.ts` (nouveau)
+- `server/services/statement-ingestion-orchestrator.test.ts` (nouveau)
+- `server/api/statements/index.post.ts` (nouveau)
+- `tests/e2e/ingestion.spec.ts` (nouveau, stub `test.skip`)
+- `shared/schemas/api-errors.ts` (modifié — ajout `PdfParseFailed`)
+- `app/composables/useApiError.ts` (modifié — mapping FR `pdf_parse_failed`)
+
+### Change Log
+
+- 2026-05-01 — Implémentation initiale Story 2.6 : pipeline POST /api/statements (Option B, orchestrator extrait).
