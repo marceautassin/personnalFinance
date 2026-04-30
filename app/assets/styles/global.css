@@ -1,0 +1,22 @@
+html, body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  min-height: 100vh;
+}
+
+body { display: flex; flex-direction: column; }
+#__nuxt { flex: 1; display: flex; flex-direction: column; }
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: var(--line-height-tight);
+  font-weight: 600;
+}
+
+h1 { font-size: var(--font-size-3xl); }
+h2 { font-size: var(--font-size-2xl); }
+h3 { font-size: var(--font-size-xl); }
+
+p { color: var(--color-text); line-height: var(--line-height-normal); }
+small { color: var(--color-text-muted); font-size: var(--font-size-sm); }

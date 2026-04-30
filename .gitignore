@@ -1,0 +1,48 @@
+# Nuxt dev/build outputs
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+
+# Node dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Misc
+.DS_Store
+.fleet
+.idea
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Données runtime de l'app (PDFs sources + SQLite) — voir CLAUDE.md
+_data/
+
+# Tests
+test-results/
+playwright-report/
+playwright/.cache/
+coverage/
+*.tsbuildinfo
+
+# Deploy presets futurs
+.vercel/
+.netlify/
+
+# Playwright MCP runtime snapshots
+.playwright-mcp/
+
+# Fixtures sensibles (vrais relevés bancaires) — versionner uniquement le .gitkeep
+tests/fixtures/pdfs/*.pdf
+!tests/fixtures/pdfs/.gitkeep

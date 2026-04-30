@@ -1,0 +1,53 @@
+{
+  "name": "personnalfinance",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20.11"
+  },
+  "packageManager": "yarn@1.22.22",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "start": "node .output/server/index.mjs",
+    "preview": "nuxt preview",
+    "generate": "nuxt generate",
+    "postinstall": "nuxt prepare",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "apply-migration": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:e2e": "playwright test --pass-with-no-tests",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
+    "@pinia/nuxt": "^0.11.3",
+    "better-sqlite3": "^12.9.0",
+    "drizzle-orm": "^0.45.2",
+    "nuxt": "^4.4.2",
+    "pinia": "^3.0.4",
+    "reka-ui": "^2.9.6",
+    "unpdf": "^1.6.2",
+    "vue": "^3.5.33",
+    "vue-router": "^5.0.6",
+    "zod": "^4.4.1"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^1.15.2",
+    "@playwright/test": "^1.59.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@vitest/ui": "^4.1.5",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^10.2.1",
+    "eslint-plugin-unicorn": "^64.0.0",
+    "happy-dom": "^20.9.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5",
+    "vue-tsc": "^3.2.7"
+  }
+}
