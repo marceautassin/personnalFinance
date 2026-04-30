@@ -1,6 +1,6 @@
 # Story 2.5: Service `reconciler` (vérification somme transactions vs solde PDF)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -33,17 +33,17 @@ so that any divergence ≥ 1 cent is caught and exposed (NFR10), and the ingesti
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Implémenter `reconcile`** (AC: #1, #3, #4)
-  - [ ] Créer `server/services/reconciler.ts` selon le snippet Dev Notes
-  - [ ] Utiliser `subCents` et `sumCents` de `~/shared/types/money` (Story 1.3)
+- [x] **Task 1 — Implémenter `reconcile`** (AC: #1, #3, #4)
+  - [x] Créer `server/services/reconciler.ts` selon le snippet Dev Notes
+  - [x] Utiliser `subCents` et `sumCents` de `~~/shared/types/money` (Story 1.3)
 
-- [ ] **Task 2 — Tests exhaustifs** (AC: #2)
-  - [ ] Créer `server/services/reconciler.test.ts`
-  - [ ] Couvrir les 5+ cas listés dans AC#2
+- [x] **Task 2 — Tests exhaustifs** (AC: #2)
+  - [x] Créer `server/services/reconciler.test.ts`
+  - [x] Couvrir les 5+ cas listés dans AC#2
 
-- [ ] **Task 3 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run` propres
-  - [ ] Commit unique
+- [x] **Task 3 — Sanity check final**
+  - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` propres
+  - [ ] Commit unique (à effectuer par l'utilisateur)
 
 ## Dev Notes
 
@@ -227,16 +227,35 @@ Cette story crée :
 
 ### Agent Model Used
 
-_(à remplir)_
+claude-opus-4-7 (1M context)
 
 ### Debug Log References
 
-_(à remplir)_
+- `yarn test:run server/services/reconciler.test.ts` → 8/8 passed (red puis green)
+- `yarn typecheck` → ✅ clean
+- `yarn lint` → ✅ clean (1 fix arrow-parens appliqué : `(t) =>` → `t =>`)
+- `yarn test:run` (suite complète) → 117/117 passed
 
 ### Completion Notes List
 
-_(à remplir)_
+- Implémentation strictement conforme au snippet Dev Notes (fonction pure, opérations via helpers `subCents`/`sumCents`/`cents`).
+- Import corrigé : `~~/shared/types/money` (alias projet effectif) au lieu de `~/shared/types/money` (snippet).
+- Sémantique du gap **alignée sur les tests** (≠ doc du snippet original) : `gap = expected - found`, donc `gap > 0 ⇒ surplus` et `gap < 0 ⇒ transactions manquantes`. JSDoc du fichier ajustée en conséquence pour cohérence avec la suite de tests.
+- 8 tests couvrant : équilibré nominal, vide, écart 1 cent, mixte entrées/sorties, gap positif (surplus), gap négatif (manque), découvert, immutabilité d'entrée.
+- Aucune régression sur les 9 autres suites de test du projet.
 
 ### File List
 
-_(à remplir)_
+- `server/services/reconciler.ts` (nouveau)
+- `server/services/reconciler.test.ts` (nouveau)
+
+### Change Log
+
+- 2026-05-01 — Implémentation initiale du service `reconciler` (story 2.5).
+
+### Review Findings
+
+- [x] [Review][Patch] Noms de tests inversés vs assertions [server/services/reconciler.test.ts:53,64] — Corrigé : les deux `it()` ont été renommés pour aligner libellé et signe attesté (`negative gap: missing` / `positive gap: surplus`).
+- [x] [Review][Defer] Pas de test pour gap = +1 cent [server/services/reconciler.test.ts] — deferred, couverture actuelle (8 tests, dont -1 cent) excède les 5 cas requis par AC#2.
+- [x] [Review][Defer] Pas de garde NaN/Infinity à l'entrée [server/services/reconciler.ts:29] — deferred, l'architecture (CLAUDE.md §"validation aux frontières") stipule que les opérateurs purs ne re-valident pas ; la garde est dans `cents()`/`eurosToCents()`.
+- [x] [Review][Defer] JSDoc "Réutilisable côté tests (snapshots forecast)" trompeur [server/services/reconciler.ts:5] — deferred, formulation reprise verbatim du snippet de la story.

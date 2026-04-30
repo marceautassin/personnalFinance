@@ -1,6 +1,6 @@
 # generated: 2026-04-30
-# last_updated: 2026-04-30
-# (story 2-2-service-pdf-extractor passé in-progress)
+# last_updated: 2026-05-01
+# (story 2-5-service-reconciler passée in-progress)
 # project: personnalFinance
 # project_key: NOKEY
 # tracking_system: file-system
@@ -36,7 +36,8 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30
-last_updated: 2026-04-30
+last_updated: 2026-05-01
+# (story 2-7 passée in-progress)
 project: personnalFinance
 project_key: NOKEY
 tracking_system: file-system
@@ -56,13 +57,13 @@ development_status:
 
   # Epic 2 — Ingestion & catégorisation des relevés
   epic-2: backlog
-  2-1-schema-bank-statements-et-transactions: in-progress
-  2-2-service-pdf-extractor: in-progress
-  2-3-helpers-hash-period-file-storage: in-progress
-  2-4-service-llm-categorizer: in-progress
-  2-5-service-reconciler: ready-for-dev
+  2-1-schema-bank-statements-et-transactions: done
+  2-2-service-pdf-extractor: review
+  2-3-helpers-hash-period-file-storage: done
+  2-4-service-llm-categorizer: review
+  2-5-service-reconciler: done
   2-6-endpoint-post-api-statements: ready-for-dev
-  2-7-endpoint-get-transactions-et-composable: ready-for-dev
+  2-7-endpoint-get-transactions-et-composable: review
   2-8-endpoint-patch-transactions-recalcul-reactif: ready-for-dev
   2-9-ui-pdf-drop-zone-ingestion-import: ready-for-dev
   2-10-ui-transaction-list-category-editor: ready-for-dev
