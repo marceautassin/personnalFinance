@@ -1,6 +1,6 @@
 # Story 2.1: Schéma DB pour `bank_statements` et `transactions`
 
-Status: review
+Status: done
 
 ## Story
 
@@ -57,7 +57,7 @@ so that the ingestion pipeline (Stories 2.2-2.6) can persist its results in a ty
 
 - [x] **Task 6 — Sanity check final**
   - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` propres
-  - [ ] Commit unique (à faire par l'utilisateur)
+  - [x] Commit unique
 
 ## Dev Notes
 
@@ -266,16 +266,48 @@ Cette story modifie/crée :
 
 ### Agent Model Used
 
-_(à remplir)_
+claude-opus-4-7 (1M context) via Claude Code
 
 ### Debug Log References
 
-_(à remplir — notamment si Drizzle ne supporte pas la syntaxe enum text directement, fallback sur check contraint manuel)_
+- `yarn db:push` requiert `--force` en environnement non-TTY (Drizzle Kit demande confirmation interactive sinon). Aucun changement destructif ici (création de tables uniquement), donc `--force` est sûr.
+- `yarn typecheck` remonte une erreur dans `server/services/pdf-extractor.ts` (Story 2.2 en cours, hors scope 2.1). Les fichiers de cette story (`schema.ts`, `statement.schema.ts`, `transaction.schema.ts`) typent proprement.
 
 ### Completion Notes List
 
-_(à remplir — choix push vs generate, version Drizzle, ajustements types Zod si différence détectée)_
+- Tables `bank_statements` et `transactions` ajoutées à `server/db/schema.ts` avec `RELIABILITY_VALUES` (`'reliable' | 'unreliable'`) typé via `text({ enum })` Drizzle.
+- FK `transactions.statement_hash` → `bank_statements.hash_sha256` ON DELETE CASCADE ; FK `transactions.category_code` → `category_definitions.code` ON DELETE RESTRICT.
+- `debt_id` déclarée nullable, **sans FK** (table `debts` créée en Story 6.1).
+- Index `transactions_period_idx` (transaction_date) et `transactions_statement_idx` (statement_hash) créés.
+- Schémas Zod `StatementSchema`, `NewStatementSchema`, `TransactionSchema`, `NewTransactionSchema`, `ExtractedTransactionSchema` exposés depuis `shared/schemas/`. Types TS dérivés via `z.infer<>`.
+- Compatibilité types Drizzle ↔ Zod validée via test éphémère `server/db/schema.test.ts` (4 cas `expectTypeOf` passants), supprimé après validation conformément à la DoD. Aucun écart détecté — `integer({ mode: 'boolean' })` retourne bien `boolean` côté TS, et l'enum `text({ enum })` matche `z.enum`.
+- `yarn db:push --force` appliqué avec succès ; tables et index présents (vérifié via `better-sqlite3` direct, `sqlite3` CLI absent du système).
+- `yarn lint` propre ; `yarn test:run` 77 tests passants (1 skipped pré-existant).
+- Commit laissé à l'utilisateur (politique projet : ne pas committer sans demande explicite).
 
 ### File List
 
-_(à remplir)_
+- `server/db/schema.ts` (modifié — ajout `RELIABILITY_VALUES`, `bankStatements`, `transactions` + types inférés)
+- `shared/schemas/statement.schema.ts` (créé)
+- `shared/schemas/transaction.schema.ts` (créé)
+
+### Review Findings
+
+- [ ] [Review][Decision] Hash SHA-256 regex case-insensitive vs stockage case-sensitive — `/^[a-f0-9]{64}$/i` (statement.schema.ts:10, transaction.schema.ts:9) accepte majuscules ; `crypto.createHash('sha256').digest('hex')` produit du lowercase. Si un client soumet `ABCD…`, la PK SQLite (TEXT) le stocke tel quel → idempotence par contenu (FR2/D3) cassée. Fix unambigu : retirer le flag `i` (ou normaliser via `.transform(s => s.toLowerCase())`).
+- [ ] [Review][Decision] Dates ISO sémantiquement invalides — `DateIsoSchema` accepte `2026-02-30`, `2026-13-01`, `2026-04-31` (regex format-only). Impacte `periodStart`/`periodEnd`/`transactionDate`. Faut-il ajouter un `.refine(d => !isNaN(Date.parse(d)) && d === new Date(d).toISOString().slice(0,10))` maintenant, ou laisser la validation côté pdf-extractor / endpoint ?
+- [ ] [Review][Decision] `periodStart ≤ periodEnd` non vérifié — aucun `.superRefine` cross-field sur `StatementSchema`. Statement avec dates inversées passe Zod. Ajout d'un refine maintenant ou défer ?
+- [ ] [Review][Decision] Invariant `isDebtRepayment === true ⇒ debtId !== null` non garanti — les deux champs sont indépendants (schema.ts:86-87, transaction.schema.ts:15-16). État incohérent possible (repayment de quelle dette ?). Ajout d'un `.refine()` maintenant ou attendre Story 6.x ?
+- [ ] [Review][Decision] Collision de noms de types `Transaction` / `NewTransaction` — exportés à la fois depuis `server/db/schema.ts` (inférés Drizzle) et `shared/schemas/transaction.schema.ts` (inférés Zod). Importateurs peuvent récupérer la mauvaise version selon l'ordre de résolution. Renommer un des deux ensembles (ex: `Transaction` côté Zod, `TransactionRow` côté Drizzle) ?
+- [ ] [Review][Patch] `label: z.string().min(1)` accepte les chaînes blanches — `"   "` passe la validation [shared/schemas/transaction.schema.ts:11]. Ajouter `.trim().min(1)` ou équivalent.
+- [x] [Review][Defer] FK `debt_id` absente [server/db/schema.ts:87] — explicitement reportée à Story 6.1 dans la spec (table `debts` n'existe pas).
+- [x] [Review][Defer] `categoryCode` FK pointe sur `code` (text humain) plutôt que `id` — renommer un code casserait l'historique [server/db/schema.ts:82-84]. Décision architecturale, hors scope 2.1.
+- [x] [Review][Defer] `NewStatementSchema` accepte un `hashSha256` fourni par le client [shared/schemas/statement.schema.ts:10] — devrait être server-computed. À enforcer côté endpoint Story 2.6.
+- [x] [Review][Defer] `ExtractedTransactionSchema` inclut `categoryCode` requis [shared/schemas/transaction.schema.ts:32] — confond extraction PDF et catégorisation LLM. À revisiter en Story 2.4/2.6.
+- [x] [Review][Defer] `amountCents === 0` autorisé — pas de guard sémantique. Décision domaine (laisser passer un placeholder ou rejeter ?). Hors scope 2.1.
+- [x] [Review][Defer] `transactionDate` hors `[periodStart, periodEnd]` non contrôlé — pas de check cross-table possible en SQLite, à valider côté service d'ingestion (Story 2.2/2.6).
+- [x] [Review][Defer] Cascade `ON DELETE CASCADE` du statement supprime aussi les transactions manuelles de réconciliation — décision UX/data-loss à clarifier en Epic 3.
+- [x] [Review][Defer] Pas d'index sur `categoryCode` ni `debtId` — optimisation prématurée (volume mono-utilisateur), à reconsidérer si Forecast scanne lentement.
+- [x] [Review][Defer] Pas de CHECK constraint 0/1 sur les booleans (`is_manual`, `is_debt_repayment`, `is_variable`) — risque uniquement via raw SQL/migrations, donc faible.
+- [x] [Review][Defer] Pas de `updatedAt` sur transactions — gap d'audit trail pour les éditions manuelles. À considérer si besoin d'historique (non requis V1).
+- [x] [Review][Defer] Pas d'unique constraint sur `(statementHash, transactionDate, label, amountCents)` — duplication possible si re-ingestion partielle. PK hash devrait suffire mais à monitorer.
+- [x] [Review][Defer] Validation real-date dans `pdf-extractor.frDateToIso` (jour > 31, leap year) — hors scope 2.1, à traiter en Story 2.2.

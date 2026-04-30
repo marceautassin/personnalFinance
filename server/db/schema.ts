@@ -93,5 +93,5 @@ export const transactions = sqliteTable(
   }),
 )
 
-export type Transaction = typeof transactions.$inferSelect
-export type NewTransaction = typeof transactions.$inferInsert
+export type TransactionRow = typeof transactions.$inferSelect
+export type NewTransactionRow = typeof transactions.$inferInsert
