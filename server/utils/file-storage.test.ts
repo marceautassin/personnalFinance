@@ -49,6 +49,10 @@ describe('file-storage round-trip', () => {
     await expect(savePdfByHash(Buffer.from('x'), 'not-a-hash')).rejects.toThrow()
   })
 
+  it('rejects uppercase hex hash (lowercase convention)', async () => {
+    await expect(savePdfByHash(Buffer.from('x'), 'A'.repeat(64))).rejects.toThrow()
+  })
+
   it('loadPdfByHash throws when absent', async () => {
     await expect(loadPdfByHash('b'.repeat(64))).rejects.toThrow()
   })

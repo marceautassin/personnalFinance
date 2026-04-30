@@ -1,6 +1,6 @@
 # Story 2.3: Helpers `hash`, `period`, `file-storage`
 
-Status: review
+Status: done
 
 ## Story
 
@@ -386,6 +386,19 @@ Cette story crée :
 - [Source: `_bmad-output/planning-artifacts/architecture.md`#Core Architectural Decisions §D2, §D3] — dates ISO, hash = chemin
 - [Source: `_bmad-output/planning-artifacts/architecture.md`#NFR9] — tests cas limites
 - [Source: `_bmad-output/planning-artifacts/epics.md`#Story 2.3] — story originale
+
+### Review Findings
+
+_Code review du 2026-04-30 — 3 reviewers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Tous les ACs validés. 5 patchs proposés, 3 reports, ~10 nits écartés._
+
+- [x] [Review][Patch] `pathFor` regex accepte hex uppercase (`/i` flag) — viole l'anti-pattern « lowercase hex partout » [server/utils/file-storage.ts:16]
+- [x] [Review][Patch] `monthOf` accepte des dates calendrier invalides (`2026-02-31`, `2026-13-45`) — silent garbage propagé en aval [server/utils/period.ts:17]
+- [x] [Review][Patch] `daysBetween` / `parseDateIso` acceptent des dates impossibles via rollover de `Date.UTC` — résultat silencieusement faux (NFR18 month-end) [server/utils/period.ts:69-78]
+- [x] [Review][Patch] `monthsOverlap` ne valide pas le format des inputs — `'2026-1-1'` (non zero-padded) donne un résultat lexicographique faux [server/utils/period.ts:36]
+- [x] [Review][Patch] `nextMonths` ne valide pas `n` — `Infinity` boucle à l'infini, `NaN` retourne `[]` silencieusement, floats tronqués sans warning [server/utils/period.ts:45-49]
+- [x] [Review][Defer] `savePdfByHash` écrit non atomique (pas de temp+rename) — crash mid-write corrompt l'invariant content-addressable [server/utils/file-storage.ts:30-35] — deferred, mono-user low-risk, à reprendre si déploiement multi-instance
+- [x] [Review][Defer] `savePdfByHash` ne vérifie pas que `sha256(buf) === hash` — caller buggé peut empoisonner le store silencieusement [server/utils/file-storage.ts:30] — deferred, défense en profondeur, à ajouter si l'API devient publique
+- [x] [Review][Defer] Pas de branded type `Month` / `DateIso` malgré la convention documentée [server/utils/period.ts] — deferred, refactor transverse hors scope story 2.3
 
 ## Dev Agent Record
 

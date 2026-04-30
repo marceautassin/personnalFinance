@@ -12,11 +12,10 @@
 const DATE_ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 const MONTH_RE = /^(\d{4})-(\d{2})$/
 
-/** Extrait le mois (YYYY-MM) d'une date ISO (YYYY-MM-DD). */
+/** Extrait le mois (YYYY-MM) d'une date ISO (YYYY-MM-DD). Throw si date calendrier invalide. */
 export function monthOf(dateIso: string): string {
-  const m = dateIso.match(DATE_ISO_RE)
-  if (!m) throw new Error(`monthOf: date invalide '${dateIso}' (YYYY-MM-DD attendu)`)
-  return `${m[1]}-${m[2]}`
+  const [y, mIdx] = parseDateIso(dateIso)
+  return `${String(y).padStart(4, '0')}-${String(mIdx + 1).padStart(2, '0')}`
 }
 
 /** Parse "YYYY-MM" en { year, month } (1-indexed). null si invalide. */
@@ -34,6 +33,10 @@ export function parseMonth(s: string): { year: number, month: number } | null {
  * Tous les paramètres sont au format YYYY-MM-DD ; le tri lexicographique est sémantiquement correct.
  */
 export function monthsOverlap(start1: string, end1: string, start2: string, end2: string): boolean {
+  parseDateIso(start1)
+  parseDateIso(end1)
+  parseDateIso(start2)
+  parseDateIso(end2)
   return start1 <= end2 && start2 <= end1
 }
 
@@ -45,6 +48,7 @@ export function monthsOverlap(start1: string, end1: string, start2: string, end2
 export function nextMonths(fromMonth: string, n: number): string[] {
   const parsed = parseMonth(fromMonth)
   if (!parsed) throw new Error(`nextMonths: mois invalide '${fromMonth}'`)
+  if (!Number.isInteger(n)) throw new Error(`nextMonths: n doit être un entier (${n})`)
   if (n < 0) throw new Error(`nextMonths: n doit être positif (${n})`)
   if (n === 0) return []
 
@@ -75,7 +79,20 @@ export function daysBetween(d1: string, d2: string): number {
 
 function parseDateIso(s: string): [number, number, number] {
   const m = s.match(DATE_ISO_RE)
-  if (!m) throw new Error(`parseDateIso: '${s}' invalide`)
+  if (!m) throw new Error(`parseDateIso: '${s}' invalide (YYYY-MM-DD attendu)`)
+  const year = Number(m[1])
+  const month = Number(m[2])
+  const day = Number(m[3])
+  // Calendar validation : Date.UTC roule silencieusement (2026-02-31 → 2026-03-03).
+  // On vérifie le round-trip pour rejeter les dates impossibles.
+  const utc = new Date(Date.UTC(year, month - 1, day))
+  if (
+    utc.getUTCFullYear() !== year
+    || utc.getUTCMonth() !== month - 1
+    || utc.getUTCDate() !== day
+  ) {
+    throw new Error(`parseDateIso: '${s}' n'est pas une date calendrier valide`)
+  }
   // mois en JS est 0-indexed
-  return [Number(m[1]), Number(m[2]) - 1, Number(m[3])]
+  return [year, month - 1, day]
 }

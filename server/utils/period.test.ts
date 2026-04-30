@@ -3,7 +3,10 @@ import { monthOf, parseMonth, monthsOverlap, nextMonths, daysBetween } from './p
 
 describe('monthOf', () => {
   it('extracts month from a date', () => expect(monthOf('2026-04-15')).toBe('2026-04'))
-  it('throws on invalid date', () => expect(() => monthOf('2026/04/15')).toThrow())
+  it('throws on invalid date format', () => expect(() => monthOf('2026/04/15')).toThrow())
+  it('throws on invalid calendar date (feb 31)', () => expect(() => monthOf('2026-02-31')).toThrow())
+  it('throws on invalid month (13)', () => expect(() => monthOf('2026-13-01')).toThrow())
+  it('throws on invalid day (32)', () => expect(() => monthOf('2026-01-32')).toThrow())
 })
 
 describe('parseMonth', () => {
@@ -19,6 +22,10 @@ describe('monthsOverlap', () => {
     expect(monthsOverlap('2026-01-01', '2026-01-31', '2026-02-01', '2026-02-28')).toBe(false))
   it('detects touching boundaries (inclusive)', () =>
     expect(monthsOverlap('2026-01-01', '2026-01-31', '2026-01-31', '2026-02-15')).toBe(true))
+  it('throws on malformed input (non zero-padded)', () =>
+    expect(() => monthsOverlap('2026-1-1', '2026-1-31', '2026-2-1', '2026-2-28')).toThrow())
+  it('throws on calendar-invalid date', () =>
+    expect(() => monthsOverlap('2026-02-30', '2026-03-01', '2026-01-01', '2026-01-31')).toThrow())
 })
 
 describe('nextMonths', () => {
@@ -34,6 +41,11 @@ describe('nextMonths', () => {
     expect(r).toHaveLength(24)
   })
   it('throws on invalid month', () => expect(() => nextMonths('garbage', 1)).toThrow())
+  it('throws on Infinity (would loop forever)', () =>
+    expect(() => nextMonths('2026-04', Number.POSITIVE_INFINITY)).toThrow())
+  it('throws on NaN', () => expect(() => nextMonths('2026-04', Number.NaN)).toThrow())
+  it('throws on float n', () => expect(() => nextMonths('2026-04', 2.5)).toThrow())
+  it('throws on negative n', () => expect(() => nextMonths('2026-04', -1)).toThrow())
 })
 
 describe('daysBetween', () => {
@@ -46,4 +58,6 @@ describe('daysBetween', () => {
     expect(daysBetween('2026-04-15', '2026-04-01')).toBe(-14))
   it('handles year boundary', () =>
     expect(daysBetween('2025-12-31', '2026-01-01')).toBe(1))
+  it('throws on calendar-invalid date (would silently roll over)', () =>
+    expect(() => daysBetween('2026-02-30', '2026-03-01')).toThrow())
 })

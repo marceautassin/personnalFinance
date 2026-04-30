@@ -13,7 +13,7 @@ function rawDir(): string {
 }
 
 function pathFor(hash: string): string {
-  if (!/^[a-f0-9]{64}$/i.test(hash)) {
+  if (!/^[a-f0-9]{64}$/.test(hash)) {
     throw new Error(`Invalid hash '${hash}' (SHA-256 hex attendu)`)
   }
   return join(rawDir(), `${hash}.pdf`)
