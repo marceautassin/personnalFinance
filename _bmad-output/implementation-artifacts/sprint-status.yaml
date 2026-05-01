@@ -37,7 +37,7 @@
 
 generated: 2026-04-30
 last_updated: 2026-05-01
-# (story 2-7 passée in-progress)
+# (story 2-10 passée done après code-review)
 project: personnalFinance
 project_key: NOKEY
 tracking_system: file-system
@@ -62,11 +62,11 @@ development_status:
   2-3-helpers-hash-period-file-storage: done
   2-4-service-llm-categorizer: review
   2-5-service-reconciler: done
-  2-6-endpoint-post-api-statements: review
+  2-6-endpoint-post-api-statements: done
   2-7-endpoint-get-transactions-et-composable: done
-  2-8-endpoint-patch-transactions-recalcul-reactif: review
-  2-9-ui-pdf-drop-zone-ingestion-import: ready-for-dev
-  2-10-ui-transaction-list-category-editor: ready-for-dev
+  2-8-endpoint-patch-transactions-recalcul-reactif: done
+  2-9-ui-pdf-drop-zone-ingestion-import: done
+  2-10-ui-transaction-list-category-editor: done
   epic-2-retrospective: optional
 
   # Epic 3 — Réconciliation manuelle des écarts

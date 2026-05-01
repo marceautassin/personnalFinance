@@ -10,10 +10,10 @@ const strictCompilerOptions = {
 
 export default defineNuxtConfig({
   modules: ['@pinia/nuxt', '@nuxt/eslint'],
-  ssr: false, components: [
+  ssr: false,
+  components: [
     { path: '~/components', pathPrefix: false },
   ],
-  // SPA mode — décision PRD (mono-user, local-first, pas de SEO)
   devtools: { enabled: true },
   // CSS vanilla via SFC <style scoped> + tokens (Story 1.7)
   css: [
@@ -21,6 +21,14 @@ export default defineNuxtConfig({
     '~/assets/styles/tokens.css',
     '~/assets/styles/global.css',
   ],
+  // SPA mode — décision PRD (mono-user, local-first, pas de SEO)
+  // Workaround Nuxt 4.4.4 bug : avec `ssr: false`, le SSR server vite n'est pas créé,
+  // ce qui empêche `NUXT_VITE_NODE_OPTIONS.socketPath` d'être défini et fait planter
+  // le renderer Nitro en dev. Le code-path `viteEnvironmentApi` initialise le socket
+  // côté clientServer et débloque le rendu de la coquille SPA.
+  experimental: {
+    viteEnvironmentApi: true,
+  },
   compatibilityDate: '2026-04-30',
   nitro: {
     typescript: {
