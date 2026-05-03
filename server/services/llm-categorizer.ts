@@ -39,16 +39,18 @@ export class LlmUnavailableError extends Error {
   }
 }
 
+const TOOL_NAME = 'submit_transactions'
+const REQUEST_TIMEOUT_MS = 25_000
+
 let _client: Anthropic | null = null
 
-/** Initialisation lazy du client. Vérifie la présence de la clé API. */
 function getClient(): Anthropic {
   if (_client) return _client
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey || apiKey.trim().length === 0) {
     throw new Error('Missing ANTHROPIC_API_KEY in environment')
   }
-  _client = new Anthropic({ apiKey })
+  _client = new Anthropic({ apiKey, timeout: REQUEST_TIMEOUT_MS })
   return _client
 }
 
@@ -60,46 +62,46 @@ export function _resetClientForTesting(): void {
   _client = null
 }
 
-/**
- * JSON schema décrivant la sortie attendue, utilisé en structured output via tool_use.
- * Aligné avec ExtractedTransactionSchema (Zod). Si tu modifies l'un, modifier l'autre.
- */
-const OUTPUT_JSON_SCHEMA: Anthropic.Messages.Tool.InputSchema = {
-  type: 'object',
-  properties: {
-    transactions: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          transactionDate: {
-            type: 'string',
-            description: 'Date de l\'opération au format YYYY-MM-DD',
-            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+function buildOutputSchema(
+  availableCategories: ReadonlyArray<DefaultCategory>,
+): Anthropic.Messages.Tool.InputSchema {
+  return {
+    type: 'object',
+    properties: {
+      transactions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            transactionDate: {
+              type: 'string',
+              description: 'Date de l\'opération au format YYYY-MM-DD',
+              pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+            },
+            label: {
+              type: 'string',
+              description: 'Libellé brut du relevé, max 100 chars',
+              minLength: 1,
+              maxLength: 100,
+            },
+            amountCents: {
+              type: 'integer',
+              description: 'Montant en centimes signé (négatif pour sorties)',
+            },
+            categoryCode: {
+              type: 'string',
+              description: 'Code de catégorie strict — DOIT être l\'une des valeurs listées',
+              enum: availableCategories.map(c => c.code),
+            },
           },
-          label: {
-            type: 'string',
-            description: 'Libellé brut du relevé, max 100 chars',
-            minLength: 1,
-            maxLength: 100,
-          },
-          amountCents: {
-            type: 'integer',
-            description: 'Montant en centimes signé (négatif pour sorties)',
-          },
-          categoryCode: {
-            type: 'string',
-            description: 'Code de catégorie strict parmi available_categories',
-            minLength: 1,
-          },
+          required: ['transactionDate', 'label', 'amountCents', 'categoryCode'],
+          additionalProperties: false,
         },
-        required: ['transactionDate', 'label', 'amountCents', 'categoryCode'],
-        additionalProperties: false,
       },
     },
-  },
-  required: ['transactions'],
-  additionalProperties: false,
+    required: ['transactions'],
+    additionalProperties: false,
+  }
 }
 
 const ResponseSchema = z.object({
@@ -112,13 +114,20 @@ const ResponseSchema = z.object({
  * @param rawText  Texte brut extrait du PDF (Story 2.2)
  * @param availableCategories Catégories autorisées (depuis category_definitions, Story 1.4)
  * @returns Liste de transactions structurées et validées
- * @throws LlmUnavailableError si l'API est indisponible (réseau / 5xx / timeout)
- * @throws LlmExtractionError si la réponse est invalide ou contient une catégorie inconnue
+ * @throws LlmUnavailableError si l'API est indisponible (réseau / 5xx / timeout / 429 / auth)
+ * @throws LlmExtractionError si la réponse est invalide, tronquée, ou contient une catégorie inconnue
  */
 export async function categorizeStatement(
   rawText: string,
   availableCategories: ReadonlyArray<DefaultCategory>,
 ): Promise<ExtractedTransaction[]> {
+  if (!rawText || rawText.trim().length === 0) {
+    throw new LlmExtractionError('rawText is empty')
+  }
+  if (availableCategories.length === 0) {
+    throw new LlmExtractionError('availableCategories is empty — cannot categorize')
+  }
+
   const client = getClient()
   const userMessage = buildBankStatementUserMessage(rawText, availableCategories)
 
@@ -127,23 +136,39 @@ export async function categorizeStatement(
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 8192,
+      temperature: 0,
       system: BANK_STATEMENT_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
       tools: [
         {
-          name: 'submit_transactions',
+          name: TOOL_NAME,
           description: 'Soumet la liste des transactions extraites du relevé.',
-          input_schema: OUTPUT_JSON_SCHEMA,
+          input_schema: buildOutputSchema(availableCategories),
         },
       ],
-      tool_choice: { type: 'tool', name: 'submit_transactions' },
+      tool_choice: { type: 'tool', name: TOOL_NAME },
     })
 
-    const toolUse = response.content.find(c => c.type === 'tool_use')
-    if (!toolUse || toolUse.type !== 'tool_use') {
-      throw new LlmExtractionError('No tool_use block in Claude response')
+    if (response.stop_reason === 'max_tokens') {
+      throw new LlmExtractionError(
+        'Claude response truncated by max_tokens — partial extraction rejected',
+      )
     }
-    toolInput = toolUse.input
+
+    if (!Array.isArray(response.content)) {
+      throw new LlmExtractionError('Claude response content is not an array')
+    }
+
+    const toolUses = response.content.filter(
+      (c): c is Extract<typeof c, { type: 'tool_use' }> => c.type === 'tool_use' && c.name === TOOL_NAME,
+    )
+    if (toolUses.length === 0) {
+      throw new LlmExtractionError(`No tool_use block named '${TOOL_NAME}' in Claude response`)
+    }
+    if (toolUses.length > 1) {
+      throw new LlmExtractionError(`Multiple tool_use blocks named '${TOOL_NAME}' in Claude response`)
+    }
+    toolInput = toolUses[0]!.input
   }
   catch (err) {
     if (err instanceof LlmExtractionError) throw err
@@ -152,8 +177,10 @@ export async function categorizeStatement(
     }
     if (err instanceof APIError) {
       const status = err.status ?? 0
-      if (status >= 500) {
-        throw new LlmUnavailableError(`Claude API server error (${status}): ${err.message}`, err)
+      // 5xx + 429 (rate limit) + 408 (timeout) + 401/403 (auth/permission) = indispo opérationnelle.
+      // L'utilisateur ne peut pas la corriger côté donnée, doit retry ou fix sa config.
+      if (status >= 500 || status === 429 || status === 408 || status === 401 || status === 403) {
+        throw new LlmUnavailableError(`Claude API unavailable (${status}): ${err.message}`, err)
       }
       throw new LlmExtractionError(`Claude API client error (${status}): ${err.message}`, err)
     }

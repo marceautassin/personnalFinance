@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as AnthropicSdk from '@anthropic-ai/sdk'
 import {
   categorizeStatement,
@@ -45,10 +45,22 @@ vi.mock('@anthropic-ai/sdk', () => {
 
 const { APIError, APIConnectionError, APIConnectionTimeoutError } = AnthropicSdk
 
+const ORIGINAL_API_KEY = process.env.ANTHROPIC_API_KEY
+
 beforeEach(() => {
   mockCreate.mockReset()
   _resetClientForTesting()
   process.env.ANTHROPIC_API_KEY = 'test-key'
+})
+
+afterEach(() => {
+  if (ORIGINAL_API_KEY === undefined) {
+    delete process.env.ANTHROPIC_API_KEY
+  }
+  else {
+    process.env.ANTHROPIC_API_KEY = ORIGINAL_API_KEY
+  }
+  _resetClientForTesting()
 })
 
 describe('categorizeStatement', () => {
@@ -156,5 +168,68 @@ describe('categorizeStatement', () => {
     delete process.env.ANTHROPIC_API_KEY
     _resetClientForTesting()
     await expect(categorizeStatement('rawText', DEFAULT_CATEGORIES)).rejects.toThrow(/ANTHROPIC_API_KEY/)
+  })
+
+  it('throws on whitespace-only API key', async () => {
+    process.env.ANTHROPIC_API_KEY = '   '
+    _resetClientForTesting()
+    await expect(categorizeStatement('rawText', DEFAULT_CATEGORIES)).rejects.toThrow(/ANTHROPIC_API_KEY/)
+  })
+
+  it('throws LlmExtractionError on empty rawText', async () => {
+    await expect(categorizeStatement('', DEFAULT_CATEGORIES)).rejects.toBeInstanceOf(LlmExtractionError)
+    await expect(categorizeStatement('   \n  ', DEFAULT_CATEGORIES)).rejects.toBeInstanceOf(LlmExtractionError)
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it('throws LlmExtractionError on empty availableCategories', async () => {
+    await expect(categorizeStatement('rawText', [])).rejects.toBeInstanceOf(LlmExtractionError)
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it('throws LlmExtractionError when stop_reason is max_tokens (truncation)', async () => {
+    mockCreate.mockResolvedValueOnce({
+      stop_reason: 'max_tokens',
+      content: [{ type: 'tool_use', name: 'submit_transactions', input: { transactions: [] } }],
+    })
+    await expect(categorizeStatement('rawText', DEFAULT_CATEGORIES)).rejects.toThrow(/truncated/i)
+  })
+
+  it('throws LlmExtractionError on multiple tool_use blocks', async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [
+        { type: 'tool_use', name: 'submit_transactions', input: { transactions: [] } },
+        { type: 'tool_use', name: 'submit_transactions', input: { transactions: [] } },
+      ],
+    })
+    await expect(categorizeStatement('rawText', DEFAULT_CATEGORIES)).rejects.toThrow(/Multiple tool_use/)
+  })
+
+  it('throws LlmExtractionError when tool_use has wrong name', async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: 'tool_use', name: 'some_other_tool', input: { transactions: [] } }],
+    })
+    await expect(categorizeStatement('rawText', DEFAULT_CATEGORIES)).rejects.toThrow(/No tool_use block/)
+  })
+
+  it('throws LlmExtractionError when content is not an array', async () => {
+    mockCreate.mockResolvedValueOnce({ content: null })
+    await expect(categorizeStatement('rawText', DEFAULT_CATEGORIES)).rejects.toThrow(/not an array/)
+  })
+
+  it('throws LlmUnavailableError on 401 auth error', async () => {
+    mockCreate.mockRejectedValueOnce(new (APIError as unknown as new (s: number, m: string) => Error)(401, 'Unauthorized'))
+    await expect(categorizeStatement('rawText', DEFAULT_CATEGORIES)).rejects.toBeInstanceOf(LlmUnavailableError)
+  })
+
+  it('throws LlmUnavailableError on 429 rate limit', async () => {
+    mockCreate.mockRejectedValueOnce(new (APIError as unknown as new (s: number, m: string) => Error)(429, 'Too Many Requests'))
+    await expect(categorizeStatement('rawText', DEFAULT_CATEGORIES)).rejects.toBeInstanceOf(LlmUnavailableError)
+  })
+
+  it('rethrows non-APIError generic errors as-is (let Nitro 500)', async () => {
+    const oops = new Error('unexpected boom')
+    mockCreate.mockRejectedValueOnce(oops)
+    await expect(categorizeStatement('rawText', DEFAULT_CATEGORIES)).rejects.toBe(oops)
   })
 })

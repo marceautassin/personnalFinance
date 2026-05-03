@@ -1,6 +1,6 @@
 # Story 2.4: Service `llm-categorizer` (Claude API + structured outputs)
 
-Status: review
+Status: done
 
 ## Story
 

@@ -60,7 +60,7 @@ development_status:
   2-1-schema-bank-statements-et-transactions: done
   2-2-service-pdf-extractor: done
   2-3-helpers-hash-period-file-storage: done
-  2-4-service-llm-categorizer: review
+  2-4-service-llm-categorizer: done
   2-5-service-reconciler: done
   2-6-endpoint-post-api-statements: done
   2-7-endpoint-get-transactions-et-composable: done
