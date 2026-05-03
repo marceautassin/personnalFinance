@@ -4,10 +4,14 @@ interface NavItem {
   href: string | null
 }
 
+// La rubrique Transactions cible le mois courant ; la page route gère mois sans données.
+const now = new Date()
+const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
 const items: NavItem[] = [
   { label: 'Dashboard', href: '/' },
   { label: 'Import', href: '/import' },
-  { label: 'Transactions', href: null },
+  { label: 'Transactions', href: `/transactions/${currentPeriod}` },
   { label: 'Charges', href: null },
   { label: 'Revenus', href: null },
   { label: 'SAS', href: null },
