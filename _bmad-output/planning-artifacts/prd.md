@@ -286,6 +286,7 @@ Hors V1 : audit WCAG complet, support lecteurs d'écran, ARIA avancé, modes acc
 11. **Moteur de forecast inverse 6/12/24 mois** — input : trajectoire de charges + revenus + dettes + objectifs ponctuels ; output : dividende NET à voter à la prochaine AG, BRUT correspondant, capacité dividendable estimée, marge
 12. **Alertes intégrées au forecast** — incompatibilité ARE/dividende, mois flagué "non fiable" si réconciliation incomplète, dépassement de la capacité dividendable
 13. **Affichage impact marginal** — sur la fiche Dette, montrer combien la dette ajoute au dividende cible
+14. **Gestion des catégories** — création, renommage, suppression contrôlée (interdite si la catégorie est référencée par des transactions, charges fixes ou overrides)
 
 **Hors MVP — explicitement exclu :** authentification, multi-utilisateur, déploiement cloud, multi-banque, agrégation bancaire automatique, apprentissage des corrections, règles de catégorisation manuelles persistantes, multi-scénarios de forecast, alertes proactives, export comptable, sauvegarde/restauration, mobile/PWA/responsive, module pro/entreprise complet.
 
@@ -427,6 +428,12 @@ Hors V1 : audit WCAG complet, support lecteurs d'écran, ARIA avancé, modes acc
 ### Disclaimer & transparence
 
 - **FR54** — Le système affiche un disclaimer indiquant que l'outil ne remplace pas un conseil fiscal/juridique professionnel, à la première utilisation et accessible en permanence.
+
+### Gestion des catégories
+
+- **FR55** — L'utilisateur peut créer une nouvelle catégorie de transaction en spécifiant un libellé et un type (variable ou fixe). La nouvelle catégorie est immédiatement disponible pour la catégorisation manuelle et pour les imports PDF suivants (la liste passée au LLM est lue dynamiquement depuis la base).
+- **FR56** — L'utilisateur peut renommer le libellé d'une catégorie existante (par défaut ou créée). L'identifiant interne reste stable pour préserver l'intégrité référentielle des transactions, charges fixes et overrides mensuels.
+- **FR57** — L'utilisateur peut supprimer une catégorie uniquement si elle n'est référencée par aucune transaction, charge fixe ou override mensuel. Toute tentative de suppression sur une catégorie référencée est refusée avec message explicite indiquant le nombre de références bloquantes.
 
 ## Non-Functional Requirements
 

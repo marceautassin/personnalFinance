@@ -175,12 +175,12 @@ _(Aucun document UX Design en V1 — décision PRD : périmètre desktop perso, 
 | FR1-FR8, FR10-FR12, FR54 | Epic 2 | Ingestion, catégorisation, édition catégorie, réconciliation auto, disclaimer |
 | FR9 | Epic 6 | Marquage transaction = remboursement dette |
 | FR13-FR15 | Epic 3 | Réconciliation manuelle |
-| FR16-FR28, FR35-FR36 | Epic 5 | Charges, revenus, SAS, fiscalité |
+| FR16-FR28, FR35-FR36, FR55-FR57 | Epic 5 | Charges, revenus, SAS, fiscalité, gestion catégories |
 | FR29-FR34 | Epic 6 | Dettes |
 | FR37-FR40 | Epic 4 | Dashboard narratif |
 | FR41-FR53 | Epic 7 | Forecast inverse complet |
 
-**54/54 FRs mappés.** NFRs et Additional Requirements traversent tous les epics (rappels dans les stories concernées via les invariants `Cents`, réconciliation, parser/LLM boundaries, etc.).
+**57/57 FRs mappés.** NFRs et Additional Requirements traversent tous les epics (rappels dans les stories concernées via les invariants `Cents`, réconciliation, parser/LLM boundaries, etc.).
 
 ## Epic List
 
@@ -219,7 +219,7 @@ Vue narrative du mois courant avec top 2-3 écarts vs mois précédents, navigat
 
 Tous les modèles déclaratifs nécessaires au forecast. Inclut les suggestions automatiques de charges récurrentes (FR17-18), la capacité dividendable estimée (FR28), et la configuration fiscalité (FR35-36).
 
-**FRs couverts :** FR16, FR17, FR18, FR19, FR20, FR21, FR22, FR23, FR24, FR25, FR26, FR27, FR28, FR35, FR36
+**FRs couverts :** FR16, FR17, FR18, FR19, FR20, FR21, FR22, FR23, FR24, FR25, FR26, FR27, FR28, FR35, FR36, FR55, FR56, FR57
 
 ### Epic 6 : Dettes
 *L'utilisateur tracke ses dettes (avances reçues + remboursements) et voit leur impact financier.*
@@ -869,6 +869,51 @@ So that the forecast can compute net amounts correctly.
 **Given** `shared/constants/fiscal-defaults.ts`,
 **When** consulté,
 **Then** il expose les défauts (`FLAT_TAX_DEFAULT_PCT: 3000`, `IS_RATE_REDUCED: 1500`, `IS_RATE_NORMAL: 2500`, `IS_REDUCED_THRESHOLD_CENTS: 4250000`).
+
+### Story 5.6: Gestion des catégories — endpoints CRUD + UI `/categories`
+
+As a user,
+I want to create new categories, rename existing ones, and delete unused categories,
+So that the taxonomy fits my actual spending without polluting the LLM with stale entries.
+
+**Acceptance Criteria:**
+
+**Given** la table `category_definitions` déjà créée en Story 2.1 (colonnes `id`, `code`, `label`, `is_variable`, `created_at`),
+**And** schéma Zod `shared/schemas/category.schema.ts` (`code` text kebab-case ≤ 32 chars regex `^[a-z0-9-]+$`, `label` text 1-50 chars, `isVariable` boolean),
+**When** j'expose `GET /api/categories` (déjà existant pour la lecture),
+**Then** la réponse inclut pour chaque catégorie un compteur `referenceCount` (somme des références depuis `transactions.category_code`, `fixed_charges.category_code`, `monthly_overrides.category_code`) calculé via une requête agrégée unique.
+
+**Given** l'endpoint `POST /api/categories`,
+**When** je poste `{ label: 'Carburant', isVariable: true }`,
+**Then** le service génère le `code` automatiquement par slugification du `label` (kebab-case ASCII), gère les collisions par suffixage `-2`, `-3`, etc., insère la ligne et retourne la catégorie complète. Si `label` viole le schéma → `domainError('validation_failed', ...)` 422.
+
+**Given** l'endpoint `PATCH /api/categories/[code]`,
+**When** je patch `{ label: 'Bouffe' }` sur la catégorie `restos`,
+**Then** seul le `label` est mis à jour ; le `code` reste immuable (FK préservées). Tentative de modifier `code` ou `isVariable` → 422 `validation_failed` (champs en lecture seule via Zod `.strict()` sur le schéma de patch).
+
+**Given** l'endpoint `DELETE /api/categories/[code]`,
+**When** je supprime `restos` et qu'aucune référence n'existe,
+**Then** la ligne est supprimée et l'endpoint retourne 204.
+
+**Given** une catégorie `restos` référencée par ≥ 1 transaction, charge fixe ou override,
+**When** je tente `DELETE /api/categories/restos`,
+**Then** l'endpoint retourne `domainError('category_in_use', { transactionCount, fixedChargeCount, monthlyOverrideCount })` 409. Aucune mutation effectuée.
+
+**Given** la catégorie spéciale `divers` (utilisée comme fallback par la réconciliation manuelle, cf. Epic 3),
+**When** je tente `DELETE /api/categories/divers`,
+**Then** l'endpoint retourne `domainError('category_protected', { code: 'divers' })` 409, indépendamment du `referenceCount`. Le rename reste autorisé.
+
+**Given** la page `app/pages/categories.vue`,
+**When** elle se charge,
+**Then** elle affiche `CategoryList` (tableau avec libellé, type variable/fixe, compteur de références) + `CategoryForm` pour ajouter, avec édition inline du libellé et bouton supprimer désactivé+grisé si `referenceCount > 0` ou si `code === 'divers'`. Tooltip explique la raison du blocage.
+
+**Given** la liste de catégories utilisée par `categorizeStatement()` dans `server/services/llm-categorizer.ts`,
+**When** un PDF est ingéré après création d'une nouvelle catégorie,
+**Then** la liste passée au LLM est lue depuis `db.select().from(category_definitions)` (et non depuis `DEFAULT_CATEGORIES` en dur). `DEFAULT_CATEGORIES` ne sert plus que pour le seed initial.
+
+**And** un test couvre : POST → GET (avec referenceCount) → PATCH label → DELETE (succès si non référencée, échec 409 si référencée, échec 409 si `divers`).
+
+**And** un test E2E couvre : création d'une catégorie depuis `/categories`, ré-import d'un PDF fixture, observation que la nouvelle catégorie est utilisable dans `CategoryEditor`.
 
 ---
 

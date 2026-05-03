@@ -1,6 +1,6 @@
 # personnalFinance
 
-App de pilotage financier personnel local-first. Ingère des relevés PDF Boursorama, catégorise les transactions via Claude API, et calcule via un **forecast inverse** le dividende SAS à voter en AG annuelle pour couvrir les dépenses futures.
+App de pilotage financier personnel local-first. Ingère des relevés PDF Boursorama, catégorise les transactions via Claude API, et calcule via un **forecast inverse** la rémunération pour couvrir les dépenses futures.
 
 Specs complètes : voir `_bmad-output/planning-artifacts/{prd,architecture,epics}.md` et `CLAUDE.md` à la racine.
 
@@ -59,5 +59,3 @@ Toutes les conventions sont codifiées dans `CLAUDE.md` à la racine. Quelques r
 
 - `_data/raw/{sha256}.pdf` — relevés PDF sources (gitignored)
 - `_data/personnalfinance.db` — base SQLite (gitignored)
-
-La perte de la base est acceptable en V1 : reconstructible depuis les PDFs sources via `yarn dev` (le bootstrap recrée tables + seed).
