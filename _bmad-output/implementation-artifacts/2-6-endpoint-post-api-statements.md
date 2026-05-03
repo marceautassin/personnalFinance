@@ -1,6 +1,6 @@
 # Story 2.6: Endpoint `POST /api/statements` (orchestration du pipeline complet)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -387,3 +387,39 @@ claude-opus-4-7 (1M context)
 ### Change Log
 
 - 2026-05-01 — Implémentation initiale Story 2.6 : pipeline POST /api/statements (Option B, orchestrator extrait).
+- 2026-05-01 — Code review (3 layers : Blind Hunter, Edge Case Hunter, Acceptance Auditor). 1 décision, 6 patches, 4 defer, ~17 dismiss.
+- 2026-05-01 — Application des 6 patches review : magic-byte PDF + Content-Type, normalisation `X-Confirm-Replace`, `cents()` brand factory, garde inversion période, `console.warn` sur cleanup FS, try/catch multipart. Typecheck propre, 11/11 tests orchestrator verts. Status → done.
+
+### Review Findings
+
+- [x] [Review][Decision] Frontières de période adjacentes flaggées comme overlap — résolu en gardant `lte`/`gte` (strict). Décision : asymétrie de coût (faux négatif = double-comptage forecast = corruption silencieuse ; faux positif = un click `confirmReplace` inutile). En pratique Boursorama ne touche pas (31 vs 1).
+- [x] [Review][Patch] Valider `Content-Type` ou magic bytes du PDF [server/api/statements/index.post.ts:18] — handler ne vérifie ni `filePart.type === 'application/pdf'` ni les premiers octets `%PDF-`. Un buffer non-PDF est hashé, déduppé puis rejeté tardivement par `extractStatement` (générique `pdf_parse_failed`). AC#1 step 1 mentionne explicitement la validation Content-Type.
+- [x] [Review][Patch] Normaliser le parsing du header `X-Confirm-Replace` [server/api/statements/index.post.ts:29] — `=== 'true'` est strict-case ; `'True'`, `'TRUE'`, `'1'` sont silencieusement traités comme `false`. Comparer en lower-case et accepter `'1'`/`'true'`.
+- [x] [Review][Patch] Utiliser le helper `cents()` au lieu du cast `as Cents` [server/services/statement-ingestion-orchestrator.ts:139] — `ExtractedTransaction.amountCents` est `number` (cf. `shared/schemas/transaction.schema.ts:73`), pas `Cents` brandé. Le cast `as Cents` bypasse la garde du type brandé. CLAUDE.md exige le passage par les helpers `shared/types/money.ts`.
+- [x] [Review][Patch] Garde défensive `periodStart > periodEnd` [server/services/statement-ingestion-orchestrator.ts:94] — si `extractStatement` ou `minDate`/`maxDate` produisent une période inversée (regex bug, edge LLM), l'INSERT passe avec un statement invalide. Throw `pdf_parse_failed` 400 si inversé.
+- [x] [Review][Patch] Logger les échecs de cleanup FS au lieu de les avaler [server/services/statement-ingestion-orchestrator.ts:172, 181] — `.catch(() => {})` viole CLAUDE.md §"Règle d'or sur les erreurs". Remplacer par `.catch(err => console.warn('FS cleanup failed', { hash, err }))` pour signaler les orphelins (NFR11 reconstructabilité).
+- [x] [Review][Patch] Wrapper `readMultipartFormData` dans un try/catch → 400 stable [server/api/statements/index.post.ts:16] — multipart malformé fait remonter un 500 brut au lieu d'un `validation_failed` propre.
+- [x] [Review][Defer] Race TOCTOU sur dedup hash + uploads concurrents [statement-ingestion-orchestrator.ts:54-61] — deferred, V1 mono-utilisateur local (CLAUDE.md §Sécurité), concurrence improbable.
+- [x] [Review][Defer] Race condition sur overlap-replace concurrent [statement-ingestion-orchestrator.ts:111-167] — deferred, même raison V1 mono-utilisateur.
+- [x] [Review][Defer] CASCADE delete supprime les transactions `isManual=true` lors d'un replace [server/db/schema.ts] — deferred, à reprendre en Epic 3 quand les transactions manuelles existeront (déjà tracé dans deferred-work Story 2.1).
+- [x] [Review][Defer] Orphelin PDF si SIGKILL entre `savePdfByHash` et commit DB [statement-ingestion-orchestrator.ts:133-167] — deferred, NFR11 startup reconciliation hors scope V1.
+
+#### Findings rejetés (dismiss, ~17)
+
+- `reliability: 'reliable'` même si `isBalanced=false` — faux positif, schema confirme `unreliable` est réservé au cas "user accepted gap" en Story 3.x (`server/db/schema.ts:35-42`).
+- `IngestionResultSchema` non utilisé en runtime — le typage compile-time via `Promise<IngestionResult>` suffit en V1.
+- Comparaison lexicographique des dates (`minDate`/`maxDate`) — sûre car upstream Zod `ExtractedTransactionSchema` valide le format ISO `YYYY-MM-DD`.
+- File buffered avant check de taille (DoS surface) — V1 local de confiance.
+- Empty file (0 bytes) passe le size guard — wrapped en `pdf_parse_failed` downstream.
+- Inversion ordre AC#1 (save PDF avant LLM vs après) — décision documentée dans Dev Notes.
+- Ordre overlap vs save vs LLM — tradeoff documenté.
+- `DEFAULT_CATEGORIES` en dur — par spec.
+- E2E `test.skip` stub — autorisé par AC#6.
+- `raw.openingBalanceCents!` — guard ligne 103-109.
+- `confirmReplace=true` sans overlap — no-op bénin.
+- Hash collision SHA-256 — négligeable.
+- Limite paramètres SQLite — extreme edge, non réaliste.
+- `savePdfByHash` race idempotente — même contenu pour même hash.
+- Tests touchant `db.$client` (API privée Drizzle) — déjà tracé en deferred Story 2.7.
+- AC#5 rollback FS couvert par 1 seul cas — AC littéralement satisfaite.
+- Erreurs non-LLM rethrow brut — conforme CLAUDE.md "Bugs imprévus → 500 Nitro".
