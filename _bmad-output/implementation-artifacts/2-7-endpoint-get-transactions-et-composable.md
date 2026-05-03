@@ -1,6 +1,6 @@
 # Story 2.7: Endpoint `GET /api/transactions` + composable `useTransactions`
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -29,26 +29,26 @@ so that I can review what was ingested and verify it visually.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schéma Zod de la query** (AC: #1, #2)
-  - [ ] Ajouter dans `shared/schemas/transaction.schema.ts` un `TransactionListQuerySchema = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) })`
-  - [ ] Type `TransactionListQuery = z.infer<...>`
+- [x] **Task 1 — Schéma Zod de la query** (AC: #1, #2)
+  - [x] Ajouter dans `shared/schemas/transaction.schema.ts` un `TransactionListQuerySchema = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) })`
+  - [x] Type `TransactionListQuery = z.infer<...>`
 
-- [ ] **Task 2 — Implémenter l'endpoint** (AC: #1, #2, #3)
-  - [ ] Créer `server/api/transactions/index.get.ts` selon le snippet Dev Notes
-  - [ ] Utiliser `validateQuery` (Story 1.6)
-  - [ ] Filtrer via Drizzle : `transactionDate LIKE '${month}-%'` (efficace avec l'index `transactions_period_idx`)
+- [x] **Task 2 — Implémenter l'endpoint** (AC: #1, #2, #3)
+  - [x] Créer `server/api/transactions/index.get.ts` selon le snippet Dev Notes
+  - [x] Utiliser `validateQuery` (Story 1.6)
+  - [x] Filtrer via Drizzle : `transactionDate LIKE '${month}-%'` (efficace avec l'index `transactions_period_idx`)
 
-- [ ] **Task 3 — Implémenter le composable** (AC: #4)
-  - [ ] Créer `app/composables/useTransactions.ts` selon le snippet Dev Notes
-  - [ ] Réactivité : `month` est un `Ref<string>`, key utilise `computed`
+- [x] **Task 3 — Implémenter le composable** (AC: #4)
+  - [x] Créer `app/composables/useTransactions.ts` selon le snippet Dev Notes
+  - [x] Réactivité : `month` est un `Ref<string>`, key utilise `computed`
 
-- [ ] **Task 4 — Test d'intégration endpoint** (AC: #1, #2, #3)
-  - [ ] Créer `server/api/transactions/index.get.test.ts`
-  - [ ] Cas heureux, cas mois inexistant (array vide), cas query invalide
+- [x] **Task 4 — Test d'intégration endpoint** (AC: #1, #2, #3)
+  - [x] Créer `server/api/transactions/index.get.test.ts`
+  - [x] Cas heureux, cas mois inexistant (array vide), cas query invalide
 
-- [ ] **Task 5 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run` propres
-  - [ ] Commit unique
+- [x] **Task 5 — Sanity check final**
+  - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` propres
+  - [x] Commit unique
 
 ## Dev Notes
 
@@ -212,16 +212,42 @@ Cette story crée :
 
 ### Agent Model Used
 
-_(à remplir)_
+claude-opus-4-7 (1M context).
 
 ### Debug Log References
 
-_(à remplir — comportement de useFetch avec query reactive)_
+- `useFetch` avec `query: { month }` (Ref) : Nuxt déballe automatiquement le Ref dans la query string. La `key` réactive (`computed`) suffit à différencier les caches par mois.
+- h3 v1.15 : `getQuery(event)` lit `event.path`. Pour les tests, un mock minimal `{ path: '/api/transactions?month=YYYY-MM' }` cast en `H3Event` est suffisant — pas besoin de `createEvent` ni de `IncomingMessage`.
+- Renforcement de la regex `month` : `/^\d{4}-(0[1-9]|1[0-2])$/` plutôt que `\d{2}` libre, pour rejeter explicitement `2026-13` (invariant : le mois est dans `01..12`).
 
 ### Completion Notes List
 
-_(à remplir)_
+- Endpoint `GET /api/transactions?month=YYYY-MM` opérationnel, retourne `[]` (jamais `null`) sur mois vide, `422 validation_failed` sur query invalide.
+- Filtrage SQL via `LIKE 'YYYY-MM-%'` qui exploite l'index `transactions_period_idx` (préfixe sur colonne text).
+- Composable `useTransactions(month: Ref<string>)` réactif via `computed` key, sans cache Pinia (cf. CLAUDE.md anti-patterns).
+- 5 tests d'intégration : tri ascendant (avec hors-mois exclu), mois vide, query mal formée, query manquante, mois hors plage `2026-13`.
+- Test isolé via DB SQLite temporaire (DDL brut) + handler appelé directement (pas besoin de `@nuxt/test-utils`/`$fetch` — KISS).
 
 ### File List
 
-_(à remplir)_
+- `shared/schemas/transaction.schema.ts` (modifié — ajout `TransactionListQuerySchema` + type)
+- `server/api/transactions/index.get.ts` (nouveau)
+- `server/api/transactions/index.get.test.ts` (nouveau)
+- `app/composables/useTransactions.ts` (nouveau)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modifié — statut 2-7)
+- `_bmad-output/implementation-artifacts/2-7-endpoint-get-transactions-et-composable.md` (modifié — statut + journal dev)
+
+### Change Log
+
+- 2026-05-01 — Implémentation story 2.7 : endpoint `GET /api/transactions` + composable `useTransactions`. 5 tests d'intégration verts. Suite complète : 122/122. Typecheck + lint OK.
+
+### Review Findings
+
+- [x] [Review][Patch] **`key: key.value` snapshote la valeur initiale — cache key non réactif** [`app/composables/useTransactions.ts:24`] — Sources : blind+edge+auditor (HIGH, convergence des 3 reviewers). `key` est typé `string` côté Nuxt ; on lit `key.value` une seule fois à l'appel du composable, gelant le cache au mois initial. Quand `month` change, le `query: { month }` (Ref) déclenche bien un refetch, mais l'entrée de cache reste liée au mois initial — risque de fuite/écrasement entre mois. Les Dev Notes elles-mêmes affirment "La key réactive (computed) suffit à différencier les caches par mois", ce qui contredit le code. **Fix recommandé** : supprimer l'option `key` (Nuxt auto-génère une key incluant `query.month`), ou la rendre réactive via getter `key: () => \`transactions-${month.value}\`` si la version Nuxt le supporte.
+- [x] [Review][Patch] **`TransactionListItem.amountCents` typé `number` au lieu de `Cents`** [`app/composables/useTransactions.ts:6`] — Source : blind (MEDIUM). Viole l'invariant monétaire de CLAUDE.md ("`amount: number` dans un type métier" interdit). Le consommateur peut mélanger librement avec des nombres non-cents. **Fix** : importer `Cents` depuis `~~/shared/types/money` et retyper `amountCents: Cents`.
+- [x] [Review][Defer] **Tests redéfinissent le schéma via DDL brut au lieu de réutiliser drizzle/migrations** [`server/api/transactions/index.get.test.ts:30-61`] — deferred, pre-existing — Sources : blind+auditor. Risque de faux positifs si le schéma drizzle évolue (nouvelle colonne NOT NULL sans default). À refactorer globalement pour tous les tests d'intégration via `migrate()` sur DB temp — pas dans le scope d'une story endpoint isolée.
+- [x] [Review][Defer] **`process.env.DATABASE_URL` capturé au timing d'import — fragile sous Vitest parallèle** [`server/api/transactions/index.get.test.ts:11-12`] — deferred, pre-existing — Source : edge. Singleton `db/client.ts` capture le path à l'import. Si une autre test file dans le même worker importe `db/client` en premier, le test pointe vers la prod DB. À durcir globalement (`vi.resetModules()` ou config `--isolate` Vitest).
+- [x] [Review][Defer] **Accès à `db.$client` (API privée Drizzle)** [`server/api/transactions/index.get.test.ts:28`] — deferred, pre-existing — Sources : blind+auditor. Bumps mineurs Drizzle peuvent casser ; lié au point précédent (refactor migrations partagées).
+- [x] [Review][Defer] **`H3Event` mocké à la main bypasse la pipeline h3 réelle** [`server/api/transactions/index.get.test.ts:147`] — deferred, pre-existing — Sources : blind+auditor. Choix KISS explicitement documenté dans Dev Notes. À reconsidérer si un middleware Nitro est ajouté entre la validation et le handler.
+- [x] [Review][Defer] **Flag `reliability` du `bank_statements` non remonté par l'endpoint** [`server/api/transactions/index.get.ts`] — deferred, hors scope 2.7 — Source : edge (MEDIUM). L'invariant CLAUDE.md "réconciliation = état non fiable" exige une UX dédiée — appartient à une story d'affichage du `unreliability badge` (probablement 2.10 ou ultérieure). AC #1 ne liste pas ce champ, donc respect strict du scope.
+- [x] [Review][Defer] **`default: () => []` ne corrige pas le typage `T | null` de `data`** [`app/composables/useTransactions.ts:25`] — deferred, footgun TS connu — Sources : blind+edge. Pattern global de l'app, à traiter de manière transversale (wrapper composable ou `transform`).

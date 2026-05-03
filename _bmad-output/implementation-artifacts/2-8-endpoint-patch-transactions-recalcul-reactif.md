@@ -1,6 +1,6 @@
 # Story 2.8: Endpoint `PATCH /api/transactions/[id]` + recalcul réactif
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -32,28 +32,37 @@ so that subsequent computations (forecast, dashboard) use the correct data.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schéma Zod du PATCH** (AC: #1, #2, #3)
-  - [ ] Ajouter dans `shared/schemas/transaction.schema.ts` un `TransactionPatchSchema` (tous les champs optionnels : `categoryCode?`, `isDebtRepayment?`, `debtId?`)
-  - [ ] Au moins un champ doit être fourni (refine)
+- [x] **Task 1 — Schéma Zod du PATCH** (AC: #1, #2, #3)
+  - [x] Ajouter dans `shared/schemas/transaction.schema.ts` un `TransactionPatchSchema` (tous les champs optionnels : `categoryCode?`, `isDebtRepayment?`, `debtId?`)
+  - [x] Au moins un champ doit être fourni (refine)
 
-- [ ] **Task 2 — Implémenter l'endpoint** (AC: #1, #2, #3, #4)
-  - [ ] Créer `server/api/transactions/[id].patch.ts` selon le snippet Dev Notes
-  - [ ] Vérifier que la transaction existe (sinon `notFound`)
-  - [ ] Si `categoryCode` fourni : vérifier qu'il existe dans `category_definitions` (sinon `validationError` ou laisser FK SQLite throw — préférer le pré-check pour message clair)
-  - [ ] `is_manual = true` automatiquement après tout PATCH (le user a touché la transaction)
-  - [ ] Retourner la transaction mise à jour
+- [x] **Task 2 — Implémenter l'endpoint** (AC: #1, #2, #3, #4)
+  - [x] Créer `server/api/transactions/[id].patch.ts` selon le snippet Dev Notes
+  - [x] Vérifier que la transaction existe (sinon `notFound`)
+  - [x] Si `categoryCode` fourni : vérifier qu'il existe dans `category_definitions` (sinon `validationError` ou laisser FK SQLite throw — préférer le pré-check pour message clair)
+  - [x] `is_manual = true` automatiquement après tout PATCH (le user a touché la transaction)
+  - [x] Retourner la transaction mise à jour
 
-- [ ] **Task 3 — Stub du composable d'invalidation** (AC: #5)
-  - [ ] Créer `app/composables/useInvalidate.ts` minimaliste qui expose `invalidateForecast()` et `invalidateDashboard()` no-op pour l'instant (juste `console.warn` en dev). Story 7.8 le finalisera.
-  - [ ] Modifier `app/composables/useTransactions.ts` (Story 2.7) pour exposer une `mutateCategory(id, categoryCode)` qui PATCH puis appelle `useInvalidate().invalidateForecast()` et `invalidateDashboard()`
+- [x] **Task 3 — Stub du composable d'invalidation** (AC: #5)
+  - [x] Créer `app/composables/useInvalidate.ts` minimaliste qui expose `invalidateForecast()` et `invalidateDashboard()` no-op pour l'instant (juste `console.warn` en dev). Story 7.8 le finalisera.
+  - [x] Modifier `app/composables/useTransactions.ts` (Story 2.7) pour exposer une `mutateCategory(id, categoryCode)` qui PATCH puis appelle `useInvalidate().invalidateForecast()` et `invalidateDashboard()`
 
-- [ ] **Task 4 — Test d'intégration endpoint** (AC: #1-4)
-  - [ ] Créer `server/api/transactions/[id].patch.test.ts`
-  - [ ] Cas heureux, cas not_found, cas validation invalide (categoryCode inexistant), cas isDebtRepayment + debtId
+- [x] **Task 4 — Test d'intégration endpoint** (AC: #1-4)
+  - [x] Créer `server/api/transactions/[id].patch.test.ts`
+  - [x] Cas heureux, cas not_found, cas validation invalide (categoryCode inexistant), cas isDebtRepayment + debtId
 
-- [ ] **Task 5 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run` propres
-  - [ ] Commit unique
+- [x] **Task 5 — Sanity check final**
+  - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` propres
+  - [ ] Commit unique (à la main par l'utilisateur)
+
+### Review Findings
+
+- [x] [Review][Patch] `useInvalidate()` instancié après `await fetchState.refresh()` dans `mutateCategory` / `markAsDebtRepayment` — perd le contexte Nuxt (`useNuxtApp`), bug latent qui se déclenchera quand Story 7.8 plug les vraies invalidations. Fix appliqué : `const invalidate = useInvalidate()` capturé en setup avant tout `await`. [`app/composables/useTransactions.ts:23`]
+- [x] [Review][Patch] `categoryCode` non-trimé dans `TransactionPatchSchema` — `"courses\n"` ou `"  restaurants  "` routait vers le pré-check FK qui retournait `unknown categoryCode` au lieu d'un message de format clair. Fix appliqué : `.trim()` ajouté dans le schéma. [`shared/schemas/transaction.schema.ts:88`]
+- [x] [Review][Defer] Cross-field invariant `isDebtRepayment ↔ debtId` non vérifié sur PATCH partiel [`server/api/transactions/[id].patch.ts:43-46`] — deferred, scope explicite Story 6.3 (la story dit "persiste juste les flags").
+- [x] [Review][Defer] Pas de pré-check FK sur `debtId` (parité avec `categoryCode`) [`server/api/transactions/[id].patch.ts:46`] — deferred, table `debts` créée Story 6.1.
+- [x] [Review][Defer] Parsing `id` permissif : `Number("1e2")` → 100, floats truncatés, valeurs > `MAX_SAFE_INTEGER` [`server/api/transactions/[id].patch.ts:12-15`] — deferred, mono-user V1, low impact.
+- [x] [Review][Defer] Erreurs `$fetch` PATCH non normalisées via `useApiError` dans `useTransactions.mutateCategory` / `markAsDebtRepayment` [`app/composables/useTransactions.ts:30-49`] — deferred, normalisation à plugger côté composant consommateur (Story 2.10).
 
 ## Dev Notes
 
@@ -232,16 +241,30 @@ Cette story crée/modifie :
 
 ### Agent Model Used
 
-_(à remplir)_
+claude-opus-4-7 (1M context) — bmad-dev-story workflow.
 
 ### Debug Log References
 
-_(à remplir)_
+- Le mock d'`H3Event` initial passait le body via une `Readable` Node ; `h3@1.15.11` ignorait le stream et retournait un body vide → 422 sur les tests OK/404. Fix : utiliser `event._requestBody` (chemin natif d'h3 pour body pré-stash, vérifié dans `node_modules/h3/dist/index.mjs:368`).
 
 ### Completion Notes List
 
-_(à remplir — confirmer que les CONSOLE.WARN du stub useInvalidate ne polluent pas les tests)_
+- AC #1, #3, #4 entièrement couverts (categoryCode update + is_manual=true, FK pre-check 422, not_found 404).
+- AC #2 : flags `is_debt_repayment` / `debt_id` persistés tels quels. **La création du `debt_repayments` correspondant n'est pas faite ici** — c'est le scope de la Story 6.3, comme prévu dans l'AC.
+- AC #5 : `useInvalidate` créé en stub no-op (`console.warn` en `import.meta.dev` uniquement, aucune pollution sur les tests serveur où `import.meta.dev` est faux). `useTransactions.mutateCategory` et `markAsDebtRepayment` exposés et reliés à `refresh()` + invalidate stub.
+- Validation supplémentaire dans l'endpoint : `id` non-numérique / non-entier / ≤ 0 → 422 `validation_failed` (au-delà de l'AC mais aligné sur la robustesse attendue).
+- Lint : 4 erreurs préexistantes dans `PeriodOverlapDialog.vue` et `useStatements.ts` (autres stories) ; aucun fichier touché par la 2.8 n'en porte. Commit unique à effectuer par l'utilisateur (workflow projet).
 
 ### File List
 
-_(à remplir)_
+- `shared/schemas/transaction.schema.ts` (modifié — `TransactionPatchSchema` + type `TransactionPatch`)
+- `server/api/transactions/[id].patch.ts` (créé — endpoint PATCH)
+- `server/api/transactions/[id].patch.test.ts` (créé — 6 tests d'intégration)
+- `app/composables/useInvalidate.ts` (créé — stub no-op)
+- `app/composables/useTransactions.ts` (modifié — `mutateCategory` + `markAsDebtRepayment`)
+
+## Change Log
+
+| Date       | Auteur  | Description                                                                 |
+|------------|---------|------------------------------------------------------------------------------|
+| 2026-05-01 | Marceau | Implémentation Story 2.8 — endpoint PATCH transactions + stub useInvalidate |

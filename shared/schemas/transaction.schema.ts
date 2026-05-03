@@ -74,6 +74,33 @@ export const ExtractedTransactionSchema = z.object({
   categoryCode: z.string().min(1),
 })
 
+/**
+ * Query string de `GET /api/transactions?month=YYYY-MM`.
+ */
+export const TransactionListQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Format mois attendu: YYYY-MM'),
+})
+
+/**
+ * Body du `PATCH /api/transactions/[id]`.
+ * Tous les champs sont optionnels mais au moins un doit être fourni.
+ */
+export const TransactionPatchSchema = z
+  .object({
+    categoryCode: z.string().trim().min(1).optional(),
+    isDebtRepayment: z.boolean().optional(),
+    debtId: z.number().int().positive().nullable().optional(),
+  })
+  .refine(
+    data =>
+      data.categoryCode !== undefined
+      || data.isDebtRepayment !== undefined
+      || data.debtId !== undefined,
+    { message: 'Au moins un champ doit être fourni' },
+  )
+
 export type Transaction = z.infer<typeof TransactionSchema>
 export type NewTransaction = z.infer<typeof NewTransactionSchema>
 export type ExtractedTransaction = z.infer<typeof ExtractedTransactionSchema>
+export type TransactionListQuery = z.infer<typeof TransactionListQuerySchema>
+export type TransactionPatch = z.infer<typeof TransactionPatchSchema>
