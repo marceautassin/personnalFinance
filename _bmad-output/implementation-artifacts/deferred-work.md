@@ -110,3 +110,14 @@
 - `AppNav.currentPeriod` figé à l'init du composant (`app/components/shared/AppNav.vue:8-9`) — si la SPA reste ouverte par-dessus minuit le 31, le lien Transactions pointe sur l'ancien mois. Low impact (app local-first, refresh fréquent) ; envelopper dans un `computed` qui réévalue (mais `Date()` hors composable réactif ne le fera pas auto — vrai fix : composable `useCurrentPeriod()` avec `useState` + heartbeat horaire, sur-engineering pour V1).
 - `CategoryEditor` attache un listener `document.click` par instance (`app/components/transactions/CategoryEditor.vue:40-43`) — N transactions = N handlers. Optimisation perf à 200+ lignes : centraliser via un singleton store ou `vueuse/onClickOutside`. Pas un blocker tant que les listes restent < 500 transactions.
 - Mock h3 `event.path` brittle (`server/api/transactions/index.get.test.ts:858`) — pre-existing pattern, à revisiter avec le helper de setup tests.
+
+## Deferred from: code review of epic 3 — stories 3.1, 3.2, 3.3 (2026-05-05)
+
+- N+1 / correlated subquery sur `GET /api/statements` (`server/api/statements/index.get.ts:20`) — `transactionCount` via `(SELECT COUNT(*) ...)` corrélé par row. KISS pour V1 (single-user, < 50 statements), bascule vers `LEFT JOIN ... GROUP BY` si volumétrie augmente.
+- DDL dupliqué dans 3 nouveaux fichiers de tests (`server/api/reconciliation/[hash].post.test.ts`, `server/api/statements/[hash].get.test.ts`, `server/api/statements/index.get.test.ts`) — étend le pattern déjà flaggé en story 2.10. Refactor global : helper `tests/fixtures/setup-test-db.ts` (cf. defer story 2.10).
+- Race `categoryDefinitions` deletion entre FK pre-check et insert dans `POST /api/reconciliation/[hash]` → erreur SQLite brute (500) au lieu d'un 422 mappé. Concerne aussi `transactions/[id].patch.ts`. Scope Epic 5.6 (gestion catégories CRUD).
+
+## Deferred from: code review of epic 3 — second pass (2026-05-08)
+
+- `ApiErrorCode.NotFound` mappé en FR générique "Ressource introuvable" (`app/composables/useApiError.ts:9`) — la page `/reconciliation/[hash]` ne distingue pas un 404 hash inconnu d'un 500 serveur. À enrichir quand le mapping s'étoffe.
+- `ReliabilityBadge` n'affiche aucun signal quand `reliability === 'reliable'` sur `/transactions/[period]` (badge masqué). FR14 demande un indicateur explicite. À traiter avec le dashboard narratif (Epic 4).

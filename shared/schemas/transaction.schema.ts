@@ -3,7 +3,7 @@ import { z } from 'zod'
 /**
  * Date ISO YYYY-MM-DD avec validation sémantique (rejette 2026-02-30, 2026-13-01, etc.).
  */
-const DateIsoSchema = z
+export const DateIsoSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide (YYYY-MM-DD attendu)')
   .refine((s) => {
@@ -19,11 +19,11 @@ const DateIsoSchema = z
     )
   }, 'Date inexistante (jour/mois invalide)')
 
-/** Libellé non-vide après trim (rejette `"   "`). */
-const LabelSchema = z.string().trim().min(1, 'Libellé requis')
+/** Libellé non-vide après trim (rejette `"   "`), plafonné à 200 caractères pour éviter les payloads abusifs. */
+export const LabelSchema = z.string().trim().min(1, 'Libellé requis').max(200, 'Libellé trop long (max 200 caractères)')
 
 /** Hash SHA-256 hex lowercase (canonique : `crypto.digest('hex')` produit du lowercase). */
-const HashSha256Schema = z.string().regex(/^[a-f0-9]{64}$/, 'Hash SHA-256 attendu (lowercase hex)')
+export const HashSha256Schema = z.string().regex(/^[a-f0-9]{64}$/, 'Hash SHA-256 attendu (lowercase hex)')
 
 /** Une transaction marquée `isDebtRepayment` doit référencer une dette (`debtId !== null`). */
 const debtRepaymentRefine = (

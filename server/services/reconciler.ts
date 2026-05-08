@@ -18,10 +18,11 @@ export interface ReconcileResult {
   /**
    * Écart = (closingCents - openingCents) - sum(transactions.amountCents)
    * - 0       : équilibré
-   * - positif : transactions extraites en surplus
-   * - négatif : il manque des transactions extraites
+   * - positif : EXPECTED > FOUND → il manque des transactions extraites
+   * - négatif : FOUND > EXPECTED → transactions extraites en surplus
    *
-   * Note : la convention de signe correspond aux tests (positive gap = surplus).
+   * Note : la convention de signe correspond aux tests et au handler
+   * `server/api/reconciliation/[hash].post.ts` (la tx "écart accepté" a `amountCents = gapCents`).
    */
   gapCents: Cents
 }

@@ -1,9 +1,20 @@
 <script setup lang="ts">
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
 import { formatEuros, type Cents } from '~~/shared/types/money'
-import { isRetryableErrorCode, type OverlapInfo } from '~/composables/useStatements'
+import { isRetryableErrorCode, useStatementsList, type OverlapInfo } from '~/composables/useStatements'
 
 const { uploadStatement } = useStatements()
+const { data: listData, refresh: refreshList } = useStatementsList()
+
+const monthFormatter = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
+function monthLabel(periodStart: string): string {
+  const [y, m] = periodStart.split('-').map(Number)
+  const label = monthFormatter.format(new Date(y!, m! - 1, 1))
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+function periodSlug(periodStart: string): string {
+  return periodStart.slice(0, 7)
+}
 
 type Status = 'idle' | 'uploading' | 'success' | 'error' | 'overlap'
 const status = ref<Status>('idle')
@@ -31,6 +42,7 @@ async function handleUpload(file: File, confirmReplace = false) {
   if (out.result) {
     result.value = out.result
     status.value = 'success'
+    void refreshList()
   }
   else if (out.overlap) {
     overlap.value = out.overlap
@@ -96,7 +108,6 @@ const transactionsLink = computed(() => {
         <NuxtLink :to="`/reconciliation/${result.hash}`">
           Résoudre l'écart
         </NuxtLink>
-        (disponible en Epic 3)
       </p>
       <NuxtLink
         v-if="transactionsLink"
@@ -128,6 +139,43 @@ const transactionsLink = computed(() => {
       @confirm="onConfirmReplace"
       @cancel="onCancelOverlap"
     />
+
+    <section
+      class="statements"
+      aria-labelledby="statements-heading"
+    >
+      <h3 id="statements-heading">
+        Relevés ingérés
+      </h3>
+      <p
+        v-if="listData.statements.length === 0"
+        class="statements__empty"
+      >
+        Aucun relevé ingéré pour le moment.
+      </p>
+      <ul
+        v-else
+        class="statements__list"
+      >
+        <li
+          v-for="stmt in listData.statements"
+          :key="stmt.hash"
+          class="statements__row"
+        >
+          <span class="statements__period">{{ monthLabel(stmt.periodStart) }}</span>
+          <span class="statements__count">{{ stmt.transactionCount }} tx</span>
+          <ReliabilityBadge :reliability="stmt.reliability" />
+          <span class="statements__links">
+            <NuxtLink :to="`/transactions/${periodSlug(stmt.periodStart)}`">
+              Transactions
+            </NuxtLink>
+            <NuxtLink :to="`/reconciliation/${stmt.hash}`">
+              Réconciliation
+            </NuxtLink>
+          </span>
+        </li>
+      </ul>
+    </section>
   </section>
 </template>
 
@@ -168,4 +216,24 @@ const transactionsLink = computed(() => {
   cursor: pointer;
 }
 .btn--primary { background: var(--color-accent); color: white; }
+.statements {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+.statements h3 { margin: 0; font-size: var(--font-size-lg); }
+.statements__empty { color: var(--color-text-muted); margin: 0; }
+.statements__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.statements__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+.statements__period { font-weight: 500; }
+.statements__count { color: var(--color-text-muted); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.statements__links { display: flex; gap: var(--space-3); font-size: var(--font-size-sm); }
 </style>

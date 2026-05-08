@@ -1,4 +1,31 @@
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
+import type { ReliabilityValue } from '~~/server/db/schema'
+
+export interface StatementListItem {
+  hash: string
+  periodStart: string
+  periodEnd: string
+  reliability: ReliabilityValue
+  ingestedAt: number
+  transactionCount: number
+}
+
+export interface StatementsListResponse {
+  statements: StatementListItem[]
+}
+
+const EMPTY_STATEMENTS_LIST: StatementsListResponse = { statements: [] }
+
+/**
+ * Liste de tous les relevés ingérés (story 3.3) — `key` constante pour partage du cache.
+ */
+export function useStatementsList() {
+  return useFetch<StatementsListResponse>('/api/statements', {
+    key: 'statements-list',
+    default: () => EMPTY_STATEMENTS_LIST,
+    server: false,
+  })
+}
 
 export interface OverlapInfo {
   existingHashes: string[]

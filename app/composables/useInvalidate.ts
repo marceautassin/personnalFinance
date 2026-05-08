@@ -1,8 +1,9 @@
 /**
- * useInvalidate — composable d'invalidation transversale (V1 stub).
+ * useInvalidate — composable d'invalidation transversale.
  *
- * En V1 (Stories 2-6), c'est un no-op + console.warn en dev. Story 7.8 (Forecast)
- * finalisera en plugant les vraies invalidations sur useFetch (forecast-*, dashboard-*).
+ * `invalidateStatementsList` est implémenté (Story 3.3) pour propager la fiabilité
+ * sur `/import` après une réconciliation. Les autres restent des stubs jusqu'à
+ * Story 7.8 (Forecast) qui pluggera les vraies invalidations forecast/dashboard.
  */
 export function useInvalidate() {
   function invalidateForecast() {
@@ -15,5 +16,8 @@ export function useInvalidate() {
       console.warn('[useInvalidate] dashboard invalidation requested (no-op until Story 7.8)')
     }
   }
-  return { invalidateForecast, invalidateDashboard }
+  async function invalidateStatementsList() {
+    await refreshNuxtData('statements-list')
+  }
+  return { invalidateForecast, invalidateDashboard, invalidateStatementsList }
 }

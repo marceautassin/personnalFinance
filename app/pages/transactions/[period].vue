@@ -61,13 +61,14 @@ async function onCategoryChange(transactionId: number, categoryCode: string) {
       </button>
     </header>
 
-    <p
+    <div
       v-if="data.reliability === 'unreliable'"
       class="tx-page__alert"
       role="alert"
     >
-      ⚠️ Mois non fiable — la réconciliation a un écart résiduel.
-    </p>
+      <ReliabilityBadge :reliability="data.reliability" />
+      <span class="tx-page__alert-hint">La réconciliation a un écart résiduel.</span>
+    </div>
 
     <p
       v-if="mutationError"
@@ -135,12 +136,16 @@ async function onCategoryChange(transactionId: number, categoryCode: string) {
 }
 .tx-page__nav:hover { border-color: var(--color-accent); }
 .tx-page__alert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-3);
   border-left: 3px solid var(--color-warning);
   background: var(--color-bg-elevated);
   border-radius: var(--radius-md);
   margin: 0;
 }
+.tx-page__alert-hint { color: var(--color-text-muted); font-size: var(--font-size-sm); }
 .tx-page__pending { color: var(--color-text-muted); }
 .tx-page__error {
   padding: var(--space-3);
