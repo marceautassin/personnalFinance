@@ -79,12 +79,12 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4 — Dashboard mensuel narratif
-  epic-4: in-progress
+  epic-4: done
   4-1-endpoint-get-api-dashboard: done
   # descoped 2026-05-31 : refactor pur (déménagement des helpers déjà inlinés en 4.1).
   # Aucun gain fonctionnel — phrases déjà exposées par l'endpoint 4.1. Pas de dépendance 4.3.
   4-2-service-narrative-generator: descoped
-  4-3-frontend-dashboard-page-home: review
+  4-3-frontend-dashboard-page-home: done
   epic-4-retrospective: optional
 
   # Epic 5 — Modèles financiers (charges, revenus, SAS, fiscalité)

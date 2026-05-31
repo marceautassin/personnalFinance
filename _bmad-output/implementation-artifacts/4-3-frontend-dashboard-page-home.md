@@ -1,6 +1,6 @@
 # Story 4.3: Frontend — `MonthlyNarrative`, `BalanceSummary`, `MonthSelector`, page `/`
 
-Status: review
+Status: done
 
 ## Story
 
