@@ -1,6 +1,6 @@
 # Story 4.3: Frontend — `MonthlyNarrative`, `BalanceSummary`, `MonthSelector`, page `/`
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -73,48 +73,48 @@ so that I understand my situation in under 30 seconds.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Composable `useDashboard`** (AC: #2)
-  - [ ] Créer `app/composables/useDashboard.ts`
-  - [ ] Pattern : interface `DashboardResponse` (mirror du JSON serveur, avec `Cents` brand) ; factory `emptyDashboard()` (pas de singleton, cf. defer story 3.2)
-  - [ ] `key: computed(() =>` `dashboard-${monthRef.value}` `)` ; `server: false`
-  - [ ] Pas de mutation — read-only
+- [x] **Task 1 — Composable `useDashboard`** (AC: #2)
+  - [x] Créer `app/composables/useDashboard.ts`
+  - [x] Pattern : interface `DashboardResponse` (mirror du JSON serveur, avec `Cents` brand) ; factory `emptyDashboard()` (pas de singleton, cf. defer story 3.2)
+  - [x] `key: computed(() =>` `dashboard-${monthRef.value}` `)` ; `server: false`
+  - [x] Pas de mutation — read-only
 
-- [ ] **Task 2 — Composant `BalanceSummary.vue`** (AC: #3)
-  - [ ] `app/components/dashboard/BalanceSummary.vue`
-  - [ ] Props : `balanceCents`, `incomeCents`, `expenseCents`
-  - [ ] Mise en page : grid 3 colonnes desktop, stack mobile (utiliser tokens CSS existants `--space-*`)
-  - [ ] Tabular-nums sur les chiffres (cohérent avec `transactions/[period].vue`)
+- [x] **Task 2 — Composant `BalanceSummary.vue`** (AC: #3)
+  - [x] `app/components/dashboard/BalanceSummary.vue`
+  - [x] Props : `balanceCents`, `incomeCents`, `expenseCents`
+  - [x] Mise en page : grid responsive (stack mobile, 2 colonnes ≥640px) via tokens CSS `--space-*`
+  - [x] Tabular-nums sur les chiffres (cohérent avec `transactions/[period].vue`)
 
-- [ ] **Task 3 — Composant `MonthlyNarrative.vue`** (AC: #4)
-  - [ ] `app/components/dashboard/MonthlyNarrative.vue`
-  - [ ] Props : `phrases: string[]` (typé en clair, **aucun import** de `server/`)
-  - [ ] Rendu : `<ul><li v-for="(p, i) in phrases" :key="i">{{ p }}</li></ul>` ou équivalent ; styling pour mise en avant de la 1ʳᵉ phrase si pertinent
-  - [ ] Empty state : phrase fallback (cf. AC#4)
+- [x] **Task 3 — Composant `MonthlyNarrative.vue`** (AC: #4)
+  - [x] `app/components/dashboard/MonthlyNarrative.vue`
+  - [x] Props : `phrases: string[]` (typé en clair, **aucun import** de `server/`)
+  - [x] Rendu : `<ul><li v-for>` ; mise en avant de la 1ʳᵉ phrase (`--primary`)
+  - [x] Empty state : phrase fallback (cf. AC#4)
 
-- [ ] **Task 4 — Composant `MonthSelector.vue`** (AC: #5, #6)
-  - [ ] `app/components/dashboard/MonthSelector.vue`
-  - [ ] v-model : `modelValue: string` (mois courant), `update:modelValue` à chaque sélection
-  - [ ] Liste : statements triés DESC par `period_end` (déjà le cas dans `useStatementsList`) → mapper vers `{ value: 'YYYY-MM', label: 'Avril 2026' }` unique par mois
-  - [ ] Format FR via `Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })` sur `new Date(periodEnd + 'T00:00:00Z')`
+- [x] **Task 4 — Composant `MonthSelector.vue`** (AC: #5, #6)
+  - [x] `app/components/dashboard/MonthSelector.vue`
+  - [x] v-model : `modelValue: string`, `update:modelValue` à chaque sélection
+  - [x] Liste : statements triés DESC par `period_end` (déjà le cas dans `useStatementsList`) → mapper vers `{ value: 'YYYY-MM', label }` unique par mois
+  - [x] Format FR via `Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })` sur `new Date(periodEnd + 'T00:00:00Z')`, capitalisé
 
-- [ ] **Task 5 — Page `app/pages/index.vue`** (AC: #1, #6, #7, #8, #9, #10)
-  - [ ] Remplacer `<NuxtWelcome />` (placeholder de story 1.1)
-  - [ ] Synchro `monthRef` ↔ URL query `month` via `useRoute()` + `useRouter().push(...)` ; au mount, calculer `defaultMonth` = `statements[0]?.periodEnd.slice(0,7)` ?? `today.toISOString().slice(0,7)`
-  - [ ] Layout : single column, espacement vertical `--space-4`
-  - [ ] État vide branche AC#9
-  - [ ] Bandeau unreliable AC#8
+- [x] **Task 5 — Page `app/pages/index.vue`** (AC: #1, #6, #7, #8, #9, #10)
+  - [x] Remplacer le placeholder (clôt le defer 1.1)
+  - [x] Synchro `monthRef` ↔ URL query `month` via `useRoute()` + `useRouter().push(...)` ; `defaultMonth` = `statements[0]?.periodEnd.slice(0,7)` ?? mois courant
+  - [x] Layout : single column, espacement vertical `--space-4`
+  - [x] État vide branche AC#9
+  - [x] Bandeau unreliable AC#8 + erreur AC#10
 
-- [ ] **Task 6 — Tests E2E `tests/e2e/dashboard.spec.ts`** (AC: #12)
-  - [ ] Pattern `tests/e2e/reconciliation.spec.ts` (skip auto si `!FIXTURE` ou `!ANTHROPIC_API_KEY`)
-  - [ ] Cas (a) : ingest fixture → goto `/` → assert `BalanceSummary` rendu, narrative visible
-  - [ ] Cas (b) : aucun statement (avant ingestion) → goto `/` → assert état vide + `[href="/import"]` cliquable
-  - [ ] Cas (c) : 2 mois ingérés → MonthSelector → choisir le précédent → `expect(page).toHaveURL(/month=/)` + dashboard re-render
+- [x] **Task 6 — Tests E2E `tests/e2e/dashboard.spec.ts`** (AC: #12)
+  - [x] Pattern `tests/e2e/reconciliation.spec.ts` (skip auto si `!FIXTURE` ou `!ANTHROPIC_API_KEY`), `describe.serial`
+  - [x] Cas (a) : ingest fixture → goto `/` → assert solde + narrative rendus
+  - [x] Cas (b) : aucun statement → goto `/` → assert état vide + `[href="/import"]` cliquable
+  - [x] Cas (c) : ≥2 mois → MonthSelector → choisir un autre → `toHaveURL(/month=/)` + re-render (skip si <2 mois)
 
-- [ ] **Task 7 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run` verts
-  - [ ] `yarn dev` : ouvrir manuellement `/` → vérifier rendu, navigation MonthSelector, état vide en wipant `_data/app.db`
-  - [ ] Aucun nouveau code d'erreur introduit
-  - [ ] Commit unique
+- [x] **Task 7 — Sanity check final**
+  - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` verts (216 tests, 0 régression)
+  - [x] `yarn dev` : serveur OK, `/api/dashboard` peuplé pour le mois par défaut réel (`2026-03`), reliability propagée. Smoke browser non exécuté : Playwright ne supporte pas l'OS du sandbox (ubuntu 26.04) — validation via réponses serveur + types.
+  - [x] Aucun nouveau code d'erreur introduit
+  - [ ] Commit unique (en attente du feu vert utilisateur)
 
 ## Dev Notes
 
@@ -227,12 +227,46 @@ Modifie :
 
 ### Agent Model Used
 
+Claude Opus 4.8 (1M context)
+
 ### Debug Log References
+
+- `yarn dev` + `curl` : bootstrap OK, `/api/statements` (200) et `/api/dashboard?month=2026-03` (200, données peuplées : balance 1 023,98 €, 3 deltas, reliability `reliable`). Le relevé de dev couvre `2026-02-28 → 2026-03-31` (statement à cheval), donc `defaultMonth` = `2026-03`.
+- Smoke test navigateur impossible : `npx playwright install chromium` échoue (Playwright ne supporte pas ubuntu 26.04 sur ce sandbox). Validation reportée sur les réponses serveur + typecheck.
 
 ### Completion Notes List
 
+- **Composable `useDashboard`** : miroir client de `DashboardResponse` (types `server/` non importables côté client), factory `emptyDashboard()` fraîche par appel, `key` réactive `dashboard-${month}`, `server: false`. Read-only.
+- **`BalanceSummary.vue`** : solde mis en avant (`--font-size-3xl`), revenus (vert) / dépenses (rouge, signe `-` préservé via `formatEuros`). `tabular-nums`. Grid responsive (stack mobile → 2 colonnes ≥640px).
+- **`MonthlyNarrative.vue`** : afficheur pur de `string[]`, 1ʳᵉ phrase en gras, fallback FR si vide. Aucun import serveur.
+- **`MonthSelector.vue`** : v-model `string`, mois uniques dédupliqués depuis `useStatementsList` (déjà trié DESC), libellé FR capitalisé.
+- **`index.vue`** : remplace le placeholder (clôt defer 1.1). `monthRef` ↔ URL `?month=`, `defaultMonth` = mois le plus récent ingéré sinon mois courant. État vide (zéro relevé) avec CTA `/import`, bandeau unreliable (`role="alert"` + `ReliabilityBadge`), message d'erreur via `useApiError`.
+- **E2E** : 3 cas en `describe.serial`, skip auto sans fixture/clé (pattern reconciliation). Cas (c) skip dynamique si <2 mois ingérés.
+- Aucun nouveau code d'erreur, aucun `$fetch` direct dans un composant, aucun store Pinia, pas de `*100`/`/100` manuel, styles CSS vanilla scoped, libellés FR.
+
 ### File List
+
+- `app/composables/useDashboard.ts` (NEW)
+- `app/components/dashboard/BalanceSummary.vue` (NEW)
+- `app/components/dashboard/MonthlyNarrative.vue` (NEW)
+- `app/components/dashboard/MonthSelector.vue` (NEW)
+- `app/pages/index.vue` (MODIFIED — remplace le placeholder, clôt defer 1.1)
+- `tests/e2e/dashboard.spec.ts` (NEW)
 
 ### Change Log
 
+- 2026-05-31 : implémentation story 4.3 — page `/` dashboard (BalanceSummary, MonthlyNarrative, MonthSelector), composable `useDashboard`, synchro URL ↔ mois, état vide, bandeau unreliable, 3 cas E2E. Typecheck/lint/216 tests verts. Status → review.
+- 2026-05-31 : patches review (Blind/Edge/Auditor, 12/12 AC PASS) — `MonthSelector` formate les labels en `timeZone: 'UTC'`, E2E scope les assertions BalanceSummary au composant `.balance`.
+
 ### Review Findings
+
+Code review adversariale (Blind Hunter + Edge Case Hunter + Acceptance Auditor) — 2026-05-31. Verdict Auditor : **12/12 AC PASS**, aucune violation de convention.
+
+- [x] [Review][Patch] `MonthSelector` : libellé de mois formaté sans `timeZone: 'UTC'` → label/valeur pouvaient diverger d'un mois selon le fuseau. Corrigé (formatter en UTC). [`app/components/dashboard/MonthSelector.vue`]
+- [x] [Review][Patch] E2E : `getByText(/Revenus/i)` percutait potentiellement une phrase narrative (strict mode → échec faux-positif). Corrigé : assertions scopées au composant `.balance`. [`tests/e2e/dashboard.spec.ts`]
+- [x] [Review][Defer] Flash des données du mois précédent pendant le refetch au changement de mois — identique au pattern accepté de `transactions/[period].vue` (fetch local quasi-instantané). [`app/pages/index.vue`] — deferred, cohérence pattern
+- [x] [Review][Defer] E2E cas (c) skip quasi-systématique (fixture mono-mois) — nécessite une fixture 2 mois. [`tests/e2e/dashboard.spec.ts`] — deferred
+- [x] [Review][Defer] E2E état vide suppose `_data` fraîche (non enforced) — hygiène E2E commune à la suite. [`tests/e2e/dashboard.spec.ts`] — deferred
+- [x] [Review][Defer] Pas d'état « mois sans données » dédié + desync `MonthSelector` si `?month=` pointe un mois non-ingéré — atteignable seulement via URL manuelle (le selector n'offre que des mois valides). [`app/pages/index.vue`] — deferred, edge
+
+Écartés (7) : double-fetch cold-load (invisible, KISS/NFR8), URL `/` sans `?month` au défaut (par design), `router.push` duplicate (VR4 ne throw pas + `<select>` n'émet pas sur valeur identique), `:key="i"` (texte pur), flash `<h1>` pendant load statements (négligeable), signe `expenseCents` (conforme AC#3), type `data` nullable (factory `default` garantit non-null).
