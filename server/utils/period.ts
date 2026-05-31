@@ -66,6 +66,36 @@ export function nextMonths(fromMonth: string, n: number): string[] {
 }
 
 /**
+ * Retourne le mois précédant `month` (YYYY-MM).
+ * previousMonth('2026-04') → '2026-03'
+ * previousMonth('2026-01') → '2025-12'
+ */
+export function previousMonth(month: string): string {
+  const parsed = parseMonth(month)
+  if (!parsed) throw new Error(`previousMonth: mois invalide '${month}'`)
+  let { year, month: m } = parsed
+  m--
+  if (m < 1) {
+    m = 12
+    year--
+  }
+  return `${String(year).padStart(4, '0')}-${String(m).padStart(2, '0')}`
+}
+
+/**
+ * Retourne le dernier jour du mois (YYYY-MM-DD), longueur réelle du mois prise en compte.
+ * monthEnd('2026-02') → '2026-02-28' ; monthEnd('2024-02') → '2024-02-29' ; monthEnd('2026-04') → '2026-04-30'
+ */
+export function monthEnd(month: string): string {
+  const parsed = parseMonth(month)
+  if (!parsed) throw new Error(`monthEnd: mois invalide '${month}'`)
+  const { year, month: m } = parsed
+  // Jour 0 du mois suivant = dernier jour du mois courant (calcul UTC, pas de piège DST).
+  const lastDay = new Date(Date.UTC(year, m, 0)).getUTCDate()
+  return `${String(year).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+}
+
+/**
  * Nombre de jours entre deux dates ISO (d2 - d1, peut être négatif).
  * Calcul UTC pour éviter les sauts liés aux timezones / DST.
  */

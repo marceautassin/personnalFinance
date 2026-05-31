@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { monthOf, parseMonth, monthsOverlap, nextMonths, daysBetween } from './period'
+import { monthOf, parseMonth, monthsOverlap, nextMonths, previousMonth, monthEnd, daysBetween } from './period'
 
 describe('monthOf', () => {
   it('extracts month from a date', () => expect(monthOf('2026-04-15')).toBe('2026-04'))
@@ -46,6 +46,22 @@ describe('nextMonths', () => {
   it('throws on NaN', () => expect(() => nextMonths('2026-04', Number.NaN)).toThrow())
   it('throws on float n', () => expect(() => nextMonths('2026-04', 2.5)).toThrow())
   it('throws on negative n', () => expect(() => nextMonths('2026-04', -1)).toThrow())
+})
+
+describe('previousMonth', () => {
+  it('returns previous month within same year', () => expect(previousMonth('2026-04')).toBe('2026-03'))
+  it('handles January → previous December', () => expect(previousMonth('2026-01')).toBe('2025-12'))
+  it('throws on invalid month', () => expect(() => previousMonth('garbage')).toThrow())
+  it('throws on month=13', () => expect(() => previousMonth('2026-13')).toThrow())
+})
+
+describe('monthEnd', () => {
+  it('returns 30 for April', () => expect(monthEnd('2026-04')).toBe('2026-04-30'))
+  it('returns 31 for January', () => expect(monthEnd('2026-01')).toBe('2026-01-31'))
+  it('returns 28 for February non-leap', () => expect(monthEnd('2026-02')).toBe('2026-02-28'))
+  it('returns 29 for February leap year', () => expect(monthEnd('2024-02')).toBe('2024-02-29'))
+  it('returns 31 for December (year boundary safe)', () => expect(monthEnd('2026-12')).toBe('2026-12-31'))
+  it('throws on invalid month', () => expect(() => monthEnd('2026-13')).toThrow())
 })
 
 describe('daysBetween', () => {
