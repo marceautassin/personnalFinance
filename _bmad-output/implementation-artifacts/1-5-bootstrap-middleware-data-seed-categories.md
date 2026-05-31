@@ -1,6 +1,6 @@
 # Story 1.5: Bootstrap middleware (création `_data/`, ouverture DB, seed catégories)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -17,7 +17,7 @@ This story résout le **Gap G2** identifié en Architecture §Validation.
    **Then** un middleware Nitro `server/middleware/0.bootstrap.ts` s'exécute une fois au démarrage et :
    - Crée `_data/` et `_data/raw/` (mkdir récursif idempotent)
    - Ouvre/crée `_data/personnalfinance.db` (le singleton de Story 1.4 fait déjà l'ouverture)
-   - Vérifie que les tables existent (sinon, exécute un push programmatique du schéma)
+   - Vérifie que les tables existent (sinon, **fail-fast** : throw une erreur explicite invitant à `yarn db:push` — pas de push programmatique au runtime). Amendé en review 2026-05-31 : décision D4 (push V1) + KISS, `drizzle-kit` étant un CLI dev non conçu pour le runtime.
    - Seed la table `category_definitions` avec `DEFAULT_CATEGORIES` de Story 1.4
 
 2. **Given** un environnement déjà initialisé,
@@ -231,3 +231,12 @@ claude-opus-4-7 (Claude Code)
 ### File List
 
 - `server/middleware/0.bootstrap.ts` (nouveau)
+
+### Review Findings
+
+Code review ciblée (fichier 1.6K, déjà committé au scaffolding) — 2026-05-31. Implémentation conforme au snippet + 2 améliorations (`.run()` avec log du nombre d'insertions, suppression de l'import `sql` mort). AC#2-5 PASS.
+
+- [x] [Review][Decision] AC#1 "push programmatique" vs fail-fast — **résolu : fail-fast accepté** (Marceau, 2026-05-31). AC#1 amendé. Cohérent D4 (push V1) + KISS.
+- [x] [Review][Defer] Chemins `'_data'`/`'_data/raw'` relatifs au CWD — latent si le serveur démarre depuis un autre dossier. Aligné sur la convention `client.ts`. [`server/middleware/0.bootstrap.ts:10`] — deferred, pre-existing
+
+Écartés (3) : race double-requête initiale (idempotent, mono-user), `existsSync` redondant avec `mkdirSync({recursive})`, absence de test Vitest (conforme Dev Notes : tests manuels FS+Nitro). Anti-patterns CLAUDE.md tous respectés (console.warn/error, pas de catch silencieux, Drizzle only).
