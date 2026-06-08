@@ -45,6 +45,9 @@ export const eurosToCents = (euros: number): Cents => {
   return Math.round(Number((euros * 100).toFixed(8))) as Cents
 }
 
+/** Convertit un Cents en euros (number décimal). Inverse de eurosToCents, sans formatage. */
+export const centsToEuros = (c: Cents): number => c / 100
+
 const eurosFormatter = new Intl.NumberFormat('fr-FR', {
   style: 'currency',
   currency: 'EUR',
@@ -54,6 +57,17 @@ const eurosFormatter = new Intl.NumberFormat('fr-FR', {
 
 /** Formate un Cents en chaîne fr-FR : "1 234,56 €" (espaces insécables Intl). */
 export const formatEuros = (c: Cents): string => eurosFormatter.format(c / 100)
+
+/** Sens d'un montant saisi par l'utilisateur (valeur absolue + direction). */
+export type AmountDirection = 'expense' | 'income'
+
+/**
+ * Applique le signe sur un montant absolu en cents selon le sens.
+ * Saisie UI = valeur absolue + sens ; convention signée (dépense < 0, entrée > 0).
+ * Partagé entre la réconciliation manuelle (Story 3.2) et les charges fixes (Story 5.1).
+ */
+export const buildAmountCents = (absCents: Cents, direction: AmountDirection): Cents =>
+  (direction === 'expense' ? -absCents : absCents) as Cents
 
 export const addCents = (a: Cents, b: Cents): Cents => (a + b) as Cents
 

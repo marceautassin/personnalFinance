@@ -12,7 +12,7 @@ const items: NavItem[] = [
   { label: 'Dashboard', href: '/' },
   { label: 'Import', href: '/import' },
   { label: 'Transactions', href: `/transactions/${currentPeriod}` },
-  { label: 'Charges', href: null },
+  { label: 'Charges', href: '/charges' },
   { label: 'Revenus', href: null },
   { label: 'SAS', href: null },
   { label: 'Dettes', href: null },

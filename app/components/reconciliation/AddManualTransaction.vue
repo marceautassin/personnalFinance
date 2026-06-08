@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { eurosToCents } from '~~/shared/types/money'
+import { eurosToCents, buildAmountCents } from '~~/shared/types/money'
 import type { AddManualTransactionInput } from '~~/shared/schemas/reconciliation.schema'
-import { buildAmountCents } from './amount'
 
 const props = defineProps<{ submitting?: boolean }>()
 const emit = defineEmits<{ submit: [tx: AddManualTransactionInput], cancel: [] }>()

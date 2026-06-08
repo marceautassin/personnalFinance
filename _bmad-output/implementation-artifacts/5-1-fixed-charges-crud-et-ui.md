@@ -1,6 +1,6 @@
 # Story 5.1: Schéma `fixed_charges` + CRUD endpoints + UI
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -73,43 +73,43 @@ so that the forecast (Epic 7) can include them as recurring outflows.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schéma DB** (AC: #1)
-  - [ ] Ajouter `fixedCharges` à `server/db/schema.ts` (avec index + types `FixedChargeRow`/`NewFixedChargeRow`)
-  - [ ] `yarn db:push`
+- [x] **Task 1 — Schéma DB** (AC: #1)
+  - [x] Ajouter `fixedCharges` à `server/db/schema.ts` (avec index + types `FixedChargeRow`/`NewFixedChargeRow`)
+  - [x] `yarn db:push` (via `drizzle-kit push --force` — prompt interactif non disponible en env headless)
 
-- [ ] **Task 2 — Schéma Zod** (AC: #2)
-  - [ ] Créer `shared/schemas/fixed-charge.schema.ts`
-  - [ ] Réutiliser `DateIsoSchema`, `LabelSchema` de `transaction.schema.ts`
+- [x] **Task 2 — Schéma Zod** (AC: #2)
+  - [x] Créer `shared/schemas/fixed-charge.schema.ts`
+  - [x] Réutiliser `DateIsoSchema`, `LabelSchema` de `transaction.schema.ts`
 
-- [ ] **Task 3 — Endpoints CRUD** (AC: #3, #4, #5, #6)
-  - [ ] `server/api/fixed-charges/index.get.ts`
-  - [ ] `server/api/fixed-charges/index.post.ts`
-  - [ ] `server/api/fixed-charges/[id].put.ts`
-  - [ ] `server/api/fixed-charges/[id].delete.ts`
-  - [ ] FK pre-check sur `categoryCode` extrait dans un helper si dupliqué entre POST et PUT
+- [x] **Task 3 — Endpoints CRUD** (AC: #3, #4, #5, #6)
+  - [x] `server/api/fixed-charges/index.get.ts`
+  - [x] `server/api/fixed-charges/index.post.ts`
+  - [x] `server/api/fixed-charges/[id].put.ts`
+  - [x] `server/api/fixed-charges/[id].delete.ts`
+  - [x] FK pre-check sur `categoryCode` extrait dans `server/utils/category-fk.ts` (partagé POST/PUT)
 
-- [ ] **Task 4 — Tests unitaires endpoints** (AC: #9)
-  - [ ] `*.test.ts` côte à côte, pattern existing (`reconciliation/[hash].post.test.ts`)
-  - [ ] Round-trip + cas d'erreur
+- [x] **Task 4 — Tests unitaires endpoints** (AC: #9)
+  - [x] `server/api/fixed-charges/crud.test.ts`, pattern `[id].patch.test.ts`
+  - [x] Round-trip + cas d'erreur (8 tests)
 
-- [ ] **Task 5 — Composable** (AC: #8)
-  - [ ] `app/composables/useFixedCharges.ts`
-  - [ ] Pattern `useTransactions.ts:51-66`
+- [x] **Task 5 — Composable** (AC: #8)
+  - [x] `app/composables/useFixedCharges.ts`
+  - [x] Pattern `useTransactions.ts` (composable owns mutations + invalidations)
 
-- [ ] **Task 6 — UI** (AC: #7)
-  - [ ] `app/components/charges/FixedChargeList.vue`
-  - [ ] `app/components/charges/FixedChargeForm.vue`
-  - [ ] `app/pages/charges.vue`
-  - [ ] Réutiliser `ConfirmDialog` pour la suppression
-  - [ ] Sortie pour AppNav : ajouter le lien `/charges` dans `app/components/shared/AppNav.vue`
+- [x] **Task 6 — UI** (AC: #7)
+  - [x] `app/components/charges/FixedChargeList.vue`
+  - [x] `app/components/charges/FixedChargeForm.vue`
+  - [x] `app/pages/charges.vue`
+  - [x] Réutiliser `ConfirmDialog` pour la suppression
+  - [x] Sortie pour AppNav : lien `/charges` ajouté dans `app/components/shared/AppNav.vue`
 
-- [ ] **Task 7 — E2E** (AC: #10)
-  - [ ] `tests/e2e/fixed-charges.spec.ts`
+- [x] **Task 7 — E2E** (AC: #10)
+  - [x] `tests/e2e/fixed-charges.spec.ts`
 
-- [ ] **Task 8 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run`, `yarn test:e2e` verts
-  - [ ] Aucun nouveau code d'erreur (réutiliser `validation_failed`, `not_found`)
-  - [ ] Commit unique
+- [x] **Task 8 — Sanity check final**
+  - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` verts ; `yarn test:e2e` vert sur chromium
+  - [x] Aucun nouveau code d'erreur (réutilise `validation_failed`, `not_found`)
+  - [ ] Commit unique (en attente de l'instruction utilisateur)
 
 ## Dev Notes
 
@@ -176,12 +176,63 @@ Cette story crée :
 
 ### Agent Model Used
 
+claude-opus-4-8 (Amelia, dev-story workflow)
+
 ### Debug Log References
+
+- `yarn db:push` exige un TTY interactif (drizzle-kit render UI) → appliqué via
+  `npx drizzle-kit push --force` (changement purement additif, aucune perte de données).
+- E2E Firefox : non installable sur cette machine (Playwright ne supporte pas firefox sur
+  ubuntu 26.04). Suite E2E verte sur chromium.
 
 ### Completion Notes List
 
+- **AC#2 — divergence schéma assumée et documentée** : l'AC nomme un `FixedChargePatchSchema`
+  *tout-optionnel*, mais AC#5 + AC#9 + Task 3 décrivent un **PUT replace complet**. J'ai
+  honoré la sémantique PUT concrète (testée par AC#9) → schéma corps-complet `.strict()`
+  exporté sous `FixedChargePutSchema`. Aucune route PATCH dans cette story.
+- **AC#11 — factorisation `buildAmountCents`** : déplacé de
+  `app/components/reconciliation/amount.ts` vers `shared/types/money.ts` (2e usage = charges),
+  supprime un import cross-feature. Importeur `AddManualTransaction.vue` + tests migrés vers
+  `money.test.ts`. Ancien `amount.ts`/`amount.test.ts` supprimés.
+- Ajout de `centsToEuros` à `shared/types/money.ts` (helper canonique cité dans CLAUDE.md mais
+  absent) pour préremplir le champ montant en mode édition sans `/ 100` manuel.
+- `.returning()` (driver better-sqlite3) utilisé sur POST/PUT/DELETE → évite un second SELECT.
+- Invalidations `invalidateForecast`/`invalidateDashboard` = stubs jusqu'à Story 7.8 (no-op).
+- Tests : 8 tests endpoints (round-trip + tri + 422 endDate/amount=0/cat inconnue + 404 +
+  422 id non-numérique) ; 3 tests `buildAmountCents` ; 1 E2E add/list/delete. Suite globale
+  224 tests verts, typecheck + lint verts.
+
 ### File List
 
+**Créés :**
+- `shared/schemas/fixed-charge.schema.ts`
+- `server/utils/category-fk.ts`
+- `server/api/fixed-charges/index.get.ts`
+- `server/api/fixed-charges/index.post.ts`
+- `server/api/fixed-charges/[id].put.ts`
+- `server/api/fixed-charges/[id].delete.ts`
+- `server/api/fixed-charges/crud.test.ts`
+- `app/composables/useFixedCharges.ts`
+- `app/components/charges/FixedChargeForm.vue`
+- `app/components/charges/FixedChargeList.vue`
+- `app/pages/charges.vue`
+- `tests/e2e/fixed-charges.spec.ts`
+
+**Modifiés :**
+- `server/db/schema.ts` (table `fixedCharges` + `FREQUENCY_VALUES` + types)
+- `shared/types/money.ts` (`buildAmountCents`, `AmountDirection`, `centsToEuros`)
+- `shared/types/money.test.ts` (tests `buildAmountCents` migrés)
+- `app/components/reconciliation/AddManualTransaction.vue` (import `buildAmountCents` depuis money)
+- `app/components/shared/AppNav.vue` (lien `/charges` activé)
+
+**Supprimés :**
+- `app/components/reconciliation/amount.ts`
+- `app/components/reconciliation/amount.test.ts`
+
 ### Change Log
+
+- Story 5.1 implémentée : table `fixed_charges`, CRUD endpoints, composable, UI (page +
+  form + list), tests unit + E2E. Factorisation `buildAmountCents` dans `shared/types/money.ts`.
 
 ### Review Findings

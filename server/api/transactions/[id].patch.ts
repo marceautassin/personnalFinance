@@ -1,8 +1,9 @@
 import { defineEventHandler, getRouterParam } from 'h3'
 import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions, categoryDefinitions } from '~~/server/db/schema'
+import { transactions } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
+import { assertCategoryExists } from '~~/server/utils/category-fk'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { TransactionPatchSchema } from '~~/shared/schemas/transaction.schema'
@@ -25,20 +26,7 @@ export default defineEventHandler(async (event) => {
     throw notFound(ApiErrorCode.NotFound, { resource: 'transaction', id })
   }
 
-  if (patch.categoryCode !== undefined) {
-    const cat = await db
-      .select({ code: categoryDefinitions.code })
-      .from(categoryDefinitions)
-      .where(eq(categoryDefinitions.code, patch.categoryCode))
-      .limit(1)
-    if (cat.length === 0) {
-      throw domainError(
-        ApiErrorCode.ValidationFailed,
-        { reason: 'unknown categoryCode', value: patch.categoryCode },
-        422,
-      )
-    }
-  }
+  if (patch.categoryCode !== undefined) await assertCategoryExists(patch.categoryCode)
 
   const update: Partial<typeof transactions.$inferInsert> = {
     isManual: true,

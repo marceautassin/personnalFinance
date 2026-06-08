@@ -95,3 +95,42 @@ export const transactions = sqliteTable(
 
 export type TransactionRow = typeof transactions.$inferSelect
 export type NewTransactionRow = typeof transactions.$inferInsert
+
+/**
+ * Fréquences d'une charge fixe. La sémantique de projection vit dans forecast-engine.ts
+ * (Story 7.3) — ici on déclare seulement. `punctual` = une seule occurrence au mois de
+ * `start_date` (`end_date` ignoré).
+ */
+export const FREQUENCY_VALUES = ['monthly', 'quarterly', 'annual', 'punctual'] as const
+export type FrequencyValue = typeof FREQUENCY_VALUES[number]
+
+/**
+ * fixed_charges — charges récurrentes (ou ponctuelles) déclarées par l'utilisateur (FR16).
+ *
+ * NOTES :
+ *  - amount_cents est SIGNÉ comme transactions.amount_cents : négatif = dépense,
+ *    positif = revenu récurrent. On ne bride pas le sens (cf. Dev Notes story 5.1).
+ *  - end_date nullable : une charge sans fin court indéfiniment ; une charge dont
+ *    end_date est passée reste en base (historique) mais le forecast l'ignore.
+ */
+export const fixedCharges = sqliteTable(
+  'fixed_charges',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    label: text('label').notNull(),
+    amountCents: integer('amount_cents').notNull(),
+    categoryCode: text('category_code')
+      .notNull()
+      .references(() => categoryDefinitions.code, { onDelete: 'restrict' }),
+    frequency: text('frequency', { enum: FREQUENCY_VALUES }).notNull(),
+    startDate: text('start_date').notNull(),
+    endDate: text('end_date'),
+    createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+  },
+  t => ({
+    fixedChargesCategoryIdx: index('fixed_charges_category_idx').on(t.categoryCode),
+  }),
+)
+
+export type FixedChargeRow = typeof fixedCharges.$inferSelect
+export type NewFixedChargeRow = typeof fixedCharges.$inferInsert
