@@ -134,3 +134,17 @@ export const fixedCharges = sqliteTable(
 
 export type FixedChargeRow = typeof fixedCharges.$inferSelect
 export type NewFixedChargeRow = typeof fixedCharges.$inferInsert
+
+/**
+ * dismissed_suggestions — libellés normalisés de suggestions de charges récurrentes
+ * rejetées par l'utilisateur (Story 5.2). `charge-suggester` exclut ces labels.
+ * Insert idempotent (UNIQUE) ; pas de soft-delete.
+ */
+export const dismissedSuggestions = sqliteTable('dismissed_suggestions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  normalizedLabel: text('normalized_label').notNull().unique(),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+})
+
+export type DismissedSuggestionRow = typeof dismissedSuggestions.$inferSelect
+export type NewDismissedSuggestionRow = typeof dismissedSuggestions.$inferInsert

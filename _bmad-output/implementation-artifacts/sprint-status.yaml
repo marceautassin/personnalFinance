@@ -91,7 +91,7 @@ development_status:
   # Epic 5 — Modèles financiers (charges, revenus, SAS, fiscalité)
   epic-5: in-progress
   5-1-fixed-charges-crud-et-ui: review
-  5-2-charge-suggester-et-suggestions-ui: ready-for-dev
+  5-2-charge-suggester-et-suggestions-ui: review
   5-3-revenue-models-endpoints-et-ui: ready-for-dev
   5-4-sas-config-dividend-capacity-et-ui: ready-for-dev
   5-5-tax-settings-endpoints-et-ui: ready-for-dev

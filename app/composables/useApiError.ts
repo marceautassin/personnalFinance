@@ -36,5 +36,14 @@ export function useApiError() {
     return FR_MESSAGES[code as ApiErrorCodeValue]
   }
 
-  return { mapError }
+  /**
+   * Variante pour les mutations : message FR utilisateur + code stable (pour réagir au
+   * code côté appelant). Centralise l'extraction dupliquée dans les composables de mutation.
+   */
+  function mapMutationError(err: unknown): { error: string, errorCode?: string } {
+    const e = err as { statusMessage?: string, data?: { statusMessage?: string } }
+    return { error: mapError(err), errorCode: e.data?.statusMessage ?? e.statusMessage }
+  }
+
+  return { mapError, mapMutationError }
 }

@@ -17,6 +17,19 @@ export interface FixedChargesResponse {
   charges: FixedChargeItem[]
 }
 
+/**
+ * Valeurs de préremplissage du `FixedChargeForm` — satisfaites aussi bien par un
+ * `FixedChargeItem` existant (édition) que par une suggestion (création pré-remplie).
+ */
+export interface ChargeFormPrefill {
+  label: string
+  amountCents: Cents
+  categoryCode: string
+  frequency: Frequency
+  startDate: string
+  endDate: string | null
+}
+
 /** Libellés FR des fréquences — partagés entre le formulaire et la liste. */
 export const FREQUENCY_LABELS: Record<Frequency, string> = {
   monthly: 'Mensuelle',
@@ -48,15 +61,14 @@ export function useFixedCharges() {
 
   // Capturés en setup (avant tout `await`) pour préserver le contexte Nuxt.
   const invalidate = useInvalidate()
-  const { mapError } = useApiError()
+  const { mapMutationError } = useApiError()
 
   async function runMutation(fn: () => Promise<unknown>): Promise<ChargeMutationOutcome> {
     try {
       await fn()
     }
     catch (err) {
-      const e = err as { statusMessage?: string, data?: { statusMessage?: string } }
-      return { error: mapError(err), errorCode: e.data?.statusMessage ?? e.statusMessage }
+      return mapMutationError(err)
     }
     await fetchState.refresh()
     invalidate.invalidateForecast()

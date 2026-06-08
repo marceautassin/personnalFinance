@@ -1,6 +1,6 @@
 # Story 5.2: Service `charge-suggester` + endpoint `GET /api/fixed-charges/suggestions` + UI
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -81,35 +81,35 @@ so that I don't have to declare them all manually after importing several months
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Table `dismissed_suggestions`** (AC: #4)
-  - [ ] Schéma Drizzle + `db:push`
+- [x] **Task 1 — Table `dismissed_suggestions`** (AC: #4)
+  - [x] Schéma Drizzle + `db:push` (`--force`, env headless)
 
-- [ ] **Task 2 — Service `charge-suggester.ts`** (AC: #1, #2, #3, #4, #5)
-  - [ ] Helper privé `normalizeLabel(label: string): string`
-  - [ ] Logique de groupement par normalizedLabel + filtre récurrence
-  - [ ] Inférence frequency
-  - [ ] Tests unitaires `*.test.ts` (cas listés AC#9)
+- [x] **Task 2 — Service `charge-suggester.ts`** (AC: #1, #2, #3, #4, #5)
+  - [x] Helper `normalizeLabel(label: string): string` (exporté, réutilisé par l'endpoint DELETE)
+  - [x] Groupement par normalizedLabel + filtre récurrence (active-recurrence OU 3 mois stables)
+  - [x] Inférence frequency (avgGap mois)
+  - [x] Tests unitaires `charge-suggester.test.ts` (7 tests, cas AC#9 + AC#3 + AC#6)
 
-- [ ] **Task 3 — Endpoints** (AC: #6, #7)
-  - [ ] `server/api/fixed-charges/suggestions/index.get.ts` (réutilise `db` → service)
-  - [ ] `server/api/fixed-charges/suggestions/[normalizedLabel].delete.ts`
-  - [ ] Tests unitaires endpoints
+- [x] **Task 3 — Endpoints** (AC: #6, #7)
+  - [x] `server/api/fixed-charges/suggestions/index.get.ts`
+  - [x] `server/api/fixed-charges/suggestions/[label].delete.ts` (param renommé `label` — kebab lint)
+  - [x] Tests unitaires endpoints (`suggestions.test.ts`, 5 tests)
 
-- [ ] **Task 4 — Composable** (AC: #8)
-  - [ ] `app/composables/useChargeSuggestions.ts` exposant `{ data, refresh, dismiss(normalizedLabel), accept(suggestion) }` (accept = POST sur `/api/fixed-charges` + refresh des deux composables `useFixedCharges` ET `useChargeSuggestions`)
+- [x] **Task 4 — Composable** (AC: #8)
+  - [x] `app/composables/useChargeSuggestions.ts` — `{ data, refresh, dismiss, accept }` ; accept = POST + refresh suggestions + `refreshNuxtData('fixed-charges')`
 
-- [ ] **Task 5 — UI** (AC: #8)
-  - [ ] `app/components/charges/SuggestedChargesPanel.vue`
-  - [ ] Intégration dans `app/pages/charges.vue` (au-dessus de `FixedChargeList`)
-  - [ ] Bouton **Modifier** ouvre `FixedChargeForm` (story 5.1) en mode pré-rempli — extraire le `FixedChargeForm` en mode "edit existant" + "create from suggestion" si pas déjà flexible
+- [x] **Task 5 — UI** (AC: #8)
+  - [x] `app/components/charges/SuggestedChargesPanel.vue`
+  - [x] Intégration dans `app/pages/charges.vue` (au-dessus de `FixedChargeList`)
+  - [x] `FixedChargeForm` rendu flexible : prop `initial: ChargeFormPrefill` + `editing: boolean` → édition existante ET création depuis suggestion
 
-- [ ] **Task 6 — E2E** (AC: #10)
-  - [ ] Étendre `tests/e2e/fixed-charges.spec.ts` ou créer `tests/e2e/charge-suggester.spec.ts`
+- [x] **Task 6 — E2E** (AC: #10)
+  - [x] `tests/e2e/charge-suggester.spec.ts` (gated FIXTURE+API key, auto-skip si pas de récurrent ≥3 mois)
 
-- [ ] **Task 7 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run` verts
-  - [ ] Performance : sur ~500 transactions, `suggestRecurringCharges` < 200 ms (sinon optimiser)
-  - [ ] Commit unique
+- [x] **Task 7 — Sanity check final**
+  - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` verts (236 tests)
+  - [x] Performance : ~500 tx mesuré < 200 ms (assertion vérifiée puis test jetable retiré)
+  - [ ] Commit unique (en attente instruction utilisateur)
 
 ## Dev Notes
 
@@ -181,12 +181,57 @@ Cette story crée :
 
 ### Agent Model Used
 
+claude-opus-4-8 (Amelia, dev-story workflow)
+
 ### Debug Log References
+
+- `db:push` → `drizzle-kit push --force` (TTY indisponible en env headless).
+- E2E charge-suggester skippé localement (`ANTHROPIC_API_KEY` absent) ; 5.1 E2E toujours verte (chromium).
 
 ### Completion Notes List
 
+- **AC#2 — conflit interne assumé (normalisation)** : l'AC dit « strip mots de < 3 lettres »,
+  mais les libellés de test AC#9 (`Netflix Sub 12,99`, `NETFLIX 12.99 EUR`) ne fusionnent en
+  un unique groupe `netflix` que si `sub`/`eur` tombent. Solution finale (post-review) :
+  on garde les mots de **≥ 3 lettres** (pour préserver les marques type EDF/SFR/AXA) et on
+  retire explicitement une liste `STOP_WORDS` (devises `eur/usd…`, préfixes Boursorama
+  `prlv/vir/paiement/carte…`, génériques `sub/abo`). Évite la sur-fusion qu'aurait causé un
+  simple seuil ≥ 4. V1 KISS : normalisation imparfaite (Modifier/Rejeter dispo).
+- **`inferFrequency` (post-review)** : écart moyen = `(dernier - premier) / (n-1)` (l'ancienne
+  formule `span/occurrences` rendait la branche `annual` inatteignable) + branche
+  `annualRecurrence` explicite (≥ 2 occurrences sur ≥ 2 années espacées d'~12 mois).
+- **Critère récurrence implémenté** : `(≥3 mois distincts ET présent dans chacun des 3 derniers
+  mois ingérés) OU (3 mois consécutifs avec amplitude ≤15%)`. Cas AC#9 « 3 mois amplitude >15% »
+  → **inclus** (variante : active-recurrence l'emporte), conforme à « exclu OU inclus selon variante ».
+- **Extension de l'interface `Suggestion`** : ajout de `startDate` (`YYYY-MM-01` de la 1ère
+  occurrence), non listé en AC#1 mais requis par AC#8 (accept fixe `start_date = mois 1ère occ`).
+- **`normalizeLabel` exporté** et réutilisé par l'endpoint DELETE (re-normalisation idempotente
+  du param avant upsert) → garantit la correspondance avec les clés du suggester.
+- **Param d'URL renommé** `[normalizedLabel]` → `[label]` (la règle lint `unicorn/filename-case`
+  refuse le camelCase dans un nom de fichier).
+- Service 100% heuristique, **aucun appel LLM** (boundary CLAUDE.md respectée). Recompute à
+  chaque GET, pas de cache (Dev Notes).
+
 ### File List
 
+**Créés :**
+- `server/services/charge-suggester.ts` + `charge-suggester.test.ts`
+- `server/api/fixed-charges/suggestions/index.get.ts`
+- `server/api/fixed-charges/suggestions/[label].delete.ts`
+- `server/api/fixed-charges/suggestions/suggestions.test.ts`
+- `app/composables/useChargeSuggestions.ts`
+- `app/components/charges/SuggestedChargesPanel.vue`
+- `tests/e2e/charge-suggester.spec.ts`
+
+**Modifiés :**
+- `server/db/schema.ts` (table `dismissedSuggestions` + types)
+- `app/composables/useFixedCharges.ts` (type `ChargeFormPrefill`)
+- `app/components/charges/FixedChargeForm.vue` (prop `initial: ChargeFormPrefill` + `editing`)
+- `app/pages/charges.vue` (panneau suggestions + flux accept/edit/dismiss)
+
 ### Change Log
+
+- Story 5.2 implémentée : table `dismissed_suggestions`, service heuristique `charge-suggester`,
+  2 endpoints suggestions, composable, `SuggestedChargesPanel`, intégration page `/charges`.
 
 ### Review Findings

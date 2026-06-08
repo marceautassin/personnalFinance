@@ -1,52 +1,104 @@
 <script setup lang="ts">
-import { useFixedCharges, type FixedChargeItem } from '~/composables/useFixedCharges'
+import { useFixedCharges, type FixedChargeItem, type ChargeFormPrefill } from '~/composables/useFixedCharges'
+import { useChargeSuggestions } from '~/composables/useChargeSuggestions'
+import type { Suggestion } from '~~/server/services/charge-suggester'
 import type { NewFixedCharge } from '~~/shared/schemas/fixed-charge.schema'
 import { useApiError } from '~/composables/useApiError'
 
 const { data, pending, error, addCharge, updateCharge, deleteCharge } = useFixedCharges()
+const { data: suggestionsData, accept, dismiss, refresh: refreshSuggestions } = useChargeSuggestions()
 const { mapError } = useApiError()
 
 const showForm = ref(false)
-const editing = ref<FixedChargeItem | null>(null)
+const formPrefill = ref<ChargeFormPrefill | null>(null)
+const editingId = ref<number | null>(null)
+// Libellé normalisé de la suggestion à l'origine du formulaire (création depuis suggestion).
+// Sert à la rejeter après création pour qu'elle ne réapparaisse pas si l'utilisateur a
+// modifié le libellé (le libellé enregistré ne se normalise alors plus vers cette clé).
+const pendingSuggestionLabel = ref<string | null>(null)
 const submitting = ref(false)
+const busy = ref(false)
 const actionError = ref<string | null>(null)
 
 const fetchErrorMessage = computed(() => (error.value ? mapError(error.value) : null))
 
 function openAdd() {
-  editing.value = null
+  formPrefill.value = null
+  editingId.value = null
+  pendingSuggestionLabel.value = null
   actionError.value = null
   showForm.value = true
 }
 
 function openEdit(charge: FixedChargeItem) {
-  editing.value = charge
+  formPrefill.value = charge
+  editingId.value = charge.id
+  pendingSuggestionLabel.value = null
+  actionError.value = null
+  showForm.value = true
+}
+
+function openFromSuggestion(suggestion: Suggestion) {
+  formPrefill.value = {
+    label: suggestion.sampleLabel,
+    amountCents: suggestion.averageAmountCents,
+    categoryCode: suggestion.categoryCode,
+    frequency: suggestion.suggestedFrequency,
+    startDate: suggestion.startDate,
+    endDate: null,
+  }
+  editingId.value = null
+  pendingSuggestionLabel.value = suggestion.normalizedLabel
   actionError.value = null
   showForm.value = true
 }
 
 function closeForm() {
   showForm.value = false
-  editing.value = null
+  formPrefill.value = null
+  editingId.value = null
+  pendingSuggestionLabel.value = null
 }
 
 async function onSubmit(payload: NewFixedCharge) {
   actionError.value = null
   submitting.value = true
-  const outcome = editing.value
-    ? await updateCharge(editing.value.id, payload)
+  const outcome = editingId.value !== null
+    ? await updateCharge(editingId.value, payload)
     : await addCharge(payload)
   submitting.value = false
   if (outcome.error) {
     actionError.value = outcome.error
     return
   }
+  const sourceSuggestion = pendingSuggestionLabel.value
   closeForm()
+  // Charge créée depuis une suggestion : rejeter le libellé d'origine pour qu'il ne
+  // réapparaisse pas (libellé enregistré possiblement modifié ≠ clé de la suggestion).
+  // Sinon, une création manuelle peut résorber une suggestion → simple recompute.
+  if (sourceSuggestion !== null) await dismiss(sourceSuggestion)
+  else await refreshSuggestions()
 }
 
 async function onDelete(id: number) {
   actionError.value = null
   const outcome = await deleteCharge(id)
+  if (outcome.error) actionError.value = outcome.error
+}
+
+async function onAcceptSuggestion(suggestion: Suggestion) {
+  actionError.value = null
+  busy.value = true
+  const outcome = await accept(suggestion)
+  busy.value = false
+  if (outcome.error) actionError.value = outcome.error
+}
+
+async function onDismissSuggestion(normalizedLabel: string) {
+  actionError.value = null
+  busy.value = true
+  const outcome = await dismiss(normalizedLabel)
+  busy.value = false
   if (outcome.error) actionError.value = outcome.error
 }
 </script>
@@ -69,7 +121,8 @@ async function onDelete(id: number) {
 
     <FixedChargeForm
       v-if="showForm"
-      :initial="editing"
+      :initial="formPrefill"
+      :editing="editingId !== null"
       :submitting="submitting"
       @submit="onSubmit"
       @cancel="closeForm"
@@ -90,6 +143,14 @@ async function onDelete(id: number) {
     >
       {{ fetchErrorMessage }}
     </p>
+
+    <SuggestedChargesPanel
+      :suggestions="suggestionsData.suggestions"
+      :busy="busy"
+      @accept="onAcceptSuggestion"
+      @edit="openFromSuggestion"
+      @dismiss="onDismissSuggestion"
+    />
 
     <p
       v-if="pending && data.charges.length === 0"

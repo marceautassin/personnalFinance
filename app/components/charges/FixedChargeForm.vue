@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { eurosToCents, buildAmountCents, centsToEuros, type Cents } from '~~/shared/types/money'
 import type { NewFixedCharge } from '~~/shared/schemas/fixed-charge.schema'
-import { FREQUENCY_LABELS, type FixedChargeItem } from '~/composables/useFixedCharges'
+import { FREQUENCY_LABELS, type ChargeFormPrefill } from '~/composables/useFixedCharges'
 
-const props = defineProps<{ submitting?: boolean, initial?: FixedChargeItem | null }>()
+const props = defineProps<{
+  submitting?: boolean
+  /** Valeurs de préremplissage (charge existante en édition OU suggestion en création). */
+  initial?: ChargeFormPrefill | null
+  /** true = édition d'une charge existante (titre/bouton « Modifier »). false = création. */
+  editing?: boolean
+}>()
 const emit = defineEmits<{ submit: [charge: NewFixedCharge], cancel: [] }>()
 
 const { data: categories, pending: categoriesPending } = useCategories()
 
-const isEdit = computed(() => props.initial != null)
+const isEdit = computed(() => props.editing === true)
 
 const label = ref('')
 const amountInput = ref('')
@@ -19,8 +25,8 @@ const startDate = ref('')
 const endDate = ref('')
 const error = ref<string | null>(null)
 
-/** Préremplit depuis `initial` (mode édition) ou remet à zéro (mode ajout). */
-function syncFromInitial(c: FixedChargeItem | null | undefined) {
+/** Préremplit depuis `initial` (édition OU suggestion) ou remet à zéro (ajout vierge). */
+function syncFromInitial(c: ChargeFormPrefill | null | undefined) {
   if (!c) {
     reset()
     return
