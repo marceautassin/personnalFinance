@@ -145,6 +145,7 @@ Les erreurs métier ne sont **pas** des exceptions :
 - Si une décision ne figure ni dans PRD ni dans Architecture : poser la question, ne pas inventer.
 - Si une feature non listée semble "évidente à ajouter" : la flagger explicitement, attendre validation. Le scope est verrouillé.
 - À la fin d'une story : tests verts, lint OK, typecheck OK, doc à jour si pertinent.
+- **Retours, revues et synthèses** : toujours en **français** et **synthétiques** (aller à l'essentiel, pas de remplissage). Garder les identifiants techniques (noms de fichiers, symboles, codes d'erreur) tels quels.
 
 ## Anti-patterns interdits
 
