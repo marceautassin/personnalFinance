@@ -96,12 +96,20 @@ function modeWithAlphaTiebreak(values: string[]): string {
   return best
 }
 
-/** Y a-t-il un run d'au moins 3 mois calendaires consécutifs dans l'ensemble fourni ? */
-function hasThreeConsecutiveMonths(sortedMonthIdx: number[]): boolean {
-  let run = 1
-  for (let i = 1; i < sortedMonthIdx.length; i++) {
-    run = sortedMonthIdx[i]! === sortedMonthIdx[i - 1]! + 1 ? run + 1 : 1
-    if (run >= 3) return true
+/**
+ * Existe-t-il une fenêtre de 3 mois calendaires consécutifs dont les totaux mensuels
+ * sont stables (amplitude ≤ 15%) ? On évalue l'amplitude sur la fenêtre elle-même —
+ * pas sur tout l'historique du groupe — pour ne pas rejeter un run stable noyé dans
+ * du bruit plus ancien.
+ */
+function hasStableConsecutiveRun(monthlyTotals: Map<number, number>): boolean {
+  for (const start of monthlyTotals.keys()) {
+    const a = monthlyTotals.get(start)
+    const b = monthlyTotals.get(start + 1)
+    const c = monthlyTotals.get(start + 2)
+    if (a !== undefined && b !== undefined && c !== undefined && amplitudeRatio([a, b, c]) <= 0.15) {
+      return true
+    }
   }
   return false
 }
@@ -120,10 +128,11 @@ function inferFrequency(distinctMonthIdx: number[]): Suggestion['suggestedFreque
   // L'ancienne formule span/occurrences sous-estimait l'intervalle (ex: [0,12] → 6.5
   // au lieu de 12), rendant la branche 'annual' inatteignable.
   const avgGap = (distinctMonthIdx[occurrences - 1]! - distinctMonthIdx[0]!) / (occurrences - 1)
-  if (avgGap <= 1.5) return 'monthly'
-  if (avgGap <= 4.5) return 'quarterly'
-  if (avgGap >= 10) return 'annual'
-  return 'monthly'
+  // Seuils contigus (pas de trou) : on rattache chaque écart au bucket le plus proche
+  // de {1 mensuel, 3 trimestriel, 12 annuel}. Frontières : 2 et 7 mois.
+  if (avgGap <= 2) return 'monthly'
+  if (avgGap <= 7) return 'quarterly'
+  return 'annual'
 }
 
 /**
@@ -172,12 +181,17 @@ export async function suggestRecurringCharges(db: DB): Promise<Suggestion[]> {
   for (const [normalizedLabel, group] of groups) {
     const monthKeys = [...new Set(group.map(t => monthKey(t.transactionDate)))]
     const distinctMonthIdx = [...new Set(group.map(t => monthIndex(t.transactionDate)))].sort((a, b) => a - b)
-    const amounts = group.map(t => t.amountCents)
+    // Total agrégé par mois : un même libellé peut tomber plusieurs fois dans un mois
+    // (retry, double prélèvement) — on raisonne sur le montant mensuel, pas par transaction.
+    const monthlyTotals = new Map<number, number>()
+    for (const t of group) {
+      const mi = monthIndex(t.transactionDate)
+      monthlyTotals.set(mi, (monthlyTotals.get(mi) ?? 0) + t.amountCents)
+    }
 
     const activeRecurrence
       = distinctMonthIdx.length >= 3 && [...last3Ingested].every(m => monthKeys.includes(m))
-    const stableConsecutive
-      = hasThreeConsecutiveMonths(distinctMonthIdx) && amplitudeRatio(amounts) <= 0.15
+    const stableConsecutive = hasStableConsecutiveRun(monthlyTotals)
     // Récurrence annuelle (AC#34) : ≥ 2 occurrences sur ≥ 2 années, espacées d'~12 mois.
     const distinctYears = new Set(group.map(t => t.transactionDate.slice(0, 4))).size
     const annualRecurrence
@@ -186,8 +200,10 @@ export async function suggestRecurringCharges(db: DB): Promise<Suggestion[]> {
 
     if (!activeRecurrence && !stableConsecutive && !annualRecurrence) continue
 
-    const rawSum = amounts.reduce((a, b) => a + b, 0)
-    const averageAmountCents = cents(rawSum / amounts.length)
+    // Moyenne sur les totaux mensuels = montant représentatif d'une période (AC#1),
+    // cohérent avec `occurrences` (mois distincts) même si un mois porte plusieurs tx.
+    const monthTotals = [...monthlyTotals.values()]
+    const averageAmountCents = cents(monthTotals.reduce((a, b) => a + b, 0) / monthTotals.length)
     // Groupe dégénéré (ex: un débit et son remboursement de même libellé) → moyenne
     // nulle : non représentable en charge fixe (POST refuse amount=0). On l'écarte.
     if (averageAmountCents === 0) continue
