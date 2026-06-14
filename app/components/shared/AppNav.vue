@@ -14,7 +14,7 @@ const items: NavItem[] = [
   { label: 'Transactions', href: `/transactions/${currentPeriod}` },
   { label: 'Charges', href: '/charges' },
   { label: 'Revenus', href: '/revenus' },
-  { label: 'SAS', href: null },
+  { label: 'SAS', href: '/sas' },
   { label: 'Dettes', href: null },
   { label: 'Forecast', href: null },
   { label: 'Paramètres', href: null },

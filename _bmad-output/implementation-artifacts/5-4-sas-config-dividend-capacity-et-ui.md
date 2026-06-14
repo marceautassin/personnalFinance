@@ -1,6 +1,6 @@
 # Story 5.4: Schéma `sas_config` + endpoints + service `dividend-calculator` (capacité) + UI
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -97,41 +97,41 @@ so that I have all the inputs ready for the inverse forecast (Epic 7).
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schéma DB + bootstrap seed** (AC: #1, #2)
-  - [ ] Ajouter `sasConfig` à `server/db/schema.ts`
-  - [ ] Étendre `0.bootstrap.ts` (insert idempotent)
-  - [ ] `yarn db:push`
+- [x] **Task 1 — Schéma DB + bootstrap seed** (AC: #1, #2)
+  - [x] Ajouter `sasConfig` à `server/db/schema.ts`
+  - [x] Étendre `0.bootstrap.ts` (insert idempotent)
+  - [x] `yarn db:push`
 
-- [ ] **Task 2 — Schéma Zod** (AC: #3)
-  - [ ] `shared/schemas/sas-config.schema.ts`
+- [x] **Task 2 — Schéma Zod** (AC: #3)
+  - [x] `shared/schemas/sas-config.schema.ts`
 
-- [ ] **Task 3 — Service pur `dividend-capacity`** (AC: #5, #6, #8, #9)
-  - [ ] **Décision archi** : placer dans `shared/services/dividend-capacity.ts` (réimportable côté UI)
-  - [ ] Tests unitaires (cas AC#9) — co-localisés
-  - [ ] Mettre à jour `architecture.md` projet structure si nécessaire (mais ne pas bloquer la story là-dessus)
+- [x] **Task 3 — Service pur `dividend-capacity`** (AC: #5, #6, #8, #9)
+  - [x] **Décision archi** : placé dans `shared/services/dividend-capacity.ts` (réimportable côté UI)
+  - [x] Tests unitaires (cas AC#9) — co-localisés (6 cas)
+  - [ ] Mise à jour `architecture.md` non bloquante — laissée à la passe doc (cf. note)
 
-- [ ] **Task 4 — Endpoints** (AC: #4)
-  - [ ] `server/api/sas-config.get.ts`
-  - [ ] `server/api/sas-config.put.ts`
-  - [ ] Tests unitaires (AC#10)
+- [x] **Task 4 — Endpoints** (AC: #4)
+  - [x] `server/api/sas-config.get.ts`
+  - [x] `server/api/sas-config.put.ts`
+  - [x] Tests unitaires (AC#10)
 
-- [ ] **Task 5 — Composable** (AC: #7)
-  - [ ] `app/composables/useSasConfig.ts` (pattern story 5.3)
+- [x] **Task 5 — Composable** (AC: #7)
+  - [x] `app/composables/useSasConfig.ts` (pattern story 5.3)
 
-- [ ] **Task 6 — UI** (AC: #7)
-  - [ ] `app/components/sas/SasConfigForm.vue`
-  - [ ] `app/components/sas/FiscalYearForm.vue`
-  - [ ] `app/components/sas/DividendCapacityCard.vue` — consomme la fonction `computeDividendCapacity` directement avec les valeurs courantes (avant ou après save) via `computed`
-  - [ ] `app/pages/sas.vue`
-  - [ ] Lien `/sas` dans `AppNav.vue`
+- [x] **Task 6 — UI** (AC: #7)
+  - [x] `app/components/sas/SasConfigForm.vue`
+  - [x] `app/components/sas/FiscalYearForm.vue`
+  - [x] `app/components/sas/DividendCapacityCard.vue` — `computeDividendCapacity` via `computed`, recalcul live
+  - [x] `app/pages/sas.vue`
+  - [x] Lien `/sas` dans `AppNav.vue`
 
-- [ ] **Task 7 — E2E** (AC: #11)
-  - [ ] `tests/e2e/sas.spec.ts`
+- [x] **Task 7 — E2E** (AC: #11)
+  - [x] `tests/e2e/sas.spec.ts`
 
-- [ ] **Task 8 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run`, `yarn test:e2e` verts
-  - [ ] Aucun nouveau code d'erreur
-  - [ ] Commit unique
+- [x] **Task 8 — Sanity check final**
+  - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` verts ; `yarn test:e2e` vert sur chromium (firefox non supporté sur l'OS — idem 5.3)
+  - [x] Aucun nouveau code d'erreur
+  - [ ] Commit unique (en attente d'instruction utilisateur)
 
 ## Dev Notes
 
@@ -206,12 +206,62 @@ Cette story crée :
 
 ### Agent Model Used
 
+claude-opus-4-8[1m] (Amelia / bmad-dev-story)
+
 ### Debug Log References
+
+- Bootstrap test (5.3) cassé après ajout du seed `sas_config` → table ajoutée au DDL de
+  setup + assertion d'idempotence du singleton `sas_config` ajoutée.
+- `yarn db:push` via `yarn drizzle-kit push --force` (TTY absent ; statement additif).
 
 ### Completion Notes List
 
+- Table `sas_config` **singleton** (`id=1`), seedée idempotemment au bootstrap (défauts du
+  schéma : `fiscal_year_end_date='12-31'`, `is_rate_pct=1500`).
+- `fiscalYearEndDate` au format `MM-DD` avec validation sémantique via année bissextile de
+  référence (2000) → `02-29` autorisé, `02-30`/`04-31` rejetés.
+- **Service pur** `shared/services/dividend-capacity.ts` (`computeDividendCapacity`) : aucune
+  dépendance `db`/`fs`, importable côté serveur ET client → la card recalcule live sans
+  aller-retour serveur. Formule V1 simplifiée documentée en JSDoc (pas de reports
+  déficitaires, taux IS réduit, réserves légales). `tax = floor(profit × isRatePct / 10000)`
+  uniquement si profit > 0 ; `capacity = max(0, profitAfterTax + treasury)`.
+- Endpoints GET/PUT identiques au pattern singleton 5.3 (patch partiel `.strict()`).
+- UI : `SasConfigForm` émet `change` (cents live) → la page alimente `DividendCapacityCard`
+  via `computed`. Recalcul instantané AVANT save (vérifié E2E : 54 000 €). Styles réutilisés
+  depuis `revenue-panel.css` (DRY). Parsing euros mutualisé via `app/utils/euros.ts` (5.3).
+- Tests : **14 nouveaux** (6 service pur + 8 endpoints) + 1 assertion bootstrap. Suite
+  complète **262/262**. E2E sas chromium vert. Firefox non supporté sur ubuntu26.04-x64.
+- Aucun nouveau code d'erreur API.
+- Note doc : mise à jour `architecture.md` (placement `shared/services/`) non faite —
+  non bloquante, à grouper dans une passe doc dédiée.
+
 ### File List
 
+**Créés**
+- `shared/schemas/sas-config.schema.ts`
+- `shared/services/dividend-capacity.ts`
+- `shared/services/dividend-capacity.test.ts`
+- `server/api/sas-config.get.ts`
+- `server/api/sas-config.put.ts`
+- `server/api/sas-config.test.ts`
+- `app/composables/useSasConfig.ts`
+- `app/components/sas/SasConfigForm.vue`
+- `app/components/sas/FiscalYearForm.vue`
+- `app/components/sas/DividendCapacityCard.vue`
+- `app/pages/sas.vue`
+- `tests/e2e/sas.spec.ts`
+
+**Modifiés**
+- `server/db/schema.ts` (table `sasConfig` + types)
+- `server/middleware/0.bootstrap.ts` (seed singleton `sas_config`)
+- `server/middleware/bootstrap.test.ts` (table + assertion sas_config)
+- `app/components/shared/AppNav.vue` (lien `/sas` activé)
+
 ### Change Log
+
+- 2026-06-14 — Implémentation story 5.4 : schéma `sas_config` singleton + seed bootstrap,
+  service pur `computeDividendCapacity` (capacité dividendable V1), endpoints GET/PUT,
+  composable `useSasConfig`, page `/sas` (config + clôture + card live recalc). Tests unit +
+  E2E. Status → review.
 
 ### Review Findings

@@ -38,6 +38,15 @@ beforeAll(async () => {
       expense_reimbursements_monthly_cents INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
+    CREATE TABLE sas_config (
+      id INTEGER PRIMARY KEY,
+      fiscal_year_end_date TEXT NOT NULL DEFAULT '12-31',
+      revenue_forecast_cents INTEGER NOT NULL DEFAULT 0,
+      expenses_forecast_cents INTEGER NOT NULL DEFAULT 0,
+      current_treasury_cents INTEGER NOT NULL DEFAULT 0,
+      is_rate_pct INTEGER NOT NULL DEFAULT 1500,
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
   `)
 })
 
@@ -60,8 +69,8 @@ async function runBootstrapFresh() {
   await mod.default(fakeEvent)
 }
 
-describe('bootstrap — seed revenue_models singleton (story 5.3)', () => {
-  it('seeds exactly one zero row, idempotent across two runs', async () => {
+describe('bootstrap — seed singletons (stories 5.3, 5.4)', () => {
+  it('seeds exactly one zero revenue_models row, idempotent across two runs', async () => {
     await runBootstrapFresh()
     await runBootstrapFresh()
 
@@ -72,5 +81,19 @@ describe('bootstrap — seed revenue_models singleton (story 5.3)', () => {
     expect(rows[0]!.unemploymentBenefitEndDate).toBeNull()
     expect(rows[0]!.sasMonthlyRentCents).toBe(0)
     expect(rows[0]!.expenseReimbursementsMonthlyCents).toBe(0)
+  })
+
+  it('seeds exactly one default sas_config row, idempotent across two runs', async () => {
+    await runBootstrapFresh()
+    await runBootstrapFresh()
+
+    const rows = dbMod.db.select().from(schema.sasConfig).all()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.id).toBe(1)
+    expect(rows[0]!.fiscalYearEndDate).toBe('12-31')
+    expect(rows[0]!.revenueForecastCents).toBe(0)
+    expect(rows[0]!.expensesForecastCents).toBe(0)
+    expect(rows[0]!.currentTreasuryCents).toBe(0)
+    expect(rows[0]!.isRatePct).toBe(1500)
   })
 })

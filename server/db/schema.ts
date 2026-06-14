@@ -162,6 +162,33 @@ export type RevenueModelRow = typeof revenueModels.$inferSelect
 export type NewRevenueModelRow = typeof revenueModels.$inferInsert
 
 /**
+ * sas_config — données fiscales de la SAS déclarées par l'utilisateur (FR23-FR28).
+ *
+ * SINGLETON mono-utilisateur : une seule ligne `id = 1`, seedée au bootstrap (story 5.4).
+ *
+ * NOTES :
+ *  - `fiscal_year_end_date` au format `MM-DD` (sans année — clôture récurrente). Le forecast
+ *    (story 7.x) le résout en `YYYY-MM-DD` selon l'année courante. Défaut `12-31`.
+ *  - `is_rate_pct` = taux IS en pourcentage × 100 (entier, évite les floats en DB) :
+ *    1500 = 15 %, 2500 = 25 %. La fonction de calcul divise par 10 000. Cohérent avec
+ *    `tax_settings.*_pct` (story 5.5). L'utilisateur saisit son taux EFFECTIF (pas de
+ *    gestion auto du seuil réduit 42 500 € en V1).
+ *  - Montants NON signés (CA, charges, trésorerie ≥ 0, garanti par le schéma Zod).
+ */
+export const sasConfig = sqliteTable('sas_config', {
+  id: integer('id').primaryKey(),
+  fiscalYearEndDate: text('fiscal_year_end_date').notNull().default('12-31'),
+  revenueForecastCents: integer('revenue_forecast_cents').notNull().default(0),
+  expensesForecastCents: integer('expenses_forecast_cents').notNull().default(0),
+  currentTreasuryCents: integer('current_treasury_cents').notNull().default(0),
+  isRatePct: integer('is_rate_pct').notNull().default(1500),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+})
+
+export type SasConfigRow = typeof sasConfig.$inferSelect
+export type NewSasConfigRow = typeof sasConfig.$inferInsert
+
+/**
  * dismissed_suggestions — libellés normalisés de suggestions de charges récurrentes
  * rejetées par l'utilisateur (Story 5.2). `charge-suggester` exclut ces labels.
  * Insert idempotent (UNIQUE) ; pas de soft-delete.
