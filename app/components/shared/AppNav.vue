@@ -13,7 +13,7 @@ const items: NavItem[] = [
   { label: 'Import', href: '/import' },
   { label: 'Transactions', href: `/transactions/${currentPeriod}` },
   { label: 'Charges', href: '/charges' },
-  { label: 'Revenus', href: null },
+  { label: 'Revenus', href: '/revenus' },
   { label: 'SAS', href: null },
   { label: 'Dettes', href: null },
   { label: 'Forecast', href: null },

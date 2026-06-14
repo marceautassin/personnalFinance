@@ -1,6 +1,6 @@
 # Story 5.3: Schéma `revenue_models` + endpoints + UI (ARE, loyer SAS, défraiements)
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -77,37 +77,37 @@ so that the forecast (Epic 7) knows my recurring incomes alongside my fixed char
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schéma DB + bootstrap seed** (AC: #1, #2)
-  - [ ] Ajouter `revenueModels` à `server/db/schema.ts`
-  - [ ] Étendre `server/middleware/0.bootstrap.ts` pour seed `INSERT OR IGNORE INTO revenue_models (id, ...) VALUES (1, 0, NULL, 0, 0, ...)` après le seed catégories
-  - [ ] `yarn db:push`
-  - [ ] Test bootstrap : appeler le middleware 2× → 1 seule ligne, valeurs zéro
+- [x] **Task 1 — Schéma DB + bootstrap seed** (AC: #1, #2)
+  - [x] Ajouter `revenueModels` à `server/db/schema.ts`
+  - [x] Étendre `server/middleware/0.bootstrap.ts` pour seed `INSERT OR IGNORE INTO revenue_models (id, ...) VALUES (1, 0, NULL, 0, 0, ...)` après le seed catégories
+  - [x] `yarn db:push`
+  - [x] Test bootstrap : appeler le middleware 2× → 1 seule ligne, valeurs zéro
 
-- [ ] **Task 2 — Schéma Zod** (AC: #3)
-  - [ ] `shared/schemas/revenue-model.schema.ts`
+- [x] **Task 2 — Schéma Zod** (AC: #3)
+  - [x] `shared/schemas/revenue-model.schema.ts`
 
-- [ ] **Task 3 — Endpoints** (AC: #4, #5)
-  - [ ] `server/api/revenues.get.ts`
-  - [ ] `server/api/revenues.put.ts`
-  - [ ] Tests unitaires (AC#9)
+- [x] **Task 3 — Endpoints** (AC: #4, #5)
+  - [x] `server/api/revenues.get.ts`
+  - [x] `server/api/revenues.put.ts`
+  - [x] Tests unitaires (AC#9)
 
-- [ ] **Task 4 — Composable** (AC: #8)
-  - [ ] `app/composables/useRevenueModel.ts`
+- [x] **Task 4 — Composable** (AC: #8)
+  - [x] `app/composables/useRevenueModel.ts`
 
-- [ ] **Task 5 — UI** (AC: #6, #7)
-  - [ ] `app/components/revenues/ArePanel.vue`
-  - [ ] `app/components/revenues/SasRentPanel.vue`
-  - [ ] `app/components/revenues/ReimbursementsPanel.vue`
-  - [ ] `app/pages/revenus.vue`
-  - [ ] Lien `/revenus` dans `AppNav.vue`
+- [x] **Task 5 — UI** (AC: #6, #7)
+  - [x] `app/components/revenues/ArePanel.vue`
+  - [x] `app/components/revenues/SasRentPanel.vue`
+  - [x] `app/components/revenues/ReimbursementsPanel.vue`
+  - [x] `app/pages/revenus.vue`
+  - [x] Lien `/revenus` dans `AppNav.vue`
 
-- [ ] **Task 6 — E2E** (AC: #10)
-  - [ ] `tests/e2e/revenues.spec.ts`
+- [x] **Task 6 — E2E** (AC: #10)
+  - [x] `tests/e2e/revenues.spec.ts`
 
-- [ ] **Task 7 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run`, `yarn test:e2e` verts
-  - [ ] Aucun nouveau code d'erreur
-  - [ ] Commit unique
+- [x] **Task 7 — Sanity check final**
+  - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` verts ; `yarn test:e2e` vert sur chromium (firefox non supporté sur cet OS — limitation env, idem story 5.1)
+  - [x] Aucun nouveau code d'erreur
+  - [ ] Commit unique (en attente d'instruction utilisateur — CLAUDE.md : pas de commit sans demande explicite)
 
 ## Dev Notes
 
@@ -174,12 +174,61 @@ Cette story crée :
 
 ### Agent Model Used
 
+claude-opus-4-8[1m] (Amelia / bmad-dev-story)
+
 ### Debug Log References
+
+- `defineEventHandler` n'est pas auto-importé en env vitest → import explicite depuis `h3`
+  ajouté dans `0.bootstrap.ts` (aligné sur la convention des endpoints du projet) pour rendre
+  le middleware testable.
+- `yarn db:push` exige un TTY ; appliqué via `yarn drizzle-kit push --force` (statement
+  `CREATE TABLE revenue_models` purement additif).
 
 ### Completion Notes List
 
+- Table `revenue_models` en **singleton** (`id` PK = 1, sans autoIncrement), seedée
+  idempotemment au bootstrap (`onConflictDoNothing` sur `id`).
+- Endpoint `PUT /api/revenues` en **patch partiel** sous verbe PUT (cf. Dev Notes) :
+  `RevenueModelPatchSchema.strict()`, au moins un champ requis, `updated_at` régénéré.
+- Validation euros UI factorisée dans `app/utils/euros.ts` (`parseEurosToCents`) — zéro
+  duplication entre les 3 panneaux (AC#11).
+- Styles des panneaux factorisés dans `app/assets/styles/revenue-panel.css` (chargé
+  globalement via `nuxt.config`), les 3 panneaux n'ont pas de bloc `<style>` dupliqué.
+- Badge FR22 « Non imposable » : `<small>` avec `aria-label`, purement informatif (aucun
+  calcul fiscal V1).
+- `useInvalidate.invalidateForecast/Dashboard` appelés post-mutation (stubs jusqu'à 7.8).
+- Tests : 8 unitaires (7 endpoints + 1 bootstrap idempotence), tous verts. Suite complète
+  247/247. E2E chromium vert ; firefox non installable sur ubuntu26.04-x64 (limitation
+  d'environnement Playwright, déjà constatée sur les specs antérieurs ex. 5.1).
+- Aucun nouveau code d'erreur API (réutilise `validation_failed`).
+
 ### File List
 
+**Créés**
+- `shared/schemas/revenue-model.schema.ts`
+- `server/api/revenues.get.ts`
+- `server/api/revenues.put.ts`
+- `server/api/revenues.test.ts`
+- `server/middleware/bootstrap.test.ts`
+- `app/composables/useRevenueModel.ts`
+- `app/utils/euros.ts`
+- `app/assets/styles/revenue-panel.css`
+- `app/components/revenues/ArePanel.vue`
+- `app/components/revenues/SasRentPanel.vue`
+- `app/components/revenues/ReimbursementsPanel.vue`
+- `app/pages/revenus.vue`
+- `tests/e2e/revenues.spec.ts`
+
+**Modifiés**
+- `server/db/schema.ts` (table `revenueModels` + types)
+- `server/middleware/0.bootstrap.ts` (seed singleton + import explicite `defineEventHandler`)
+- `app/components/shared/AppNav.vue` (lien `/revenus` activé)
+- `nuxt.config.ts` (ajout `revenue-panel.css` aux CSS globaux)
+
 ### Change Log
+
+- 2026-06-14 — Implémentation story 5.3 : schéma `revenue_models` singleton + seed bootstrap,
+  endpoints GET/PUT (patch partiel), composable `useRevenueModel`, page `/revenus` à 3 panneaux
+  (ARE, loyer SAS, défraiements) + badge FR22, tests unit + E2E. Status → review.
 
 ### Review Findings

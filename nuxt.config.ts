@@ -20,6 +20,7 @@ export default defineNuxtConfig({
     '~/assets/styles/reset.css',
     '~/assets/styles/tokens.css',
     '~/assets/styles/global.css',
+    '~/assets/styles/revenue-panel.css',
   ],
   // SPA mode — décision PRD (mono-user, local-first, pas de SEO)
   // Workaround Nuxt 4.4.4 bug : avec `ssr: false`, le SSR server vite n'est pas créé,

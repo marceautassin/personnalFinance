@@ -36,7 +36,9 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30
-last_updated: 2026-06-05
+last_updated: 2026-06-14
+# (stories 5-1, 5-2 : review → done ; reste epic-5 : 5-3..5-6 ready-for-dev)
+# (dev story 5-3 : ready-for-dev → in-progress → review)
 # (review epic-3 + apply patches : 3-1, 3-2, 3-3 → done ; epic-2 et epic-3 → done)
 # (création stories epic-4 : 4-1, 4-2, 4-3 → ready-for-dev ; epic-4 → in-progress)
 # (création stories epic-5 : 5-1..5-6 → ready-for-dev ; epic-5 → in-progress)
@@ -90,9 +92,9 @@ development_status:
 
   # Epic 5 — Modèles financiers (charges, revenus, SAS, fiscalité)
   epic-5: in-progress
-  5-1-fixed-charges-crud-et-ui: review
-  5-2-charge-suggester-et-suggestions-ui: review
-  5-3-revenue-models-endpoints-et-ui: ready-for-dev
+  5-1-fixed-charges-crud-et-ui: done
+  5-2-charge-suggester-et-suggestions-ui: done
+  5-3-revenue-models-endpoints-et-ui: review
   5-4-sas-config-dividend-capacity-et-ui: ready-for-dev
   5-5-tax-settings-endpoints-et-ui: ready-for-dev
   5-6-gestion-categories-crud-et-ui: ready-for-dev

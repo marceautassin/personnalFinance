@@ -136,6 +136,32 @@ export type FixedChargeRow = typeof fixedCharges.$inferSelect
 export type NewFixedChargeRow = typeof fixedCharges.$inferInsert
 
 /**
+ * revenue_models — sources de revenus récurrentes déclarées par l'utilisateur (FR19-FR22).
+ *
+ * SINGLETON mono-utilisateur : une seule ligne `id = 1`, seedée au bootstrap (story 1.5
+ * étendue). Pas de logique "current row" — V1 mono-user, pas d'auth. Si V2 multi-user :
+ * ajouter `user_id` FK + index unique.
+ *
+ * NOTES :
+ *  - Tous les montants sont des revenus → NON signés (≥ 0, garanti par le schéma Zod).
+ *  - `unemployment_benefit_end_date` nullable : fin estimée des droits ARE. Une date
+ *    passée acte "droits épuisés" — le forecast (story 7.x) l'intègre tel quel.
+ *  - `expense_reimbursements_monthly_cents` : défraiements NON imposables (FR22). Le flag
+ *    "non imposable" est implicite (sémantique figée par champ), pas une colonne.
+ */
+export const revenueModels = sqliteTable('revenue_models', {
+  id: integer('id').primaryKey(),
+  unemploymentBenefitMonthlyCents: integer('unemployment_benefit_monthly_cents').notNull().default(0),
+  unemploymentBenefitEndDate: text('unemployment_benefit_end_date'),
+  sasMonthlyRentCents: integer('sas_monthly_rent_cents').notNull().default(0),
+  expenseReimbursementsMonthlyCents: integer('expense_reimbursements_monthly_cents').notNull().default(0),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+})
+
+export type RevenueModelRow = typeof revenueModels.$inferSelect
+export type NewRevenueModelRow = typeof revenueModels.$inferInsert
+
+/**
  * dismissed_suggestions — libellés normalisés de suggestions de charges récurrentes
  * rejetées par l'utilisateur (Story 5.2). `charge-suggester` exclut ces labels.
  * Insert idempotent (UNIQUE) ; pas de soft-delete.

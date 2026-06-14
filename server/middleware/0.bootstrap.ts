@@ -1,6 +1,7 @@
 import { mkdirSync, existsSync } from 'node:fs'
+import { defineEventHandler } from 'h3'
 import { db } from '../db/client'
-import { categoryDefinitions } from '../db/schema'
+import { categoryDefinitions, revenueModels } from '../db/schema'
 import { DEFAULT_CATEGORIES } from '~~/shared/constants/default-categories'
 
 let isBootstrapped = false
@@ -43,6 +44,13 @@ async function bootstrap(): Promise<void> {
       })),
     )
     .onConflictDoNothing({ target: categoryDefinitions.code })
+    .run()
+
+  // Singleton revenue_models (story 5.3) : seed idempotent de la ligne id=1 à zéro.
+  db
+    .insert(revenueModels)
+    .values({ id: 1 })
+    .onConflictDoNothing({ target: revenueModels.id })
     .run()
 
   console.warn(`[bootstrap] OK — base prête (${inserted.changes} catégorie(s) insérée(s))`)
