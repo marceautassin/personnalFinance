@@ -14,7 +14,8 @@
  * V1 : drizzle-kit push (pas de migrations versionnées). Bascule possible vers
  * drizzle-kit generate + apply-migration plus tard sans changement de schéma.
  */
-import { sqliteTable, integer, text, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, integer, text, index, check } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
 
 /**
  * Référentiel des catégories de transaction (seedé par bootstrap, FR16).
@@ -187,6 +188,33 @@ export const sasConfig = sqliteTable('sas_config', {
 
 export type SasConfigRow = typeof sasConfig.$inferSelect
 export type NewSasConfigRow = typeof sasConfig.$inferInsert
+
+/**
+ * tax_settings — mode et taux d'imposition des dividendes déclarés par l'utilisateur
+ * (FR35-FR36). SINGLETON mono-utilisateur : une seule ligne `id = 1`, seedée au bootstrap
+ * (story 5.5).
+ *
+ * NOTES :
+ *  - `dividend_tax_rate_pct` = taux en pourcentage × 100 (entier, évite les floats en DB) :
+ *    3000 = 30 % (flat tax PFU). La fonction de calcul (story 7.4) divise par 10 000.
+ *    Cohérent avec `sas_config.is_rate_pct` (story 5.4).
+ *  - `dividend_tax_mode` : `flat_tax` (PFU 30 %) ou `progressive` (barème IR). Le mode
+ *    `progressive` est DÉCLARATIF en V1 (FR36) — le forecast applique le taux `dividend_tax_rate_pct`
+ *    quel que soit le mode, aucune simulation IR détaillée.
+ */
+export const taxSettings = sqliteTable('tax_settings', {
+  id: integer('id').primaryKey(),
+  dividendTaxRatePct: integer('dividend_tax_rate_pct').notNull().default(3000),
+  dividendTaxMode: text('dividend_tax_mode', { enum: ['flat_tax', 'progressive'] })
+    .notNull()
+    .default('flat_tax'),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, table => [
+  check('tax_settings_mode_check', sql`${table.dividendTaxMode} IN ('flat_tax', 'progressive')`),
+])
+
+export type TaxSettingsRow = typeof taxSettings.$inferSelect
+export type NewTaxSettingsRow = typeof taxSettings.$inferInsert
 
 /**
  * dismissed_suggestions — libellés normalisés de suggestions de charges récurrentes

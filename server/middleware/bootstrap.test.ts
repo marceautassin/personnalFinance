@@ -47,6 +47,13 @@ beforeAll(async () => {
       is_rate_pct INTEGER NOT NULL DEFAULT 1500,
       updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
+    CREATE TABLE tax_settings (
+      id INTEGER PRIMARY KEY,
+      dividend_tax_rate_pct INTEGER NOT NULL DEFAULT 3000,
+      dividend_tax_mode TEXT NOT NULL DEFAULT 'flat_tax'
+        CHECK(dividend_tax_mode IN ('flat_tax','progressive')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
   `)
 })
 
@@ -69,7 +76,7 @@ async function runBootstrapFresh() {
   await mod.default(fakeEvent)
 }
 
-describe('bootstrap — seed singletons (stories 5.3, 5.4)', () => {
+describe('bootstrap — seed singletons (stories 5.3, 5.4, 5.5)', () => {
   it('seeds exactly one zero revenue_models row, idempotent across two runs', async () => {
     await runBootstrapFresh()
     await runBootstrapFresh()
@@ -95,5 +102,16 @@ describe('bootstrap — seed singletons (stories 5.3, 5.4)', () => {
     expect(rows[0]!.expensesForecastCents).toBe(0)
     expect(rows[0]!.currentTreasuryCents).toBe(0)
     expect(rows[0]!.isRatePct).toBe(1500)
+  })
+
+  it('seeds exactly one default tax_settings row, idempotent across two runs', async () => {
+    await runBootstrapFresh()
+    await runBootstrapFresh()
+
+    const rows = dbMod.db.select().from(schema.taxSettings).all()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.id).toBe(1)
+    expect(rows[0]!.dividendTaxRatePct).toBe(3000)
+    expect(rows[0]!.dividendTaxMode).toBe('flat_tax')
   })
 })

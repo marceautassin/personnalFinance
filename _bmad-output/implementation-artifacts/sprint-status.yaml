@@ -36,7 +36,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30
-last_updated: 2026-06-14
+last_updated: 2026-07-07
 # (stories 5-1, 5-2 : review → done ; reste epic-5 : 5-3..5-6 ready-for-dev)
 # (dev story 5-3 : ready-for-dev → in-progress → review)
 # (dev story 5-4 : ready-for-dev → in-progress → review)
@@ -97,7 +97,7 @@ development_status:
   5-2-charge-suggester-et-suggestions-ui: done
   5-3-revenue-models-endpoints-et-ui: review
   5-4-sas-config-dividend-capacity-et-ui: review
-  5-5-tax-settings-endpoints-et-ui: ready-for-dev
+  5-5-tax-settings-endpoints-et-ui: review
   5-6-gestion-categories-crud-et-ui: ready-for-dev
   epic-5-retrospective: optional
 

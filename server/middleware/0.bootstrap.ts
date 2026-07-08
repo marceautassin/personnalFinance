@@ -1,7 +1,7 @@
 import { mkdirSync, existsSync } from 'node:fs'
 import { defineEventHandler } from 'h3'
 import { db } from '../db/client'
-import { categoryDefinitions, revenueModels, sasConfig } from '../db/schema'
+import { categoryDefinitions, revenueModels, sasConfig, taxSettings } from '../db/schema'
 import { DEFAULT_CATEGORIES } from '~~/shared/constants/default-categories'
 
 let isBootstrapped = false
@@ -58,6 +58,13 @@ async function bootstrap(): Promise<void> {
     .insert(sasConfig)
     .values({ id: 1 })
     .onConflictDoNothing({ target: sasConfig.id })
+    .run()
+
+  // Singleton tax_settings (story 5.5) : seed idempotent id=1 (flat tax 30 % par défaut).
+  db
+    .insert(taxSettings)
+    .values({ id: 1 })
+    .onConflictDoNothing({ target: taxSettings.id })
     .run()
 
   console.warn(`[bootstrap] OK — base prête (${inserted.changes} catégorie(s) insérée(s))`)

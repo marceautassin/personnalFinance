@@ -17,7 +17,7 @@ const items: NavItem[] = [
   { label: 'SAS', href: '/sas' },
   { label: 'Dettes', href: null },
   { label: 'Forecast', href: null },
-  { label: 'Paramètres', href: null },
+  { label: 'Paramètres', href: '/parametres' },
 ]
 </script>
 

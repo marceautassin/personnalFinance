@@ -1,6 +1,6 @@
 # Story 5.5: Schéma `tax_settings` + endpoints + UI (flat tax, mode imposition)
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -85,39 +85,39 @@ so that the forecast (Epic 7) can compute net amounts correctly from the gross d
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Constantes fiscales** (AC: #3)
-  - [ ] Créer `shared/constants/fiscal-defaults.ts`
-  - [ ] Pas de logique, juste des `export const`. Test minimal de présence (ou skip — c'est un fichier de constantes)
+- [x] **Task 1 — Constantes fiscales** (AC: #3)
+  - [x] Créer `shared/constants/fiscal-defaults.ts`
+  - [x] Pas de logique, juste des `export const`. Test minimal de présence (ou skip — c'est un fichier de constantes)
 
-- [ ] **Task 2 — Schéma DB + bootstrap seed** (AC: #1, #2)
-  - [ ] Ajouter `taxSettings` à `server/db/schema.ts`
-  - [ ] Étendre `0.bootstrap.ts`
-  - [ ] `yarn db:push`
+- [x] **Task 2 — Schéma DB + bootstrap seed** (AC: #1, #2)
+  - [x] Ajouter `taxSettings` à `server/db/schema.ts`
+  - [x] Étendre `0.bootstrap.ts`
+  - [x] `yarn db:push`
 
-- [ ] **Task 3 — Schéma Zod** (AC: #4)
-  - [ ] `shared/schemas/tax-settings.schema.ts`
+- [x] **Task 3 — Schéma Zod** (AC: #4)
+  - [x] `shared/schemas/tax-settings.schema.ts`
 
-- [ ] **Task 4 — Endpoints** (AC: #5)
-  - [ ] `server/api/tax-settings.get.ts`
-  - [ ] `server/api/tax-settings.put.ts`
-  - [ ] Tests unitaires (AC#9)
+- [x] **Task 4 — Endpoints** (AC: #5)
+  - [x] `server/api/tax-settings.get.ts`
+  - [x] `server/api/tax-settings.put.ts`
+  - [x] Tests unitaires (AC#9)
 
-- [ ] **Task 5 — Composable** (AC: #8)
-  - [ ] `app/composables/useTaxSettings.ts`
+- [x] **Task 5 — Composable** (AC: #8)
+  - [x] `app/composables/useTaxSettings.ts`
 
-- [ ] **Task 6 — UI** (AC: #6, #7)
-  - [ ] `app/components/parametres/TaxSettingsForm.vue`
-  - [ ] `app/pages/parametres.vue`
-  - [ ] Lien `/parametres` dans `AppNav.vue`
+- [x] **Task 6 — UI** (AC: #6, #7)
+  - [x] `app/components/parametres/TaxSettingsForm.vue`
+  - [x] `app/pages/parametres.vue`
+  - [x] Lien `/parametres` dans `AppNav.vue`
 
-- [ ] **Task 7 — E2E** (AC: #10)
-  - [ ] `tests/e2e/parametres.spec.ts`
+- [x] **Task 7 — E2E** (AC: #10)
+  - [x] `tests/e2e/parametres.spec.ts`
 
-- [ ] **Task 8 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run`, `yarn test:e2e` verts
-  - [ ] **Audit** : grep que aucun `30` / `0.30` / `0.3` n'apparaît dans le code de calcul (forecast/dividend) — `FLAT_TAX_DEFAULT_PCT` ou lecture DB uniquement
-  - [ ] Aucun nouveau code d'erreur
-  - [ ] Commit unique
+- [x] **Task 8 — Sanity check final**
+  - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` verts ; `yarn test:e2e` OK sur chromium (firefox non installé dans l'env — hors périmètre)
+  - [x] **Audit** : aucun taux fiscal hardcodé dans un calcul (aucune fonction de calcul touchée par cette story ; défauts uniquement dans `fiscal-defaults.ts` + seed)
+  - [x] Aucun nouveau code d'erreur (réutilise `validation_failed`)
+  - [x] Commit unique
 
 ## Dev Notes
 
@@ -192,12 +192,41 @@ Cette story crée :
 
 ### Agent Model Used
 
+claude-opus-4-8 (dev-story workflow)
+
 ### Debug Log References
+
+- `yarn db:push` requiert un TTY → appliqué via `npx drizzle-kit push --force` (nouvelle table, aucun data-loss).
+- E2E firefox échoue sur `ENOENT firefox-1511` (navigateur non installé dans l'env). Chromium ✓.
 
 ### Completion Notes List
 
+- Singleton `tax_settings` (id=1) : taux dividende `pct×100` + mode (`flat_tax`/`progressive`) avec CHECK DB, cohérent avec `sas_config` (5.4).
+- Mode `progressive` déclaratif (FR36) : note FR permanente sous le select, aucune logique métier V1.
+- Pattern singleton GET/PUT partiel identique à `sas-config` ; `useTaxSettings` réutilise `mapMutationError` + invalidations forecast/dashboard (no-op jusqu'à 7.8).
+- `fiscal-defaults.ts` créé comme source de vérité des défauts/fallback (incl. `IS_REDUCED_THRESHOLD_CENTS`, non éditable).
+- Lien `/parametres` activé dans `AppNav`.
+- Aucune fonction de calcul financier touchée → aucun taux hardcodé introduit.
+- 271 tests unitaires verts (dont 7 nouveaux endpoints + 1 seed bootstrap).
+
 ### File List
 
+- `shared/constants/fiscal-defaults.ts` (nouveau)
+- `shared/schemas/tax-settings.schema.ts` (nouveau)
+- `server/db/schema.ts` (modifié — table `taxSettings` + import `check`/`sql`)
+- `server/middleware/0.bootstrap.ts` (modifié — seed `tax_settings`)
+- `server/middleware/bootstrap.test.ts` (modifié — fixture + test seed)
+- `server/api/tax-settings.get.ts` (nouveau)
+- `server/api/tax-settings.put.ts` (nouveau)
+- `server/api/tax-settings.test.ts` (nouveau)
+- `app/composables/useTaxSettings.ts` (nouveau)
+- `app/components/parametres/TaxSettingsForm.vue` (nouveau)
+- `app/pages/parametres.vue` (nouveau)
+- `app/components/shared/AppNav.vue` (modifié — lien `/parametres`)
+- `tests/e2e/parametres.spec.ts` (nouveau)
+
 ### Change Log
+
+- 2026-07-07 : Implémentation story 5.5 — `tax_settings` singleton (schéma + seed + endpoints GET/PUT + composable + UI `/parametres` + tests). Status → review.
 
 ### Review Findings
