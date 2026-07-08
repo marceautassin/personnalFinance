@@ -4,6 +4,7 @@ import { REPAYMENT_MODE_LABELS } from '~/composables/useDebts'
 import type { Debt } from '~~/shared/schemas/debt.schema'
 import type { NewDebtAdvance } from '~~/shared/schemas/debt-advance.schema'
 import DebtAdvanceForm from './DebtAdvanceForm.vue'
+import DebtImpactOnDividend from './DebtImpactOnDividend.vue'
 
 const props = defineProps<{
   debt: Debt
@@ -16,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const showAdvance = ref(false)
+const showImpact = ref(false)
 
 /** Détail du mode : mensualité formatée, date d'échéance, ou rien (libre). */
 const modeDetail = computed(() => {
@@ -63,6 +65,13 @@ function onAdvance(payload: NewDebtAdvance) {
       <button
         type="button"
         class="debt-card__btn"
+        @click="showImpact = !showImpact"
+      >
+        Impact
+      </button>
+      <button
+        type="button"
+        class="debt-card__btn"
         @click="emit('edit', debt)"
       >
         Modifier
@@ -82,6 +91,11 @@ function onAdvance(payload: NewDebtAdvance) {
       :saving="savingAdvance"
       @submit="onAdvance"
       @cancel="showAdvance = false"
+    />
+
+    <DebtImpactOnDividend
+      v-if="showImpact"
+      :debt-id="debt.id"
     />
   </article>
 </template>

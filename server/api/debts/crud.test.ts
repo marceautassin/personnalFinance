@@ -20,6 +20,7 @@ let postHandler: Handler
 let putHandler: Handler
 let deleteHandler: Handler
 let advanceHandler: Handler
+let impactHandler: Handler
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sqlite: any
 
@@ -68,6 +69,7 @@ beforeAll(async () => {
   putHandler = (await import('./[id].put')).default as Handler
   deleteHandler = (await import('./[id].delete')).default as Handler
   advanceHandler = (await import('./[id]/advances.post')).default as Handler
+  impactHandler = (await import('./[id]/impact.get')).default as Handler
 })
 
 afterAll(() => {
@@ -270,5 +272,37 @@ describe('POST /api/debts/[id]/advances', () => {
     await expect(advanceHandler(makeEvent({ method: 'POST', id: String(d.id), body: {
       amountCents: 0, advanceDate: '2026-02-01',
     } }))).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+})
+
+describe('GET /api/debts/[id]/impact', () => {
+  it('mode monthly : dépense projetée = solde sur chaque horizon (déterministe)', async () => {
+    // Solde 250 000, mensualité 100 000 → remboursé en 3 mois → total = 250 000 sur 6/12/24.
+    const d = (await postHandler(makeEvent({ method: 'POST', body: {
+      creditor: 'Banque', initialBalanceCents: 250_000, repaymentMode: 'monthly', monthlyAmountCents: 100_000,
+    } }))) as DebtOut
+    const impact = (await impactHandler(makeEvent({ method: 'GET', id: String(d.id) }))) as {
+      debtId: number
+      horizonsCents: Record<number, number>
+    }
+    expect(impact.debtId).toBe(d.id)
+    expect(impact.horizonsCents[6]).toBe(250_000)
+    expect(impact.horizonsCents[12]).toBe(250_000)
+    expect(impact.horizonsCents[24]).toBe(250_000)
+  })
+
+  it('mode free : impact nul sur tous les horizons', async () => {
+    const d = (await postHandler(makeEvent({ method: 'POST', body: {
+      creditor: 'Ami', initialBalanceCents: 500_000, repaymentMode: 'free',
+    } }))) as DebtOut
+    const impact = (await impactHandler(makeEvent({ method: 'GET', id: String(d.id) }))) as {
+      horizonsCents: Record<number, number>
+    }
+    expect(impact.horizonsCents[6]).toBe(0)
+    expect(impact.horizonsCents[24]).toBe(0)
+  })
+
+  it('dette inexistante → 404', async () => {
+    await expect(impactHandler(makeEvent({ method: 'GET', id: '999' }))).rejects.toMatchObject({ statusCode: 404 })
   })
 })

@@ -106,7 +106,7 @@ development_status:
   6-1-debts-schemas-crud-endpoints: review
   6-2-ui-debts-page-card-form: review
   6-3-marquage-transaction-remboursement-fr9: review
-  6-4-debt-projection-et-impact-ui: backlog
+  6-4-debt-projection-et-impact-ui: review
   epic-6-retrospective: optional
 
   # Epic 7 — Forecast inverse
