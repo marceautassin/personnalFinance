@@ -104,7 +104,7 @@ development_status:
   # Epic 6 — Dettes
   epic-6: in-progress
   6-1-debts-schemas-crud-endpoints: review
-  6-2-ui-debts-page-card-form: backlog
+  6-2-ui-debts-page-card-form: review
   6-3-marquage-transaction-remboursement-fr9: backlog
   6-4-debt-projection-et-impact-ui: backlog
   epic-6-retrospective: optional
