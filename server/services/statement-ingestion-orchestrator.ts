@@ -23,7 +23,7 @@
  */
 import { eq, and, lte, gte } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { bankStatements, transactions } from '~~/server/db/schema'
+import { bankStatements, transactions, categoryDefinitions } from '~~/server/db/schema'
 import { extractStatement } from '~~/server/services/pdf-extractor'
 import {
   categorizeStatement,
@@ -36,7 +36,6 @@ import { savePdfByHash, deletePdfByHash } from '~~/server/utils/file-storage'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { cents } from '~~/shared/types/money'
-import { DEFAULT_CATEGORIES } from '~~/shared/constants/default-categories'
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
 
 export interface IngestStatementArgs {
@@ -89,9 +88,18 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
   })
 
   // 4. Catégorisation LLM (avant résolution période, pour permettre fallback G3)
+  // Story 5.6 : la taxonomie est lue depuis la DB (catégories utilisateur incluses), plus
+  // depuis DEFAULT_CATEGORIES (réservé au seed bootstrap).
+  const availableCategories = await db
+    .select({
+      code: categoryDefinitions.code,
+      label: categoryDefinitions.label,
+      isVariable: categoryDefinitions.isVariable,
+    })
+    .from(categoryDefinitions)
   let extracted: Awaited<ReturnType<typeof categorizeStatement>>
   try {
-    extracted = await categorizeStatement(raw.rawText, DEFAULT_CATEGORIES)
+    extracted = await categorizeStatement(raw.rawText, availableCategories)
   }
   catch (err) {
     if (err instanceof LlmUnavailableError) {

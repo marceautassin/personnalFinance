@@ -1,4 +1,6 @@
-import type { CategoryListItem } from '~~/server/api/categories.get'
+import type { CategoryListItem } from '~~/server/api/categories/index.get'
+
+export type { CategoryListItem }
 
 /**
  * Référentiel des catégories — partagé via la `key` constante du useFetch (cache Nuxt

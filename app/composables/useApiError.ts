@@ -14,6 +14,8 @@ const FR_MESSAGES: Record<ApiErrorCodeValue, string> = {
   [ApiErrorCode.LlmExtractionFailed]: 'L\'analyse automatique du relevé a échoué. Réessaie ou ajoute les transactions manuellement.',
   [ApiErrorCode.LlmUnavailable]: 'Le service de catégorisation est indisponible. Réessaie dans quelques instants.',
   [ApiErrorCode.ReconciliationFailed]: 'Les transactions extraites ne correspondent pas au solde du relevé. Une vérification manuelle est nécessaire.',
+  [ApiErrorCode.CategoryInUse]: 'Catégorie utilisée par des transactions ou charges fixes — supprime les références d\'abord.',
+  [ApiErrorCode.CategoryProtected]: 'Catégorie système, ne peut pas être supprimée.',
 }
 
 const FALLBACK_MESSAGE = 'Une erreur est survenue. Réessaie ou recharge la page.'

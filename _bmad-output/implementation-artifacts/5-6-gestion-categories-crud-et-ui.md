@@ -1,6 +1,6 @@
 # Story 5.6: Gestion des catégories — endpoints CRUD + UI `/categories`
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -94,57 +94,52 @@ so that the taxonomy fits my actual spending patterns and the LLM categorizer (s
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Codes d'erreur** (AC: #14)
-  - [ ] Ajouter `CategoryInUse = 'category_in_use'` et `CategoryProtected = 'category_protected'` à `shared/schemas/api-errors.ts`
-  - [ ] Mapper en FR dans `app/composables/useApiError.ts`
-  - [ ] Mettre à jour `useApiError.test.ts` si pertinent
+- [x] **Task 1 — Codes d'erreur** (AC: #14)
+  - [x] Ajouter `CategoryInUse` et `CategoryProtected` à `shared/schemas/api-errors.ts`
+  - [x] Mapper en FR dans `app/composables/useApiError.ts`
+  - [x] `useApiError.test.ts` : le test « couvre tous les codes » valide automatiquement les 2 nouveaux
 
-- [ ] **Task 2 — Schéma Zod** (AC: #2)
-  - [ ] `shared/schemas/category.schema.ts`
-  - [ ] Helper `slugifyCategoryLabel(label: string): string` dans le même fichier (côté shared, réutilisable)
+- [x] **Task 2 — Schéma Zod** (AC: #2)
+  - [x] `shared/schemas/category.schema.ts` + helper `slugifyCategoryLabel`
 
-- [ ] **Task 3 — Endpoint GET étendu avec `referenceCount`** (AC: #3)
-  - [ ] Modifier `server/api/categories.get.ts` (existant story 2.10) pour ajouter le compteur via une requête CTE/JOIN agrégée unique
-  - [ ] **Précaution** : `monthly_overrides` n'existe pas encore (story 7.2). Inclure conditionnellement (try/catch propre OU compter à 0 tant que la table n'existe pas — via `EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='monthly_overrides')`). À ré-évaluer en story 7.2.
-  - [ ] Mettre à jour le composable `useCategories` si la shape change (peut casser story 2.10's `CategoryEditor` — vérifier rétrocompatibilité)
-  - [ ] Mettre à jour `categories.get.test.ts` existant
+- [x] **Task 3 — Endpoint GET étendu avec `referenceCount`** (AC: #3)
+  - [x] `server/api/categories/index.get.ts` — compteur agrégé (transactions + fixed_charges + overrides)
+  - [x] `monthly_overrides` inclus conditionnellement via `sqlite_master` (table absente avant 7.2 → 0)
+  - [x] `useCategories` : shape additive (`referenceCount`), rétrocompatible `CategoryEditor`
+  - [x] Ancien `categories.get.test.ts` remplacé par `categories/categories.test.ts`
 
-- [ ] **Task 4 — Endpoint POST** (AC: #4, #11)
-  - [ ] `server/api/categories/index.post.ts` (créer ce dossier — l'endpoint existant `categories.get.ts` est en racine ; alternative : `server/api/categories.post.ts` pour rester cohérent ; **décision** : restructurer en `server/api/categories/index.{get,post}.ts` + `[code].{patch,delete}.ts` pour grouper)
-  - [ ] Logique slugification + collision suffixage
-  - [ ] Tests unitaires
+- [x] **Task 4 — Endpoint POST** (AC: #4, #11)
+  - [x] `server/api/categories/index.post.ts` — slugification + collision suffixage `-2`/`-3`
+  - [x] Tests unitaires
 
-- [ ] **Task 5 — Endpoints PATCH + DELETE** (AC: #5, #6, #7, #8, #11)
-  - [ ] `server/api/categories/[code].patch.ts`
-  - [ ] `server/api/categories/[code].delete.ts`
-  - [ ] Constante `PROTECTED_CATEGORY_CODES = new Set(['divers'])` partagée (même fichier ou `fiscal-defaults`-style)
-  - [ ] Pré-check référence (3 requêtes COUNT sur transactions/fixed_charges/monthly_overrides) → 409
-  - [ ] Tests unitaires
+- [x] **Task 5 — Endpoints PATCH + DELETE** (AC: #5, #6, #7, #8, #11)
+  - [x] `[code].patch.ts` + `[code].delete.ts`
+  - [x] `shared/constants/protected-categories.ts` (`PROTECTED_CATEGORY_CODES = {'divers'}`)
+  - [x] Pré-check référence (transactions/fixed_charges/monthly_overrides) → 409
+  - [x] Tests unitaires
 
-- [ ] **Task 6 — Refactor `llm-categorizer.ts`** (AC: #10)
-  - [ ] Modifier la signature de `categorizeStatement` pour accepter `categories: ReadonlyArray<{ code: string, label: string, isVariable: boolean }>`
-  - [ ] Mettre à jour l'orchestrator `statement-ingestion-orchestrator.ts` pour lire `categoryDefinitions` depuis la DB et passer la liste
-  - [ ] `DEFAULT_CATEGORIES` ne reste utilisé que par le bootstrap seed
-  - [ ] Mettre à jour `llm-categorizer.test.ts` (tests existants doivent passer en injectant les categories)
+- [x] **Task 6 — Refactor `llm-categorizer.ts`** (AC: #10)
+  - [x] Signature `categorizeStatement` acceptait déjà `availableCategories` (injection) — aucun changement de signature nécessaire
+  - [x] Orchestrator lit `categoryDefinitions` depuis la DB et passe la liste (fin de `DEFAULT_CATEGORIES` en prod)
+  - [x] `DEFAULT_CATEGORIES` réservé au seed bootstrap
+  - [x] Tests `llm-categorizer.test.ts` / orchestrator inchangés et verts (fixture / mock)
 
-- [ ] **Task 7 — Composable** (AC: #9)
-  - [ ] Étendre `useCategories` (composable existant) pour exposer aussi `addCategory`, `updateCategory`, `deleteCategory` (avec invalidations) — OU créer un `useCategoryAdmin` séparé pour la page `/categories` et garder `useCategories` read-only
+- [x] **Task 7 — Composable** (AC: #9)
+  - [x] `useCategoryAdmin` (create/rename/delete + invalidations) ; `useCategories` reste read-only, `key` 'categories' partagée
 
-- [ ] **Task 8 — UI** (AC: #9)
-  - [ ] `app/components/categories/CategoryList.vue`
-  - [ ] `app/components/categories/CategoryForm.vue`
-  - [ ] `app/pages/categories.vue`
-  - [ ] Réutiliser `ConfirmDialog`
-  - [ ] Lien `/categories` dans `AppNav.vue`
+- [x] **Task 8 — UI** (AC: #9)
+  - [x] `CategoryList.vue` (édition inline, badge, referenceCount, delete bloqué + tooltip)
+  - [x] `CategoryForm.vue` + `app/pages/categories.vue` + `ConfirmDialog` réutilisé
+  - [x] Lien `/categories` dans `AppNav.vue`
 
-- [ ] **Task 9 — E2E** (AC: #12, #13)
-  - [ ] `tests/e2e/categories.spec.ts`
+- [x] **Task 9 — E2E** (AC: #12, #13)
+  - [x] `tests/e2e/categories.spec.ts` (idempotent) + `categories-ingestion.spec.ts` (auto-skip sans fixture/clé)
 
-- [ ] **Task 10 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run`, `yarn test:e2e` verts
-  - [ ] Audit : `grep -r 'DEFAULT_CATEGORIES' server/services/` retourne uniquement le bootstrap, pas le LLM
-  - [ ] Mapping FR des 2 nouveaux codes d'erreur OK (manual check)
-  - [ ] Commit unique
+- [x] **Task 10 — Sanity check final**
+  - [x] `typecheck`, `lint`, `test:run` (283) verts ; `test:e2e categories` OK chromium (firefox non installé — hors env)
+  - [x] Audit : `DEFAULT_CATEGORIES` absent du LLM/orchestrator prod (seed bootstrap + fixture test uniquement)
+  - [x] Mapping FR des 2 nouveaux codes OK
+  - [x] Commit unique
 
 ## Dev Notes
 
@@ -254,12 +249,50 @@ Cette story modifie/crée :
 
 ### Agent Model Used
 
+claude-opus-4-8 (dev-story workflow)
+
 ### Debug Log References
+
+- Ajout de la route dynamique `/api/categories/:code` → `$fetch` typé de Nuxt dépasse la profondeur d'inférence (TS2321 dans `useFixedCharges`). Contourné par une référence `$fetch` élargie (`unknown`) dans les composables de mutation (`useFixedCharges`, `useCategoryAdmin`).
+- E2E `categories` : rendu idempotent (nettoyage `carburant*` au démarrage) — un run précédent avait laissé une ligne renommée non supprimée. Firefox non installé dans l'env (chromium ✓).
 
 ### Completion Notes List
 
+- CRUD complet `category_definitions` : GET (+`referenceCount` agrégé), POST (slugification + collision `-2`/`-3`), PATCH (label seul, `code`/`isVariable` immuables), DELETE (204 / 409 in-use / 409 protected / 404).
+- Aucune migration DB : réutilise le schéma `category_definitions` (story 2.1).
+- `divers` protégée (409 `category_protected`) ; rename autorisé.
+- `referenceCount` = transactions + fixed_charges + monthly_overrides (cette dernière conditionnelle via `sqlite_master`, table créée en 7.2).
+- Refactor LLM minimal : la signature `categorizeStatement(rawText, availableCategories)` acceptait déjà l'injection ; seul l'orchestrator change (lecture DB au lieu de `DEFAULT_CATEGORIES`).
+- Endpoints restructurés en dossier `server/api/categories/` (`index.{get,post}.ts` + `[code].{patch,delete}.ts`) ; ancien `categories.get.ts` supprimé.
+- 2 nouveaux codes d'erreur mappés FR ; couverts par le test « tous les codes ».
+- 283 tests unitaires verts (14 nouveaux pour les endpoints catégories).
+
 ### File List
 
+- `shared/schemas/api-errors.ts` (modifié — `CategoryInUse`, `CategoryProtected`)
+- `app/composables/useApiError.ts` (modifié — mappings FR)
+- `shared/schemas/category.schema.ts` (nouveau — schémas + `slugifyCategoryLabel`)
+- `shared/constants/protected-categories.ts` (nouveau)
+- `server/api/categories/index.get.ts` (nouveau — remplace `categories.get.ts`, +`referenceCount`)
+- `server/api/categories/index.post.ts` (nouveau)
+- `server/api/categories/[code].patch.ts` (nouveau)
+- `server/api/categories/[code].delete.ts` (nouveau)
+- `server/api/categories/categories.test.ts` (nouveau — 14 cas)
+- `server/api/categories.get.ts` (supprimé)
+- `server/api/categories.get.test.ts` (supprimé)
+- `server/services/statement-ingestion-orchestrator.ts` (modifié — lecture DB des catégories)
+- `app/composables/useCategories.ts` (modifié — ré-export type, import path)
+- `app/composables/useCategoryAdmin.ts` (nouveau)
+- `app/composables/useFixedCharges.ts` (modifié — contournement `$fetch` typé)
+- `app/components/categories/CategoryList.vue` (nouveau)
+- `app/components/categories/CategoryForm.vue` (nouveau)
+- `app/pages/categories.vue` (nouveau)
+- `app/components/shared/AppNav.vue` (modifié — lien `/categories`)
+- `tests/e2e/categories.spec.ts` (nouveau)
+- `tests/e2e/categories-ingestion.spec.ts` (nouveau)
+
 ### Change Log
+
+- 2026-07-07 : Implémentation story 5.6 — CRUD catégories (endpoints + slugification + protection `divers` + `referenceCount`), refactor LLM DB-driven, UI `/categories`, 2 codes d'erreur, tests unit + E2E. Status → review.
 
 ### Review Findings

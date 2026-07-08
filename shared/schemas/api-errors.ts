@@ -19,6 +19,10 @@ export const ApiErrorCode = {
 
   // Domaine — Réconciliation
   ReconciliationFailed: 'reconciliation_failed',
+
+  // Domaine — Catégories
+  CategoryInUse: 'category_in_use',
+  CategoryProtected: 'category_protected',
 } as const
 
 export type ApiErrorCodeValue = (typeof ApiErrorCode)[keyof typeof ApiErrorCode]

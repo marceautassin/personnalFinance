@@ -180,6 +180,20 @@ describe('ingestStatement (orchestrator)', () => {
     expect(existsSync(pdfPathFor(buf))).toBe(true)
   })
 
+  it('passe au LLM les catégories lues en base, pas DEFAULT_CATEGORIES (story 5.6)', async () => {
+    mockExtract()
+    mockCategorize([
+      { transactionDate: '2026-04-05', label: 'Op', amountCents: -10_000, categoryCode: 'courses' },
+    ])
+
+    await orch.ingestStatement({ pdfBuffer: pdf('cats-from-db'), confirmReplace: false })
+
+    const passed = vi.mocked(llmMod.categorizeStatement).mock.calls[0]![1] as ReadonlyArray<{ code: string }>
+    // Exactement les 3 catégories seedées en base — un sous-ensemble strict de DEFAULT_CATEGORIES
+    // (18 entrées) — ce qui prouve la lecture DB et non le fallback constant.
+    expect(passed.map(c => c.code).sort()).toEqual(['are', 'courses', 'restaurants'])
+  })
+
   it('dédup : 2e POST avec même PDF → pdf_already_ingested', async () => {
     mockExtract()
     mockCategorize([

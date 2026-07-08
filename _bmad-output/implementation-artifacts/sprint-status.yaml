@@ -98,7 +98,7 @@ development_status:
   5-3-revenue-models-endpoints-et-ui: review
   5-4-sas-config-dividend-capacity-et-ui: review
   5-5-tax-settings-endpoints-et-ui: review
-  5-6-gestion-categories-crud-et-ui: ready-for-dev
+  5-6-gestion-categories-crud-et-ui: review
   epic-5-retrospective: optional
 
   # Epic 6 — Dettes
