@@ -67,8 +67,8 @@ export type NewBankStatement = typeof bankStatements.$inferInsert
  *  - amount_cents est SIGNÉ : négatif pour les sorties, positif pour les entrées.
  *  - is_manual = true pour les transactions ajoutées en réconciliation manuelle (Story 3.x)
  *    OU créées en marquage "remboursement dette" (Story 6.x).
- *  - debt_id est nullable et SANS FK en V1 (la table debts n'existe pas encore).
- *    La FK sera ajoutée en Story 6.1 via une migration.
+ *  - debt_id est nullable et SANS FK (choix V1) : la suppression d'une dette délie ses
+ *    transactions (debt_id → null, is_debt_repayment → false) dans le handler DELETE.
  */
 export const transactions = sqliteTable(
   'transactions',
@@ -229,3 +229,55 @@ export const dismissedSuggestions = sqliteTable('dismissed_suggestions', {
 
 export type DismissedSuggestionRow = typeof dismissedSuggestions.$inferSelect
 export type NewDismissedSuggestionRow = typeof dismissedSuggestions.$inferInsert
+
+/**
+ * debts — dettes déclarées par l'utilisateur (FR29-FR34, story 6.1).
+ *
+ * NOTES :
+ *  - `initial_balance_cents` NON signé (≥ 0) : montant dû à la création. Garanti par Zod.
+ *  - `repayment_mode` : `free` / `monthly` / `lump_sum` (cf. `shared/types/repayment-mode.ts`),
+ *    CHECK DB + validation croisée Zod (mode ↔ champs).
+ *  - `monthly_amount_cents` (mensualité) requis SEULEMENT en mode `monthly`, sinon null.
+ *  - `lump_sum_date` (YYYY-MM-DD) requis SEULEMENT en mode `lump_sum`, sinon null.
+ *  - Le SOLDE COURANT n'est PAS stocké : calculé à la demande (initial + Σavances −
+ *    Σremboursements) — cf. invariant CLAUDE.md « aucun état dérivé en base ».
+ */
+export const debts = sqliteTable('debts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  creditor: text('creditor').notNull(),
+  initialBalanceCents: integer('initial_balance_cents').notNull(),
+  repaymentMode: text('repayment_mode', { enum: ['free', 'monthly', 'lump_sum'] })
+    .notNull()
+    .default('free'),
+  monthlyAmountCents: integer('monthly_amount_cents'),
+  lumpSumDate: text('lump_sum_date'),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, table => [
+  check('debts_mode_check', sql`${table.repaymentMode} IN ('free', 'monthly', 'lump_sum')`),
+])
+
+export type DebtRow = typeof debts.$inferSelect
+export type NewDebtRow = typeof debts.$inferInsert
+
+/**
+ * debt_advances — historique des avances reçues d'un créancier (FR31, story 6.1).
+ * Chaque avance incrémente le solde courant de la dette (calcul, pas de mutation de colonne).
+ *
+ *  - `amount_cents` NON signé (> 0), garanti par Zod.
+ *  - `debt_id` → cascade : supprimer une dette supprime ses avances.
+ */
+export const debtAdvances = sqliteTable('debt_advances', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  debtId: integer('debt_id')
+    .notNull()
+    .references(() => debts.id, { onDelete: 'cascade' }),
+  amountCents: integer('amount_cents').notNull(),
+  advanceDate: text('advance_date').notNull(),
+  note: text('note'),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, t => ({
+  debtAdvancesDebtIdx: index('debt_advances_debt_idx').on(t.debtId),
+}))
+
+export type DebtAdvanceRow = typeof debtAdvances.$inferSelect
+export type NewDebtAdvanceRow = typeof debtAdvances.$inferInsert
