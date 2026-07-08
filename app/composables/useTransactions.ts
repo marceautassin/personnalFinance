@@ -41,25 +41,45 @@ export function useTransactions(month: Ref<string>) {
   const invalidate = useInvalidate()
   const { mapError } = useApiError()
 
-  async function mutateCategory(id: number, categoryCode: string): Promise<MutationOutcome> {
+  async function patchTransaction(
+    id: number,
+    body: Record<string, unknown>,
+    afterRefresh?: () => Promise<unknown> | unknown,
+  ): Promise<MutationOutcome> {
     try {
-      await $fetch(`/api/transactions/${id}`, {
-        method: 'PATCH',
-        body: { categoryCode },
-      })
+      await apiMutate(`/api/transactions/${id}`, { method: 'PATCH', body })
     }
     catch (err) {
       const e = err as { statusMessage?: string, data?: { statusMessage?: string } }
       return { error: mapError(err), errorCode: e.data?.statusMessage ?? e.statusMessage }
     }
     await fetchState.refresh()
+    if (afterRefresh) await afterRefresh()
     invalidate.invalidateForecast()
     invalidate.invalidateDashboard()
     return { ok: true }
   }
 
+  function mutateCategory(id: number, categoryCode: string): Promise<MutationOutcome> {
+    return patchTransaction(id, { categoryCode })
+  }
+
+  /**
+   * Marque (`debtId` fourni) ou démarque (`isDebtRepayment: false`) une transaction comme
+   * remboursement de dette (Story 6.3, FR9/FR32). Le solde d'une dette dépend de ses
+   * remboursements : on invalide donc la liste `debts` et l'impact de la dette visée pour
+   * que les cartes/projections déjà en cache (page Dettes) reflètent le nouveau solde.
+   */
+  function mutateDebtRepayment(id: number, payload: { isDebtRepayment: boolean, debtId?: number | null }): Promise<MutationOutcome> {
+    return patchTransaction(id, payload, async () => {
+      await refreshNuxtData('debts')
+      if (payload.debtId != null) await refreshNuxtData(`debt-impact-${payload.debtId}`)
+    })
+  }
+
   return {
     ...fetchState,
     mutateCategory,
+    mutateDebtRepayment,
   }
 }

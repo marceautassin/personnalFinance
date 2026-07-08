@@ -56,6 +56,15 @@ beforeAll(async () => {
     );
     CREATE INDEX transactions_period_idx ON transactions(transaction_date);
     CREATE INDEX transactions_statement_idx ON transactions(statement_hash);
+    CREATE TABLE debts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      creditor TEXT NOT NULL,
+      initial_balance_cents INTEGER NOT NULL,
+      repayment_mode TEXT NOT NULL DEFAULT 'free',
+      monthly_amount_cents INTEGER,
+      lump_sum_date TEXT,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
   `)
 
   dbMod.db.insert(schema.categoryDefinitions).values([
@@ -76,7 +85,25 @@ afterAll(() => {
 beforeEach(() => {
   dbMod.db.delete(schema.transactions).run()
   dbMod.db.delete(schema.bankStatements).run()
+  dbMod.db.delete(schema.debts).run()
 })
+
+/** Seede une dette et retourne son id. */
+function seedDebt(): number {
+  const r = dbMod.db.insert(schema.debts).values({
+    creditor: 'Papa', initialBalanceCents: 500_000, repaymentMode: 'free',
+  }).run()
+  return Number(r.lastInsertRowid)
+}
+
+/** Seede une transaction ENTRANTE (montant positif) et retourne son id. */
+function seedIncomingTransaction(): number {
+  const r = dbMod.db.insert(schema.transactions).values({
+    statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Virement reçu',
+    amountCents: 2500, categoryCode: 'courses',
+  }).run()
+  return Number(r.lastInsertRowid)
+}
 
 const HASH_A = 'a'.repeat(64)
 
@@ -134,19 +161,84 @@ describe('PATCH /api/transactions/[id]', () => {
     expect(result.debtId).toBeNull()
   })
 
-  it('persists isDebtRepayment + debtId without creating a debt_repayments row (Story 6.3 scope)', async () => {
+  it('marks an outgoing transaction as repayment of an existing debt (Story 6.3)', async () => {
     seedStatement()
-    const id = seedTransaction()
+    const debtId = seedDebt()
+    const id = seedTransaction() // -2500 (sortante)
 
-    const result = (await handler(makeEvent(String(id), { isDebtRepayment: true, debtId: 42 }))) as {
+    const result = (await handler(makeEvent(String(id), { isDebtRepayment: true, debtId }))) as {
       isDebtRepayment: boolean
       debtId: number | null
       isManual: boolean
     }
 
     expect(result.isDebtRepayment).toBe(true)
-    expect(result.debtId).toBe(42)
+    expect(result.debtId).toBe(debtId)
     expect(result.isManual).toBe(true)
+  })
+
+  it('rejects marking against a non-existent debt → 422', async () => {
+    seedStatement()
+    const id = seedTransaction()
+    await expect(
+      handler(makeEvent(String(id), { isDebtRepayment: true, debtId: 999 })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  it('rejects marking an incoming (positive) transaction → 422 (FR9 sortante)', async () => {
+    seedStatement()
+    const debtId = seedDebt()
+    const id = seedIncomingTransaction()
+    await expect(
+      handler(makeEvent(String(id), { isDebtRepayment: true, debtId })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  it('rejects isDebtRepayment:true without a debtId → 422', async () => {
+    seedStatement()
+    const id = seedTransaction()
+    await expect(
+      handler(makeEvent(String(id), { isDebtRepayment: true })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  it('rejects a debtId without isDebtRepayment:true → 422 (schéma resserré)', async () => {
+    seedStatement()
+    const debtId = seedDebt()
+    const id = seedTransaction()
+    await expect(
+      handler(makeEvent(String(id), { debtId })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  it('unmarking clears is_debt_repayment AND debt_id', async () => {
+    seedStatement()
+    const debtId = seedDebt()
+    const id = seedTransaction()
+    await handler(makeEvent(String(id), { isDebtRepayment: true, debtId }))
+
+    const result = (await handler(makeEvent(String(id), { isDebtRepayment: false }))) as {
+      isDebtRepayment: boolean
+      debtId: number | null
+    }
+    expect(result.isDebtRepayment).toBe(false)
+    expect(result.debtId).toBeNull()
+  })
+
+  it('category-only patch leaves debt columns untouched', async () => {
+    seedStatement()
+    const debtId = seedDebt()
+    const id = seedTransaction()
+    await handler(makeEvent(String(id), { isDebtRepayment: true, debtId }))
+
+    const result = (await handler(makeEvent(String(id), { categoryCode: 'restaurants' }))) as {
+      categoryCode: string
+      isDebtRepayment: boolean
+      debtId: number | null
+    }
+    expect(result.categoryCode).toBe('restaurants')
+    expect(result.isDebtRepayment).toBe(true)
+    expect(result.debtId).toBe(debtId)
   })
 
   it('returns 404 not_found for unknown id', async () => {

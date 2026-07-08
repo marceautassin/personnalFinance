@@ -14,7 +14,7 @@ const router = useRouter()
 const period = computed(() => route.params.period as string)
 const mutationError = ref<string | null>(null)
 
-const { data, pending, mutateCategory } = useTransactions(period)
+const { data, pending, mutateCategory, mutateDebtRepayment } = useTransactions(period)
 
 const monthFormatter = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
 const monthLabel = computed(() => {
@@ -33,6 +33,15 @@ function navigate(delta: number) {
 async function onCategoryChange(transactionId: number, categoryCode: string) {
   mutationError.value = null
   const outcome = await mutateCategory(transactionId, categoryCode)
+  if (outcome.error) mutationError.value = outcome.error
+}
+
+async function onDebtRepaymentChange(
+  transactionId: number,
+  payload: { isDebtRepayment: boolean, debtId?: number | null },
+) {
+  mutationError.value = null
+  const outcome = await mutateDebtRepayment(transactionId, payload)
   if (outcome.error) mutationError.value = outcome.error
 }
 </script>
@@ -102,6 +111,7 @@ async function onCategoryChange(transactionId: number, categoryCode: string) {
       v-else
       :transactions="data.transactions"
       @category-change="onCategoryChange"
+      @debt-repayment-change="onDebtRepaymentChange"
     />
   </section>
 </template>

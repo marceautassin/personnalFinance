@@ -98,6 +98,13 @@ export const TransactionPatchSchema = z
       || data.debtId !== undefined,
     { message: 'Au moins un champ doit être fourni' },
   )
+  // Un `debtId` ne peut être fourni que pour MARQUER (`isDebtRepayment: true`). Un `debtId`
+  // seul ou couplé à `isDebtRepayment: false` serait ambigu : le handler l'effacerait
+  // silencieusement (démarquage). On rejette à la frontière plutôt que d'ignorer l'intention.
+  .refine(
+    data => data.debtId == null || data.isDebtRepayment === true,
+    { message: 'Un debtId ne peut être fourni qu\'avec isDebtRepayment:true', path: ['debtId'] },
+  )
 
 export type Transaction = z.infer<typeof TransactionSchema>
 export type NewTransaction = z.infer<typeof NewTransactionSchema>

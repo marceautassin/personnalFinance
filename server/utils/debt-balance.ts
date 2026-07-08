@@ -6,8 +6,10 @@ import { debtAdvances, transactions } from '~~/server/db/schema'
  * Source UNIQUE du solde courant d'une dette (FR31-FR32) :
  *   currentBalanceCents = initial + Σavances − Σ|remboursements|
  * Le solde n'est jamais stocké (invariant CLAUDE.md « aucun état dérivé en base »).
- * Le filtre « transaction = remboursement » vit ici et nulle part ailleurs : quand la
- * story 6.3 l'affinera, un seul endroit change (évite la divergence liste ↔ détail).
+ * Ce calcul FAIT CONFIANCE au flag `is_debt_repayment` : il somme `abs(amount)` des
+ * transactions marquées sans re-vérifier le signe. La règle FR9 « seule une transaction
+ * SORTANTE peut être un remboursement » est appliquée à l'écriture par
+ * `server/api/transactions/[id].patch.ts` — toute pose de ce flag doit passer par ce handler.
  */
 export function toCurrentBalance(
   initialBalanceCents: number,

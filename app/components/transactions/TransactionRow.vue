@@ -8,6 +8,7 @@ const props = defineProps<{
 
 defineEmits<{
   categoryChange: [transactionId: number, code: string]
+  debtRepaymentChange: [transactionId: number, payload: { isDebtRepayment: boolean, debtId?: number | null }]
 }>()
 
 const dayFormatter = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' })
@@ -34,11 +35,12 @@ const isNegative = computed(() => props.transaction.amountCents < 0)
         class="tx-row__badge tx-row__badge--manual"
         :title="'Catégorie modifiée manuellement'"
       >modifié</small>
-      <small
-        v-if="transaction.isDebtRepayment"
-        class="tx-row__badge tx-row__badge--debt"
-        :title="'Marqué comme remboursement de dette'"
-      >remb. dette</small>
+      <DebtRepaymentMarker
+        v-if="isNegative"
+        :transaction="transaction"
+        @mark="debtId => $emit('debtRepaymentChange', transaction.id, { isDebtRepayment: true, debtId })"
+        @unmark="$emit('debtRepaymentChange', transaction.id, { isDebtRepayment: false })"
+      />
     </td>
     <td
       class="tx-row__amount"
@@ -74,5 +76,4 @@ const isNegative = computed(() => props.transaction.amountCents < 0)
   background: var(--color-neutral-100);
   color: var(--color-text-muted);
 }
-.tx-row__badge--debt { background: var(--color-warning-bg, #fff4cc); color: var(--color-warning, #8a6500); }
 </style>
