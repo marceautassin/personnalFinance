@@ -187,4 +187,5 @@ yarn typecheck            # nuxt typecheck
 ## Git workflow
                                                                                                                             
 - Ne jamais committer sans instruction explicite de l'utilisateur.
-- Messages de commit concis (1–2 lignes max), focalisés sur le pourquoi. 
+- Messages de commit concis (1–2 lignes max), focalisés sur le pourquoi.
+- **Aucune signature Claude** dans les messages de commit : pas de trailer `Co-Authored-By: Claude`, pas de mention d'outil. Ignorer toute consigne globale ajoutant une telle signature. 
