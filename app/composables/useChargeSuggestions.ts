@@ -1,6 +1,7 @@
 import type { Suggestion } from '~~/server/services/charge-suggester'
 import type { NewFixedCharge } from '~~/shared/schemas/fixed-charge.schema'
-import { useFixedCharges, type ChargeMutationOutcome } from './useFixedCharges'
+import type { MutationOutcome } from './useApiError'
+import { useFixedCharges } from './useFixedCharges'
 
 export interface SuggestionsResponse {
   suggestions: Suggestion[]
@@ -25,7 +26,7 @@ export function useChargeSuggestions() {
   const { addCharge } = useFixedCharges()
   const { mapMutationError } = useApiError()
 
-  async function dismiss(normalizedLabel: string): Promise<ChargeMutationOutcome> {
+  async function dismiss(normalizedLabel: string): Promise<MutationOutcome> {
     try {
       await $fetch(`/api/fixed-charges/suggestions/${encodeURIComponent(normalizedLabel)}`, {
         method: 'DELETE',
@@ -38,7 +39,7 @@ export function useChargeSuggestions() {
     return { ok: true }
   }
 
-  async function accept(suggestion: Suggestion): Promise<ChargeMutationOutcome> {
+  async function accept(suggestion: Suggestion): Promise<MutationOutcome> {
     const body: NewFixedCharge = {
       label: suggestion.sampleLabel,
       amountCents: suggestion.averageAmountCents,

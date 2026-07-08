@@ -1,5 +1,6 @@
 import type { Cents } from '~~/shared/types/money'
 import type { SasConfigPatch } from '~~/shared/schemas/sas-config.schema'
+import type { MutationOutcome } from './useApiError'
 import { useInvalidate } from './useInvalidate'
 
 export interface SasConfigData {
@@ -10,12 +11,6 @@ export interface SasConfigData {
   currentTreasuryCents: Cents
   isRatePct: number
   updatedAt: number
-}
-
-export interface SasMutationOutcome {
-  ok?: true
-  error?: string
-  errorCode?: string
 }
 
 /**
@@ -32,7 +27,7 @@ export function useSasConfig() {
   const invalidate = useInvalidate()
   const { mapMutationError } = useApiError()
 
-  async function update(patch: SasConfigPatch): Promise<SasMutationOutcome> {
+  async function update(patch: SasConfigPatch): Promise<MutationOutcome> {
     try {
       await $fetch('/api/sas-config', { method: 'PUT', body: patch })
     }

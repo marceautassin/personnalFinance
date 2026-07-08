@@ -3,6 +3,7 @@ import type { Cents } from '~~/shared/types/money'
 import type { ReliabilityValue } from '~~/server/db/schema'
 import type { TransactionListItem } from './useTransactions'
 import type { AddManualTransactionInput } from '~~/shared/schemas/reconciliation.schema'
+import type { MutationOutcome } from './useApiError'
 
 export interface StatementDetailResponse {
   hash: string
@@ -13,12 +14,6 @@ export interface StatementDetailResponse {
   reliability: ReliabilityValue
   transactions: TransactionListItem[]
   reconciliation: { isBalanced: boolean, gapCents: Cents }
-}
-
-export interface ReconciliationActionOutcome {
-  ok?: true
-  error?: string
-  errorCode?: string
 }
 
 /**
@@ -64,11 +59,11 @@ export function useReconciliation() {
   async function addManualTransaction(
     hash: string,
     transaction: AddManualTransactionInput,
-  ): Promise<ReconciliationActionOutcome> {
+  ): Promise<MutationOutcome> {
     return await postAction(hash, { action: 'add_transaction', transaction })
   }
 
-  async function acceptGap(hash: string): Promise<ReconciliationActionOutcome> {
+  async function acceptGap(hash: string): Promise<MutationOutcome> {
     return await postAction(hash, { action: 'accept_gap' })
   }
 
@@ -76,7 +71,7 @@ export function useReconciliation() {
     = | { action: 'add_transaction', transaction: AddManualTransactionInput }
       | { action: 'accept_gap' }
 
-  async function postAction(hash: string, body: ActionBody): Promise<ReconciliationActionOutcome> {
+  async function postAction(hash: string, body: ActionBody): Promise<MutationOutcome> {
     try {
       await $fetch(`/api/reconciliation/${hash}`, { method: 'POST', body })
       // Story 3.3 — propager la nouvelle fiabilité sur /import (cache `statements-list`)

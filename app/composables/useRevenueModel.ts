@@ -1,5 +1,6 @@
 import type { Cents } from '~~/shared/types/money'
 import type { RevenueModelPatch } from '~~/shared/schemas/revenue-model.schema'
+import type { MutationOutcome } from './useApiError'
 import { useInvalidate } from './useInvalidate'
 
 export interface RevenueModelData {
@@ -9,12 +10,6 @@ export interface RevenueModelData {
   sasMonthlyRentCents: Cents
   expenseReimbursementsMonthlyCents: Cents
   updatedAt: number
-}
-
-export interface RevenueMutationOutcome {
-  ok?: true
-  error?: string
-  errorCode?: string
 }
 
 /**
@@ -33,7 +28,7 @@ export function useRevenueModel() {
   const invalidate = useInvalidate()
   const { mapMutationError } = useApiError()
 
-  async function update(patch: RevenueModelPatch): Promise<RevenueMutationOutcome> {
+  async function update(patch: RevenueModelPatch): Promise<MutationOutcome> {
     try {
       await $fetch('/api/revenues', { method: 'PUT', body: patch })
     }

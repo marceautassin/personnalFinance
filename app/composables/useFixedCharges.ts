@@ -1,5 +1,6 @@
 import type { Cents } from '~~/shared/types/money'
 import type { Frequency, NewFixedCharge, FixedChargePut } from '~~/shared/schemas/fixed-charge.schema'
+import type { MutationOutcome } from './useApiError'
 import { useInvalidate } from './useInvalidate'
 
 export interface FixedChargeItem {
@@ -38,12 +39,6 @@ export const FREQUENCY_LABELS: Record<Frequency, string> = {
   punctual: 'Ponctuelle',
 }
 
-export interface ChargeMutationOutcome {
-  ok?: true
-  error?: string
-  errorCode?: string
-}
-
 const EMPTY_RESPONSE: FixedChargesResponse = { charges: [] }
 
 /**
@@ -63,7 +58,7 @@ export function useFixedCharges() {
   const invalidate = useInvalidate()
   const { mapMutationError } = useApiError()
 
-  async function runMutation(fn: () => Promise<unknown>): Promise<ChargeMutationOutcome> {
+  async function runMutation(fn: () => Promise<unknown>): Promise<MutationOutcome> {
     try {
       await fn()
     }
@@ -76,16 +71,16 @@ export function useFixedCharges() {
     return { ok: true }
   }
 
-  function addCharge(input: NewFixedCharge): Promise<ChargeMutationOutcome> {
-    return runMutation(() => $fetch('/api/fixed-charges', { method: 'POST', body: input }))
+  function addCharge(input: NewFixedCharge): Promise<MutationOutcome> {
+    return runMutation(() => apiMutate('/api/fixed-charges', { method: 'POST', body: input }))
   }
 
-  function updateCharge(id: number, input: FixedChargePut): Promise<ChargeMutationOutcome> {
-    return runMutation(() => $fetch(`/api/fixed-charges/${id}`, { method: 'PUT', body: input }))
+  function updateCharge(id: number, input: FixedChargePut): Promise<MutationOutcome> {
+    return runMutation(() => apiMutate(`/api/fixed-charges/${id}`, { method: 'PUT', body: input }))
   }
 
-  function deleteCharge(id: number): Promise<ChargeMutationOutcome> {
-    return runMutation(() => $fetch(`/api/fixed-charges/${id}`, { method: 'DELETE' }))
+  function deleteCharge(id: number): Promise<MutationOutcome> {
+    return runMutation(() => apiMutate(`/api/fixed-charges/${id}`, { method: 'DELETE' }))
   }
 
   return {

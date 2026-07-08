@@ -19,6 +19,17 @@ const FR_MESSAGES: Record<ApiErrorCodeValue, string> = {
 const FALLBACK_MESSAGE = 'Une erreur est survenue. Réessaie ou recharge la page.'
 
 /**
+ * Résultat d'une mutation composable : `ok` en succès, sinon `error` (message FR utilisateur)
+ * + `errorCode` (code stable API, pour réagir au code côté appelant). Forme partagée par tous
+ * les composables de mutation — voir `mapMutationError`.
+ */
+export interface MutationOutcome {
+  ok?: true
+  error?: string
+  errorCode?: string
+}
+
+/**
  * Composable de mapping erreur API → message utilisateur FR.
  * Accepte n'importe quelle erreur Nuxt/Fetch, extrait `statusMessage`, retourne FR.
  */
