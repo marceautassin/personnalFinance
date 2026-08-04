@@ -39,6 +39,7 @@ function onSubmit() {
 <template>
   <form
     class="rev-panel"
+    data-testid="fiscal-year-form"
     @submit.prevent="onSubmit"
   >
     <h3 class="rev-panel__title">

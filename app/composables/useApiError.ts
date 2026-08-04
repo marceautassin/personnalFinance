@@ -16,6 +16,9 @@ const FR_MESSAGES: Record<ApiErrorCodeValue, string> = {
   [ApiErrorCode.ReconciliationFailed]: 'Les transactions extraites ne correspondent pas au solde du relevé. Une vérification manuelle est nécessaire.',
   [ApiErrorCode.CategoryInUse]: 'Catégorie utilisée par des transactions ou charges fixes — supprime les références d\'abord.',
   [ApiErrorCode.CategoryProtected]: 'Catégorie système, ne peut pas être supprimée.',
+  [ApiErrorCode.SingletonMissing]: 'Données de configuration absentes en base. Relance l\'application pour rejouer l\'initialisation.',
+  [ApiErrorCode.UnemploymentEndDateRequired]: 'Renseigne la date de fin de droits : sans elle, le montant d\'ARE serait ignoré par le forecast.',
+  [ApiErrorCode.UnemploymentEndDatePast]: 'La date de fin de droits est déjà passée : l\'ARE ne serait comptée sur aucun mois du forecast.',
 }
 
 const FALLBACK_MESSAGE = 'Une erreur est survenue. Réessaie ou recharge la page.'

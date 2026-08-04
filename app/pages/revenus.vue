@@ -6,17 +6,24 @@ import type { RevenueModelPatch } from '~~/shared/schemas/revenue-model.schema'
 const { data, pending, error, update } = useRevenueModel()
 const { mapError } = useApiError()
 
-const savingPanel = ref<string | null>(null)
-const actionError = ref<string | null>(null)
+// État par panneau : deux enregistrements rapprochés ne doivent ni écraser l'erreur de
+// l'autre, ni éteindre son indicateur « Envoi… » (revue 2026-08-04).
+const savingPanels = ref<Set<string>>(new Set())
+const panelErrors = ref<Record<string, string>>({})
+const isSaving = (panel: string) => savingPanels.value.has(panel)
 
 const fetchErrorMessage = computed(() => (error.value ? mapError(error.value) : null))
+const actionErrors = computed(() => Object.values(panelErrors.value))
 
 async function onSave(panel: string, patch: RevenueModelPatch) {
-  actionError.value = null
-  savingPanel.value = panel
+  const { [panel]: _dropped, ...rest } = panelErrors.value
+  panelErrors.value = rest
+  savingPanels.value = new Set(savingPanels.value).add(panel)
   const outcome = await update(patch)
-  savingPanel.value = null
-  if (outcome.error) actionError.value = outcome.error
+  const next = new Set(savingPanels.value)
+  next.delete(panel)
+  savingPanels.value = next
+  if (outcome.error) panelErrors.value = { ...panelErrors.value, [panel]: outcome.error }
 }
 </script>
 
@@ -29,11 +36,12 @@ async function onSave(panel: string, patch: RevenueModelPatch) {
     </header>
 
     <p
-      v-if="actionError"
+      v-for="msg in actionErrors"
+      :key="msg"
       class="revenues-page__error"
       role="alert"
     >
-      {{ actionError }}
+      {{ msg }}
     </p>
     <p
       v-if="fetchErrorMessage"
@@ -57,17 +65,17 @@ async function onSave(panel: string, patch: RevenueModelPatch) {
       <ArePanel
         :monthly-cents="data.unemploymentBenefitMonthlyCents"
         :end-date="data.unemploymentBenefitEndDate"
-        :saving="savingPanel === 'are'"
+        :saving="isSaving('are')"
         @save="patch => onSave('are', patch)"
       />
       <SasRentPanel
         :monthly-cents="data.sasMonthlyRentCents"
-        :saving="savingPanel === 'sas'"
+        :saving="isSaving('sas')"
         @save="patch => onSave('sas', patch)"
       />
       <ReimbursementsPanel
         :monthly-cents="data.expenseReimbursementsMonthlyCents"
-        :saving="savingPanel === 'reimbursements'"
+        :saving="isSaving('reimbursements')"
         @save="patch => onSave('reimbursements', patch)"
       />
     </div>

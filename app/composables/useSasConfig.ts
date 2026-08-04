@@ -1,25 +1,18 @@
-import type { Cents } from '~~/shared/types/money'
-import type { SasConfigPatch } from '~~/shared/schemas/sas-config.schema'
+import type { SasConfig, SasConfigPatch } from '~~/shared/schemas/sas-config.schema'
 import type { MutationOutcome } from './useApiError'
 import { useInvalidate } from './useInvalidate'
-
-export interface SasConfigData {
-  id: number
-  fiscalYearEndDate: string
-  revenueForecastCents: Cents
-  expensesForecastCents: Cents
-  currentTreasuryCents: Cents
-  isRatePct: number
-  updatedAt: number
-}
+import { apiMutate } from '~/utils/api-mutate'
 
 /**
  * Config SAS (singleton) — lecture + mutation partielle + invalidations.
+ * Le type de lecture vient du schéma partagé (`SasConfigSchema`, AC#3) : le redéclarer ici
+ * dupliquerait le contrat et laisserait les deux diverger.
+ *
  * Mêmes conventions que `useRevenueModel` (story 5.3) : pas de `$fetch` dans les composants,
  * mutation réussie → refetch puis invalidation forecast + dashboard.
  */
 export function useSasConfig() {
-  const fetchState = useFetch<SasConfigData>('/api/sas-config', {
+  const fetchState = useFetch<SasConfig>('/api/sas-config', {
     key: 'sas-config',
     server: false,
   })
@@ -29,7 +22,7 @@ export function useSasConfig() {
 
   async function update(patch: SasConfigPatch): Promise<MutationOutcome> {
     try {
-      await $fetch('/api/sas-config', { method: 'PUT', body: patch })
+      await apiMutate('/api/sas-config', { method: 'PUT', body: patch })
     }
     catch (err) {
       return mapMutationError(err)

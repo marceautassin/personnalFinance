@@ -3,30 +3,31 @@ import { useSasConfig } from '~/composables/useSasConfig'
 import { useApiError } from '~/composables/useApiError'
 import type { SasConfigInput } from '~~/shared/services/dividend-capacity'
 import type { SasConfigPatch } from '~~/shared/schemas/sas-config.schema'
-import type { Cents } from '~~/shared/types/money'
 
 const { data, pending, error, update } = useSasConfig()
 const { mapError } = useApiError()
 
-const savingPanel = ref<string | null>(null)
-const actionError = ref<string | null>(null)
+// État par panneau : deux enregistrements rapprochés ne doivent ni écraser l'erreur de
+// l'autre, ni éteindre son indicateur « Envoi… » (revue 2026-08-04).
+const savingPanels = ref<Set<string>>(new Set())
+const panelErrors = ref<Record<string, string>>({})
+const isSaving = (panel: string) => savingPanels.value.has(panel)
 
 const fetchErrorMessage = computed(() => (error.value ? mapError(error.value) : null))
+const actionErrors = computed(() => Object.values(panelErrors.value))
 
-// Valeurs cents courantes (alimentées en live par SasConfigForm) pour la card.
-const liveInput = ref<SasConfigInput>({
-  revenueForecastCents: 0 as Cents,
-  expensesForecastCents: 0 as Cents,
-  currentTreasuryCents: 0 as Cents,
-  isRatePct: 0,
-})
+// Valeurs cents courantes (alimentées en live par SasConfigForm), `null` si saisie invalide.
+const liveInput = ref<SasConfigInput | null>(null)
 
 async function onSave(panel: string, patch: SasConfigPatch) {
-  actionError.value = null
-  savingPanel.value = panel
+  const { [panel]: _dropped, ...rest } = panelErrors.value
+  panelErrors.value = rest
+  savingPanels.value = new Set(savingPanels.value).add(panel)
   const outcome = await update(patch)
-  savingPanel.value = null
-  if (outcome.error) actionError.value = outcome.error
+  const next = new Set(savingPanels.value)
+  next.delete(panel)
+  savingPanels.value = next
+  if (outcome.error) panelErrors.value = { ...panelErrors.value, [panel]: outcome.error }
 }
 </script>
 
@@ -39,11 +40,12 @@ async function onSave(panel: string, patch: SasConfigPatch) {
     </header>
 
     <p
-      v-if="actionError"
+      v-for="msg in actionErrors"
+      :key="msg"
       class="sas-page__error"
       role="alert"
     >
-      {{ actionError }}
+      {{ msg }}
     </p>
     <p
       v-if="fetchErrorMessage"
@@ -70,13 +72,13 @@ async function onSave(panel: string, patch: SasConfigPatch) {
           :expenses-forecast-cents="data.expensesForecastCents"
           :current-treasury-cents="data.currentTreasuryCents"
           :is-rate-pct="data.isRatePct"
-          :saving="savingPanel === 'config'"
+          :saving="isSaving('config')"
           @change="val => liveInput = val"
           @save="patch => onSave('config', patch)"
         />
         <FiscalYearForm
           :fiscal-year-end-date="data.fiscalYearEndDate"
-          :saving="savingPanel === 'fiscal'"
+          :saving="isSaving('fiscal')"
           @save="patch => onSave('fiscal', patch)"
         />
       </div>

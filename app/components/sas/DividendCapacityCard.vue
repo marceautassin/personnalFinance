@@ -2,10 +2,13 @@
 import { computeDividendCapacity, type SasConfigInput } from '~~/shared/services/dividend-capacity'
 import { formatEuros } from '~~/shared/types/money'
 
-const props = defineProps<{ input: SasConfigInput }>()
+// `input` est `null` quand une saisie du formulaire est invalide ou hors bornes : on affiche
+// alors un état « indisponible » plutôt qu'une estimation calculée sur des zéros implicites,
+// qui se lirait comme un chiffre financier valide (revue 2026-08-04).
+const props = defineProps<{ input: SasConfigInput | null }>()
 
 // Recalcul live (fonction pure, < 1 ms) à chaque changement des valeurs saisies.
-const capacity = computed(() => computeDividendCapacity(props.input))
+const capacity = computed(() => (props.input ? computeDividendCapacity(props.input) : null))
 </script>
 
 <template>
@@ -14,7 +17,18 @@ const capacity = computed(() => computeDividendCapacity(props.input))
       Capacité dividendable estimée
     </h3>
 
-    <dl class="capacity-card__rows">
+    <p
+      v-if="!capacity"
+      class="capacity-card__unavailable"
+      role="status"
+    >
+      Estimation indisponible — corrige les montants saisis.
+    </p>
+
+    <dl
+      v-else
+      class="capacity-card__rows"
+    >
       <div class="capacity-card__row">
         <dt>Résultat avant IS</dt>
         <dd>{{ formatEuros(capacity.profitBeforeTaxCents) }}</dd>
@@ -37,6 +51,7 @@ const capacity = computed(() => computeDividendCapacity(props.input))
 
     <p class="capacity-card__note">
       Estimation V1 simplifiée (sans reports déficitaires, taux IS réduit ni réserves légales).
+      Le report à nouveau saisi doit exclure le résultat de l'exercice en cours.
     </p>
   </div>
 </template>
@@ -69,4 +84,5 @@ const capacity = computed(() => computeDividendCapacity(props.input))
 }
 .capacity-card__row--total dt { color: var(--color-text); }
 .capacity-card__note { margin: 0; color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.capacity-card__unavailable { margin: 0; color: var(--color-danger); font-size: var(--font-size-sm); }
 </style>

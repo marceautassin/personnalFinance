@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { centsToEuros, type Cents } from '~~/shared/types/money'
-import { parseEurosToCents } from '~/utils/euros'
+import type { Cents } from '~~/shared/types/money'
+import { parseEurosToCents, syncEurosInput, MAX_REVENUE_CENTS } from '~/utils/euros'
 
 const props = defineProps<{
   monthlyCents: Cents
@@ -13,11 +13,14 @@ const emit = defineEmits<{
 const amountInput = ref('')
 const error = ref<string | null>(null)
 
+// `syncEurosInput` : ne réécrit pas une saisie en cours équivalente (cf. `app/utils/euros.ts`).
+const { markDirty, markPristine, syncIfPristine } = useDirtyForm()
+
 function syncFromProps() {
-  amountInput.value = props.monthlyCents > 0 ? String(centsToEuros(props.monthlyCents)) : ''
+  amountInput.value = syncEurosInput(amountInput.value, props.monthlyCents)
   error.value = null
 }
-watch(() => props.monthlyCents, syncFromProps, { immediate: true })
+watch(() => props.monthlyCents, () => syncIfPristine(syncFromProps), { immediate: true })
 
 function onSubmit() {
   error.value = null
@@ -26,6 +29,12 @@ function onSubmit() {
     error.value = 'Montant invalide (nombre positif, max 2 décimales).'
     return
   }
+  // Borne alignée sur RevenueAmountCentsSchema.max(1e11) : message inline plutôt qu'un 422.
+  if (cents > MAX_REVENUE_CENTS) {
+    error.value = 'Montant trop élevé (max 1 000 000 000 €).'
+    return
+  }
+  markPristine()
   emit('save', { sasMonthlyRentCents: cents })
 }
 </script>
@@ -33,6 +42,7 @@ function onSubmit() {
 <template>
   <form
     class="rev-panel"
+    @input="markDirty"
     @submit.prevent="onSubmit"
   >
     <h3 class="rev-panel__title">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { centsToEuros, type Cents } from '~~/shared/types/money'
-import { parseEurosToCents } from '~/utils/euros'
+import type { Cents } from '~~/shared/types/money'
+import { parseEurosToCents, syncEurosInput } from '~/utils/euros'
+import { parseRatePct, ratePctToInput, MAX_SAS_CENTS } from '~/utils/rate-pct'
 import type { SasConfigInput } from '~~/shared/services/dividend-capacity'
 import type { SasConfigPatch } from '~~/shared/schemas/sas-config.schema'
 
@@ -12,8 +13,12 @@ const props = defineProps<{
   saving?: boolean
 }>()
 const emit = defineEmits<{
-  /** Émis à chaque saisie : valeurs cents courantes pour le recalcul live de la card. */
-  change: [live: SasConfigInput]
+  /**
+   * Émis à chaque saisie : valeurs cents courantes pour le recalcul live de la card, ou
+   * `null` si une saisie est invalide ou hors bornes (la card affiche alors « indisponible »
+   * au lieu d'une estimation calculée sur des zéros implicites).
+   */
+  change: [live: SasConfigInput | null]
   save: [patch: SasConfigPatch]
 }>()
 
@@ -23,45 +28,44 @@ const treasuryInput = ref('')
 const rateInput = ref('')
 const error = ref<string | null>(null)
 
-const eurosOf = (c: Cents) => (c > 0 ? String(centsToEuros(c)) : '')
-
-// Ne réécrit un champ que si sa saisie ne représente PAS déjà la valeur persistée : préserve
-// le format utilisateur (ex. "1500,50") après un save équivalent, au lieu de le normaliser.
-function syncEuros(current: string, cents: Cents) {
-  return parseEurosToCents(current || '0') === cents ? current : eurosOf(cents)
-}
+const { markDirty, markPristine, syncIfPristine } = useDirtyForm()
 
 function syncFromProps() {
-  revenueInput.value = syncEuros(revenueInput.value, props.revenueForecastCents)
-  expensesInput.value = syncEuros(expensesInput.value, props.expensesForecastCents)
-  treasuryInput.value = syncEuros(treasuryInput.value, props.currentTreasuryCents)
-  rateInput.value = parseRatePct(rateInput.value || '0') === props.isRatePct
+  revenueInput.value = syncEurosInput(revenueInput.value, props.revenueForecastCents)
+  expensesInput.value = syncEurosInput(expensesInput.value, props.expensesForecastCents)
+  treasuryInput.value = syncEurosInput(treasuryInput.value, props.currentTreasuryCents)
+  // 0 % est une valeur significative : on l'affiche, on ne le confond pas avec « non saisi ».
+  rateInput.value = parseRatePct(rateInput.value) === props.isRatePct
     ? rateInput.value
-    : (props.isRatePct > 0 ? String(props.isRatePct / 100) : '')
+    : ratePctToInput(props.isRatePct)
   error.value = null
 }
 watch(
   () => [props.revenueForecastCents, props.expensesForecastCents, props.currentTreasuryCents, props.isRatePct],
-  syncFromProps,
+  () => syncIfPristine(syncFromProps),
   { immediate: true },
 )
 
-/** Parse un pourcentage saisi (ex: "15", "15.5") en pct×100 entier, ou null si invalide. */
-function parseRatePct(input: string): number | null {
-  const normalized = input.replace(/\s+/gu, '').replace(',', '.')
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null
-  const pct = Number(normalized)
-  if (!Number.isFinite(pct) || pct < 0 || pct > 100) return null
-  return Math.round(pct * 100)
-}
-
-// Valeurs cents courantes (null → 0) pour le recalcul live de la card.
-const liveInput = computed<SasConfigInput>(() => ({
-  revenueForecastCents: (parseEurosToCents(revenueInput.value || '0') ?? 0) as Cents,
-  expensesForecastCents: (parseEurosToCents(expensesInput.value || '0') ?? 0) as Cents,
-  currentTreasuryCents: (parseEurosToCents(treasuryInput.value || '0') ?? 0) as Cents,
-  isRatePct: parseRatePct(rateInput.value || '0') ?? 0,
-}))
+/**
+ * Valeurs cents courantes pour le recalcul live de la card, ou `null` si une saisie est
+ * invalide ou hors bornes. On ne substitue PAS 0 à une saisie invalide : la card afficherait
+ * un montant financier faux comme une estimation valide (revue 2026-08-04). Hors du domaine
+ * garanti du schéma, `computeDividendCapacity` perdrait aussi son exactitude au centime.
+ */
+const liveInput = computed<SasConfigInput | null>(() => {
+  const revenue = parseEurosToCents(revenueInput.value || '0')
+  const expenses = parseEurosToCents(expensesInput.value || '0')
+  const treasury = parseEurosToCents(treasuryInput.value || '0')
+  const rate = parseRatePct(rateInput.value || '0')
+  if (revenue === null || expenses === null || treasury === null || rate === null) return null
+  if (revenue > MAX_SAS_CENTS || expenses > MAX_SAS_CENTS || treasury > MAX_SAS_CENTS) return null
+  return {
+    revenueForecastCents: revenue,
+    expensesForecastCents: expenses,
+    currentTreasuryCents: treasury,
+    isRatePct: rate,
+  }
+})
 watch(liveInput, val => emit('change', val), { immediate: true })
 
 function onSubmit() {
@@ -75,7 +79,7 @@ function onSubmit() {
     return
   }
   // Borne haute alignée sur SasAmountCentsSchema.max(1e12) : message inline plutôt qu'un 422.
-  if (revenue > 1e12 || expenses > 1e12 || treasury > 1e12) {
+  if (revenue > MAX_SAS_CENTS || expenses > MAX_SAS_CENTS || treasury > MAX_SAS_CENTS) {
     error.value = 'Montant trop élevé (max 10 000 000 000 €).'
     return
   }
@@ -83,6 +87,7 @@ function onSubmit() {
     error.value = 'Taux IS invalide (0 à 100 %, max 2 décimales).'
     return
   }
+  markPristine()
   emit('save', {
     revenueForecastCents: revenue,
     expensesForecastCents: expenses,
@@ -95,6 +100,8 @@ function onSubmit() {
 <template>
   <form
     class="rev-panel"
+    data-testid="sas-config-form"
+    @input="markDirty"
     @submit.prevent="onSubmit"
   >
     <h3 class="rev-panel__title">
@@ -127,13 +134,19 @@ function onSubmit() {
 
     <div class="rev-panel__row">
       <label class="rev-panel__field rev-panel__field--grow">
-        <span>Trésorerie actuelle (€)</span>
+        <!-- Cette trésorerie est ajoutée au résultat APRÈS IS : y inclure le résultat de
+             l'exercice en cours le compterait deux fois (cf. dividend-capacity.ts). -->
+        <span>Report à nouveau (€)</span>
         <input
           v-model="treasuryInput"
           type="text"
           inputmode="decimal"
           placeholder="0,00"
         >
+        <small class="rev-panel__hint">
+          Trésorerie hors résultat de l'exercice en cours (bénéfices non distribués des
+          exercices antérieurs).
+        </small>
       </label>
       <label class="rev-panel__field">
         <span>Taux IS (%)</span>
