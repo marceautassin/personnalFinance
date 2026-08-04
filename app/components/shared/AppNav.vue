@@ -17,7 +17,7 @@ const items: NavItem[] = [
   { label: 'Revenus', href: '/revenus' },
   { label: 'SAS', href: '/sas' },
   { label: 'Dettes', href: '/dettes' },
-  { label: 'Forecast', href: null },
+  { label: 'Forecast', href: '/forecast' },
   { label: 'Paramètres', href: '/parametres' },
 ]
 </script>
