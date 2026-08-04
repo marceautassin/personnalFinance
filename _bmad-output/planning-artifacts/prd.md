@@ -41,7 +41,9 @@ classification:
 
 ## Executive Summary
 
-**personnalFinance** est une web application local-first de pilotage financier personnel destinée à un utilisateur unique en transition de vie (chômage + lancement d'entreprise). Elle ingère automatiquement les relevés PDF Boursorama, catégorise les opérations via LLM, et produit un **forecast inverse multi-horizons (6/12/24 mois)** : à partir d'objectifs de trésorerie et d'un modèle de charges fixes/variables/annuelles, elle calcule le montant de dividendes à se verser et le nombre de jours de prestation à facturer pour les atteindre.
+**personnalFinance** est une web application local-first de pilotage financier personnel **multi-profils**. Le profil principal (Marceau, type `owner`) pilote son **forecast inverse multi-horizons (6/12/24 mois)** et son dividende SAS ; des **profils secondaires en mode suivi** (conjoint, parents, type `managed`) permettent d'ingérer et suivre d'autres comptes bancaires sans forecast. Chaque profil détient un ou plusieurs **comptes**, potentiellement de banques différentes. L'app ingère automatiquement les relevés PDF (extraction dispatchée par banque), catégorise les opérations via LLM, et pour le profil `owner` : à partir d'objectifs de trésorerie et d'un modèle de charges fixes/variables/annuelles, calcule le montant de dividendes à se verser et le nombre de jours de prestation à facturer pour les atteindre.
+
+> **Amendement 2026-07-12 (Sprint Change Proposal — multi-profils/comptes).** Le périmètre V1.x lève l'invariant « mono-utilisateur » et promeut le multi-banque depuis Growth. Détails : `planning-artifacts/sprint-change-proposal-2026-07-12.md`.
 
 Le problème résolu n'est pas le suivi budgétaire moralisateur des outils grand public, mais le **pilotage actif d'un revenu non-salarié** : combien sortir de l'entreprise, et quand. Suivi rétrospectif (où est passé l'argent ce mois) et planification prospective (quoi facturer pour tenir) sont réconciliés dans un même outil.
 
@@ -58,7 +60,7 @@ Le problème résolu n'est pas le suivi budgétaire moralisateur des outils gran
 | Champ | Valeur |
 |---|---|
 | **Project Type** | Web application — Nuxt 3 (SPA, `ssr: false`) + Nitro backend, local-first → cloud-ready |
-| **Domain** | Personal Finance / FinTech (mono-utilisateur, non-régulé) |
+| **Domain** | Personal Finance / FinTech (multi-profils local sans auth, non-régulé) |
 | **Complexity** | Moyenne — défis sur ingestion PDF + LLM, modèle de forecast multi-fréquences |
 | **Project Context** | Greenfield |
 | **Stack confirmée** | Nuxt 3 SPA · Nitro · SQLite + Drizzle · `unpdf` · Claude API (structured outputs) · CSS vanilla (SFC scoped + custom properties) · Reka UI (headless) ou hand-rolled · Vitest + Playwright |
@@ -288,7 +290,9 @@ Hors V1 : audit WCAG complet, support lecteurs d'écran, ARIA avancé, modes acc
 13. **Affichage impact marginal** — sur la fiche Dette, montrer combien la dette ajoute au dividende cible
 14. **Gestion des catégories** — création, renommage, suppression contrôlée (interdite si la catégorie est référencée par des transactions, charges fixes ou overrides)
 
-**Hors MVP — explicitement exclu :** authentification, multi-utilisateur, déploiement cloud, multi-banque, agrégation bancaire automatique, apprentissage des corrections, règles de catégorisation manuelles persistantes, multi-scénarios de forecast, alertes proactives, export comptable, sauvegarde/restauration, mobile/PWA/responsive, module pro/entreprise complet.
+**Hors MVP — explicitement exclu :** authentification, déploiement cloud, agrégation bancaire automatique, apprentissage des corrections, règles de catégorisation manuelles persistantes, multi-scénarios de forecast, alertes proactives, export comptable, sauvegarde/restauration, mobile/PWA/responsive, module pro/entreprise complet.
+
+> **Amendement 2026-07-12.** *Multi-profils/comptes* et *multi-banque* sont **promus en Phase 1.x (post-MVP immédiat)** — voir epics 8-11 et FR58-FR71. Restent Vision : agrégation bancaire directe et déploiement cloud **avec auth**.
 
 ### Post-MVP Features
 
@@ -299,7 +303,6 @@ Hors V1 : audit WCAG complet, support lecteurs d'écran, ARIA avancé, modes acc
 - Multi-scénarios de forecast (optimiste / réaliste / pessimiste)
 - Sauvegarde/restauration de la base
 - Export comptable (CSV, format expert-comptable)
-- Multi-banques (parser pluggable)
 - Alertes proactives sur anomalies
 
 **Phase 3 — Vision :**
@@ -435,6 +438,32 @@ Hors V1 : audit WCAG complet, support lecteurs d'écran, ARIA avancé, modes acc
 - **FR56** — L'utilisateur peut renommer le libellé d'une catégorie existante (par défaut ou créée). L'identifiant interne reste stable pour préserver l'intégrité référentielle des transactions, charges fixes et overrides mensuels.
 - **FR57** — L'utilisateur peut supprimer une catégorie uniquement si elle n'est référencée par aucune transaction, charge fixe ou override mensuel. Toute tentative de suppression sur une catégorie référencée est refusée avec message explicite indiquant le nombre de références bloquantes.
 
+### Multi-profils & multi-comptes *(Phase 1.x — amendement 2026-07-12)*
+
+- **FR58** — L'utilisateur peut créer, renommer et supprimer des **profils** (personne), chacun de type `owner` (forecast + dividende SAS) ou `managed` (suivi seul).
+- **FR59** — L'utilisateur peut créer, éditer et supprimer des **comptes** rattachés à un profil, chacun avec un libellé et une **banque**.
+- **FR60** — Le système partitionne toutes les données (relevés, transactions, charges, revenus, overrides, dettes, config SAS/fiscalité) par profil/compte.
+- **FR61** — L'utilisateur peut basculer le **contexte actif** (profil + compte) ; l'app reflète les données du contexte sélectionné.
+
+### Comptes en gestion (mode suivi) *(Phase 1.x — amendement 2026-07-12)*
+
+- **FR62** — Un profil `managed` autorise ingestion, catégorisation, réconciliation et dashboard, mais **pas** le forecast inverse ni le dividende SAS.
+- **FR63** — Le système empêche (garde-fou serveur **et** UI) l'accès aux fonctions forecast/SAS/fiscalité pour un profil `managed`.
+- **FR64** — L'UI indique visuellement le mode « suivi » d'un profil `managed`.
+
+### Dépenses communes (split conjoint) *(Phase 1.x — amendement 2026-07-12)*
+
+- **FR65** — L'utilisateur peut marquer une transaction comme **dépense commune** avec une part de répartition (défaut 50/50).
+- **FR66** — Une dépense commune met à jour le **solde de compte-courant** entre l'utilisateur et son conjoint (s'appuie sur le modèle Dettes, FR29-FR34).
+- **FR67** — Le retrait du marquage « commune » annule proprement le mouvement correspondant (idempotent).
+- **FR68** — Le système affiche le solde net conjoint (créance/dette) intégrant les dépenses communes.
+
+### Extraction multi-banques *(Phase 1.x — amendement 2026-07-12)*
+
+- **FR69** — Le système extrait les relevés selon une **stratégie d'extraction dépendant de la banque** du compte.
+- **FR70** — Le système supporte au moins deux banques ; l'ajout d'une banque = ajout d'une stratégie sans refactor du pipeline d'ingestion.
+- **FR71** — Le système signale explicitement une banque non supportée (`unsupported_bank`).
+
 ## Non-Functional Requirements
 
 > Catégories non pertinentes (skip explicite) : **Scalability** (mono-user, pas de croissance prévue), **Accessibility avancée** (déjà cadrée à minima dans la section Web Application).
@@ -450,7 +479,7 @@ Hors V1 : audit WCAG complet, support lecteurs d'écran, ARIA avancé, modes acc
 - **NFR4** — La clé API Anthropic est stockée exclusivement dans un fichier `.env` non versionné. Elle ne doit jamais apparaître en base, en logs, en réponse HTTP, ni dans le bundle client.
 - **NFR5** — Les PDFs sources et la base SQLite sont stockés exclusivement sur le système de fichiers local, dans des chemins gitignorés. Aucun upload de PDF brut vers un service tiers.
 - **NFR6** — Les données envoyées à l'API Anthropic se limitent au texte structuré des transactions (date, libellé, montant). Aucune donnée d'identification (nom complet, IBAN, RIB, adresse) ne quitte la machine.
-- **NFR7** — Aucune authentification utilisateur n'est implémentée en V1. L'app suppose un environnement local de confiance.
+- **NFR7** — Aucune **authentification** utilisateur n'est implémentée en V1.x. Le multi-profils est un **partitionnement de données local** (pas de comptes protégés, pas de séparation de sécurité) : l'app suppose toujours un environnement local de confiance mono-machine. L'auth ne devient un blocker que pour un futur déploiement cloud.
 
 ### Reliability & Data Integrity
 

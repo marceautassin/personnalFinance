@@ -179,8 +179,12 @@ _(Aucun document UX Design en V1 — décision PRD : périmètre desktop perso, 
 | FR29-FR34 | Epic 6 | Dettes |
 | FR37-FR40 | Epic 4 | Dashboard narratif |
 | FR41-FR53 | Epic 7 | Forecast inverse complet |
+| FR58-FR61 | Epic 8 | Fondation multi-profils/comptes |
+| FR62-FR64 | Epic 9 | Comptes en gestion (mode suivi) |
+| FR65-FR68 | Epic 10 | Dépenses communes (split conjoint) |
+| FR69-FR71 | Epic 11 | Extraction PDF par banque |
 
-**57/57 FRs mappés.** NFRs et Additional Requirements traversent tous les epics (rappels dans les stories concernées via les invariants `Cents`, réconciliation, parser/LLM boundaries, etc.).
+**71/71 FRs mappés** (57 V1 + 14 Phase 1.x). NFRs et Additional Requirements traversent tous les epics (rappels dans les stories concernées via les invariants `Cents`, réconciliation, parser/LLM boundaries, etc.).
 
 ## Epic List
 
@@ -235,6 +239,32 @@ Tout le moteur de forecast intégré : projection des dépenses variables (moyen
 
 **FRs couverts :** FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR51, FR52, FR53
 
+---
+
+## Phase 1.x — Multi-profils / multi-comptes *(amendement Sprint Change Proposal 2026-07-12)*
+
+> Attaqués **après clôture des epics 5/6/7 (V1 mono-user livré)**. Epic 8 = socle bloquant des epics 9-11. Voir `sprint-change-proposal-2026-07-12.md` et FR58-FR71. Décisions architecture D11-D14 + 3 open questions à trancher par l'architecte avant dev.
+
+### Epic 8 : Fondation multi-profils / multi-comptes
+*Socle. Le modèle de données, les endpoints et l'UI supportent plusieurs profils et comptes ; tout le code V1 est re-scopé sur le compte/profil actif.*
+
+**FRs couverts :** FR58, FR59, FR60, FR61
+
+### Epic 9 : Comptes en gestion (mode suivi)
+*Un profil `managed` (parents, conjoint) permet ingestion/catégo/réconciliation/dashboard, sans forecast ni dividende.*
+
+**FRs couverts :** FR62, FR63, FR64
+
+### Epic 10 : Dépenses communes (split conjoint)
+*Une transaction flaggée « commune » alimente le compte-courant de dette entre l'utilisateur et son conjoint (réutilise le modèle Dettes de l'epic 6).*
+
+**FRs couverts :** FR65, FR66, FR67, FR68
+
+### Epic 11 : Extraction PDF paramétrée par banque
+*`pdf-extractor` route vers une stratégie d'extraction selon la banque du compte ; Boursorama = première stratégie.*
+
+**FRs couverts :** FR69, FR70, FR71
+
 ### Dépendances inter-epics
 
 - Epic 2 dépend d'Epic 1 (foundation)
@@ -243,6 +273,10 @@ Tout le moteur de forecast intégré : projection des dépenses variables (moyen
 - Epic 5 dépend d'Epic 1 (foundation seulement)
 - Epic 6 dépend d'Epic 5 (modèle SAS pour impact dividende) et d'Epic 2 (pour FR9)
 - Epic 7 dépend d'Epics 4-6 (intègre tous les modèles)
+- **Epic 8 dépend d'Epics 1-7 (re-scope le code V1 existant) ; à démarrer après clôture 5/6/7**
+- **Epic 9 dépend d'Epic 8 (kind de profil)**
+- **Epic 10 dépend d'Epic 8 (scoping) + Epic 6 (Dettes)**
+- **Epic 11 dépend d'Epic 8 (`accounts.bank`)**
 
 Pas de dépendance circulaire. Chaque epic livre une valeur indépendante.
 
@@ -1155,4 +1189,301 @@ So that I never see stale figures.
 **Then** la home page et la page `/forecast` (si ouvertes ou prochainement consultées) reflètent les nouvelles valeurs.
 
 **And** un test E2E couvre : ouvrir la home → modifier ARE depuis `/revenus` → revenir à la home et voir le `BalanceSummary` mis à jour.
+
+---
+
+## Epic 8: Fondation multi-profils / multi-comptes
+
+*Socle Phase 1.x. Introduit `profiles`/`accounts`, re-scope tout le schéma et le code V1 sur le contexte actif (profil + compte). Prérequis : epics 5/6/7 `done`. Décisions D11-D14 + open questions tranchées par l'architecte avant dev.*
+
+### Story 8.1: Schéma `profiles` + `accounts` + migration de scoping
+
+As a dev,
+I want profile/account tables and every existing table scoped to a profile/account,
+So that data can be partitioned per person and per bank account.
+
+**Acceptance Criteria:**
+
+**Given** `server/db/schema.ts`,
+**When** j'ajoute `profiles` (`id` PK, `name` text, `kind` text 'owner'|'managed' CHECK, `created_at`) et `accounts` (`id` PK, `profile_id` FK → profiles.id cascade, `name` text, `bank` text, `created_at`),
+**Then** `yarn db:push` synchronise sans erreur.
+
+**Given** les tables de scope créées,
+**When** j'ajoute `account_id` FK sur `bank_statements`, `fixed_charges`, `monthly_overrides`, et je transforme `revenue_models` en 1-ligne-par-compte (FK `account_id`, fin du singleton),
+**And** j'ajoute `profile_id` FK sur `sas_config`, `tax_settings`, `debts`,
+**Then** le scoping est cohérent (transactions héritent via `statement_hash → account_id`, pas de dénormalisation).
+
+**Given** la stratégie de migration retenue (wipe & re-seed, cf. NFR11 — à confirmer archi),
+**When** le bootstrap s'exécute,
+**Then** un profil `owner` « Marceau » + un compte Boursorama par défaut sont seedés, et les singletons existants (revenue/sas/tax) sont rattachés à ce scope.
+
+**And** schémas Zod `shared/schemas/profile.schema.ts` et `account.schema.ts` avec `z.infer<>`.
+
+### Story 8.2: Endpoints CRUD `/api/profiles` et `/api/accounts`
+
+As a user,
+I want to manage my profiles and accounts,
+So that I can add my spouse, my parents and their bank accounts.
+
+**Acceptance Criteria:**
+
+**Given** `server/api/profiles/` et `server/api/accounts/`,
+**When** j'expose `GET|POST|PUT|DELETE` sur chacun (validation Zod),
+**Then** un profil peut être créé avec son `kind`, un compte avec sa `bank` et son `profile_id`.
+
+**Given** la suppression d'un profil/compte,
+**When** elle est demandée,
+**Then** la cascade supprime les comptes/relevés/transactions liés (ou refuse avec message si contexte actif) — comportement à acter.
+
+**And** un test couvre le round-trip CRUD + cascade.
+
+### Story 8.3: Re-scoping des endpoints existants sur le contexte actif
+
+As a dev,
+I want every existing endpoint to filter by the active account/profile,
+So that each context only sees its own data.
+
+**Acceptance Criteria:**
+
+**Given** les endpoints statements, transactions, dashboard, fixed-charges, revenues, overrides, forecast,
+**When** ils sont appelés,
+**Then** ils acceptent/filtrent par `accountId` (query param ou header de contexte).
+
+**Given** les endpoints sas-config, tax-settings, debts,
+**When** ils sont appelés,
+**Then** ils filtrent par `profileId`.
+
+**And** les tests d'endpoints existants sont adaptés au scoping (aucune fuite inter-comptes).
+
+### Story 8.4: Re-scoping des services de calcul + régénération snapshots
+
+As a dev,
+I want forecast/projection/dividend services to take the scope as input,
+So that computations are correct per account.
+
+**Acceptance Criteria:**
+
+**Given** `forecast-engine.ts`, `variable-projection.ts`, `dividend-calculator.ts`,
+**When** ils reçoivent le scope (accountId/profileId) et les modèles filtrés,
+**Then** le calcul est isolé au contexte.
+
+**Given** les snapshots forecast (G5),
+**When** je re-génère `tests/fixtures/snapshots/`,
+**Then** ils intègrent le scope et restent déterministes.
+
+**And** couverture 100% des fonctions de calcul (NFR18) préservée après re-scoping.
+
+### Story 8.5: Store `useContext` + sélecteur de contexte global
+
+As a user,
+I want to switch the active profile/account from anywhere,
+So that I control which data I'm looking at.
+
+**Acceptance Criteria:**
+
+**Given** un store Pinia `app/stores/context.ts` (profil actif + compte actif, state UI pur),
+**When** je change de contexte,
+**Then** le choix est persisté (localStorage) et rétabli au rechargement.
+
+**Given** un sélecteur dans `AppHeader`/`AppNav`,
+**When** il s'affiche,
+**Then** il liste les profils et leurs comptes et permet la bascule.
+
+### Story 8.6: Propagation du contexte dans les composables + invalidation par scope
+
+As a user,
+I want all views to react to the active context,
+So that switching context refreshes everything consistently.
+
+**Acceptance Criteria:**
+
+**Given** les composables (`useTransactions`, `useForecast`, `useDebts`, `useFixedCharges`, …),
+**When** le contexte actif change,
+**Then** ils propagent `accountId`/`profileId` dans les `useFetch` (keys incluant le scope) et refetch.
+
+**Given** `useInvalidate`,
+**When** une mutation a lieu,
+**Then** l'invalidation cible les clés du scope courant (`forecast-{accountId}-*`, `dashboard-{accountId}-*`).
+
+---
+
+## Epic 9: Comptes en gestion (mode suivi)
+
+*Un profil `managed` (parents, conjoint) : ingestion/catégo/réconciliation/dashboard, sans forecast ni dividende.*
+
+### Story 9.1: Garde-fou serveur `profile_not_owner`
+
+As a dev,
+I want the server to block forecast/SAS/tax endpoints for managed profiles,
+So that the "suivi seul" mode is enforced beyond the UI.
+
+**Acceptance Criteria:**
+
+**Given** les endpoints forecast, sas-config, tax-settings, dividende,
+**When** ils sont appelés avec un `profileId` de `kind = 'managed'`,
+**Then** ils retournent `domainError('profile_not_owner', { profileId })` (403).
+
+**Given** un profil `owner`,
+**When** les mêmes endpoints sont appelés,
+**Then** ils fonctionnent normalement.
+
+**And** un test couvre les deux cas.
+
+### Story 9.2: UI adaptative selon `kind`
+
+As a user,
+I want the UI to hide forecast/SAS/tax features for a managed profile,
+So that the interface matches what the profile can do.
+
+**Acceptance Criteria:**
+
+**Given** un profil actif `managed`,
+**When** je navigue,
+**Then** les entrées `forecast`, `sas`, `parametres` (fiscalité) sont masquées/désactivées et un badge « Mode suivi » est visible.
+
+**Given** un profil actif `owner`,
+**When** je navigue,
+**Then** toutes les fonctions sont disponibles.
+
+### Story 9.3: Parcours création profil `managed` + E2E
+
+As a user,
+I want to create a managed profile with its accounts and ingest their statements,
+So that I can track my parents' accounts.
+
+**Acceptance Criteria:**
+
+**Given** la création d'un profil `managed` + un compte,
+**When** j'ingère un PDF sur ce compte,
+**Then** transactions/dashboard fonctionnent, forecast absent.
+
+**And** un test E2E couvre : créer profil parent → ingestion → dashboard OK → forecast inaccessible.
+
+---
+
+## Epic 10: Dépenses communes (split conjoint)
+
+*Une transaction « commune » alimente le compte-courant de dette entre l'utilisateur et son conjoint. Réutilise le modèle Dettes (epic 6). Mécanique exacte du compte-courant à acter par l'architecte (open question).*
+
+### Story 10.1: Modèle de flag « commune » + lien conjoint
+
+As a dev,
+I want a shared-expense flag on transactions linked to the spouse ledger,
+So that common expenses can feed the couple's balance.
+
+**Acceptance Criteria:**
+
+**Given** `server/db/schema.ts`,
+**When** j'ajoute `is_shared` (boolean default false) + `shared_ratio` (integer pct×100, default 5000 = 50%) sur `transactions`, et le rattachement à l'entité conjoint (via `debts`/`debt_advances`),
+**Then** `yarn db:push` synchronise et le schéma Zod transaction est étendu.
+
+### Story 10.2: Service `shared-expense` (calcul du mouvement)
+
+As a dev,
+I want a deterministic function computing the ledger movement of a shared expense,
+So that the couple's balance stays exact.
+
+**Acceptance Criteria:**
+
+**Given** `server/services/shared-expense.ts`,
+**When** j'expose une fonction `(amountCents, ratio) → movementCents` (part de l'autre = `amount × (1 − ratio)`),
+**Then** le sens du mouvement est cohérent avec la dette pré-existante « envers conjoint ».
+
+**And** des tests couvrent (NFR18) : 50/50, ratio custom, retrait du flag (annulation), montant nul.
+
+### Story 10.3: `PATCH /api/transactions/[id]` étendu + recalcul solde
+
+As a user,
+I want marking a transaction as shared to update the couple's balance,
+So that the debt reflects reality automatically.
+
+**Acceptance Criteria:**
+
+**Given** le PATCH transaction étendu (`isShared`, `sharedRatio`),
+**When** je marque une transaction commune,
+**Then** un mouvement est écrit sur le solde conjoint (idempotent : le retrait annule proprement).
+
+**And** un test couvre marquage puis démarquage (solde revenu à l'identique).
+
+### Story 10.4: UI marqueur « Commune » + solde net conjoint
+
+As a user,
+I want to flag shared expenses and see the couple's net balance,
+So that I know who owes whom.
+
+**Acceptance Criteria:**
+
+**Given** `TransactionRow`,
+**When** elle s'affiche,
+**Then** un marqueur « Commune » + saisie de part sont disponibles.
+
+**Given** la fiche dette du conjoint,
+**When** elle s'affiche,
+**Then** le solde net (créance/dette) intègre les dépenses communes.
+
+### Story 10.5: Test E2E split conjoint
+
+**Given** un conjoint et une dépense commune payée par l'utilisateur,
+**When** je la marque commune,
+**Then** le solde conjoint est mis à jour du bon montant, et le démarquage le rétablit.
+
+---
+
+## Epic 11: Extraction PDF paramétrée par banque
+
+*`pdf-extractor` route vers une stratégie selon `account.bank`. Boursorama = première stratégie. Interface stable conservée (NFR16).*
+
+### Story 11.1: Refactor `pdf-extractor` en dispatcher par banque
+
+As a dev,
+I want a bank-dispatched extraction service,
+So that multiple statement formats are supported without touching the pipeline.
+
+**Acceptance Criteria:**
+
+**Given** `server/services/pdf-extractor.ts`,
+**When** j'expose `extractStatement(buffer, bank): Promise<RawStatement>` qui route vers une stratégie (`boursorama`, …),
+**Then** l'extraction Boursorama actuelle est isolée en stratégie `boursorama` et l'interface `RawStatement` est inchangée.
+
+**And** aucun import `unpdf` n'existe hors du module (grep).
+
+### Story 11.2: Deuxième stratégie banque + fixtures
+
+As a dev,
+I want a second bank extraction strategy,
+So that another account's statements can be ingested.
+
+**Acceptance Criteria:**
+
+**Given** la banque des parents/conjoint (à préciser),
+**When** j'implémente sa stratégie (parsing texte/période/soldes, G3 par format),
+**Then** des fixtures PDF réelles + tests couvrent l'extraction (texte non vide, période et soldes plausibles).
+
+### Story 11.3: Pipeline d'ingestion branché sur `account.bank`
+
+As a user,
+I want ingestion to use the right extractor for my account's bank,
+So that any supported account can be imported.
+
+**Acceptance Criteria:**
+
+**Given** `POST /api/statements`,
+**When** un PDF est déposé sur un compte,
+**Then** le pipeline lit `account.bank` et le passe à `extractStatement`.
+
+**Given** une banque sans stratégie,
+**When** l'ingestion est tentée,
+**Then** l'endpoint retourne `domainError('unsupported_bank', { bank })`.
+
+### Story 11.4: UI paramétrage compte — sélection de la banque
+
+As a user,
+I want to choose the bank when configuring an account,
+So that its statements are parsed correctly.
+
+**Acceptance Criteria:**
+
+**Given** le formulaire de compte (création/édition),
+**When** il s'affiche,
+**Then** un select liste les banques supportées (stratégies disponibles) et la valeur est persistée sur `accounts.bank`.
 
