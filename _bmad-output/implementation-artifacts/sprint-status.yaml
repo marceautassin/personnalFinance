@@ -36,7 +36,9 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30
-last_updated: 2026-07-07
+last_updated: 2026-07-19
+# (2026-07-19 : code review epic-7 → 9 patchs appliqués, 2 defer ; stories 7-1..7-8 + epic-7 → done)
+# (2026-07-12 : Sprint Change Proposal — ajout epics 8-11 Phase 1.x multi-profils/comptes, backlog)
 # (stories 5-1, 5-2 : review → done ; reste epic-5 : 5-3..5-6 ready-for-dev)
 # (dev story 5-3 : ready-for-dev → in-progress → review)
 # (dev story 5-4 : ready-for-dev → in-progress → review)
@@ -110,13 +112,51 @@ development_status:
   epic-6-retrospective: optional
 
   # Epic 7 — Forecast inverse
-  epic-7: backlog
-  7-1-service-variable-projection: backlog
-  7-2-monthly-overrides-endpoints: backlog
-  7-3-forecast-engine-v1-et-snapshots: backlog
-  7-4-dividend-calculator-required-dividend: backlog
-  7-5-endpoint-get-api-forecast: backlog
-  7-6-frontend-forecast-page-chart-card: backlog
-  7-7-frontend-warnings-levers-overrides: backlog
-  7-8-recalcul-reactif-global-use-invalidate: backlog
+  epic-7: done
+  7-1-service-variable-projection: done
+  7-2-monthly-overrides-endpoints: done
+  7-3-forecast-engine-v1-et-snapshots: done
+  7-4-dividend-calculator-required-dividend: done
+  7-5-endpoint-get-api-forecast: done
+  7-6-frontend-forecast-page-chart-card: done
+  7-7-frontend-warnings-levers-overrides: done
+  7-8-recalcul-reactif-global-use-invalidate: done
   epic-7-retrospective: optional
+
+  # ── Phase 1.x — Multi-profils/comptes (Sprint Change Proposal 2026-07-12) ──
+  # Démarrer APRÈS clôture epics 5/6/7. Epic 8 = socle bloquant.
+  # Design architecture (D11-D14 + 3 open questions) à trancher par Winston avant dev.
+
+  # Epic 8 — Fondation multi-profils / multi-comptes
+  epic-8: backlog
+  8-1-schema-profiles-accounts-migration-scoping: backlog
+  8-2-endpoints-crud-profiles-accounts: backlog
+  8-3-rescoping-endpoints-existants: backlog
+  8-4-rescoping-services-calcul-snapshots: backlog
+  8-5-store-use-context-selecteur-global: backlog
+  8-6-propagation-contexte-composables-invalidation: backlog
+  epic-8-retrospective: optional
+
+  # Epic 9 — Comptes en gestion (mode suivi)
+  epic-9: backlog
+  9-1-garde-fou-serveur-profile-not-owner: backlog
+  9-2-ui-adaptative-selon-kind: backlog
+  9-3-parcours-creation-profil-managed-e2e: backlog
+  epic-9-retrospective: optional
+
+  # Epic 10 — Dépenses communes (split conjoint)
+  epic-10: backlog
+  10-1-modele-flag-commune-lien-conjoint: backlog
+  10-2-service-shared-expense: backlog
+  10-3-patch-transactions-etendu-recalcul-solde: backlog
+  10-4-ui-marqueur-commune-solde-conjoint: backlog
+  10-5-test-e2e-split-conjoint: backlog
+  epic-10-retrospective: optional
+
+  # Epic 11 — Extraction PDF paramétrée par banque
+  epic-11: backlog
+  11-1-refactor-pdf-extractor-dispatcher-banque: backlog
+  11-2-deuxieme-strategie-banque-fixtures: backlog
+  11-3-pipeline-ingestion-account-bank: backlog
+  11-4-ui-parametrage-compte-selection-banque: backlog
+  epic-11-retrospective: optional

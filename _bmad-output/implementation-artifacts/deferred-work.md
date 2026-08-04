@@ -121,3 +121,8 @@
 
 - `ApiErrorCode.NotFound` mappé en FR générique "Ressource introuvable" (`app/composables/useApiError.ts:9`) — la page `/reconciliation/[hash]` ne distingue pas un 404 hash inconnu d'un 500 serveur. À enrichir quand le mapping s'étoffe.
 - `ReliabilityBadge` n'affiche aucun signal quand `reliability === 'reliable'` sur `/transactions/[period]` (badge masqué). FR14 demande un indicateur explicite. À traiter avec le dashboard narratif (Epic 4).
+
+## Deferred from: code review of epic 7 — forecast inverse (2026-07-19)
+
+- `resolveNextAgMonth` ignore le jour de clôture (`server/utils/period.ts:73-82`) — comparaison purement mensuelle (`mm >= parsed.month`) : au 15/12 avec une clôture `12-31`, l'AG est résolue à `2026-12` alors que l'exercice n'est pas encore clos. L'alerte ARE (`agMonth <= areEndMonth`) et l'affichage `AG {{agMonth}}` en héritent. Deferred : la granularité mensuelle est une simplification assumée dans tout le projet ; corriger ici seul créerait une incohérence. À reprendre si le forecast passe un jour à une granularité journalière.
+- Incohérence des signaux de fiabilité (`server/api/forecast.get.ts` vs `server/services/variable-projection.ts`) — `reducedReliability` compte les mois distincts de **toutes** les transactions (revenus et charges fixes inclus), alors que `sufficientHistory` se calcule par catégorie variable. 3 mois de relevés sans aucune dépense variable ⇒ bandeau « fiabilité OK » affiché alors que toutes les projections variables valent 0 sur un historique insuffisant. Deferred : réconcilier les deux signaux demande un arbitrage produit (fiabilité globale vs par catégorie), pas un correctif mécanique.
