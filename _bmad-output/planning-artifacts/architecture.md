@@ -592,7 +592,7 @@ personnalFinance/
 │   │   ├── narrative-generator.ts     # + .test.ts
 │   │   ├── variable-projection.ts     # + .test.ts
 │   │   ├── forecast-engine.ts         # + .test.ts
-│   │   ├── dividend-calculator.ts     # + .test.ts
+│   │   ├── dividend-calculator.ts     # + .test.ts (dividende NET requis, story 7.4)
 │   │   ├── debt-projection.ts         # + .test.ts
 │   │   └── charge-suggester.ts        # + .test.ts
 │   ├── db/
@@ -611,6 +611,8 @@ personnalFinance/
 │       └── disclaimer-context.ts
 │
 ├── shared/                            # Auto-imports Nuxt 4
+│   ├── services/                      # Calculs PURS consommés serveur ET client
+│   │   └── dividend-capacity.ts       # + .test.ts (capacité dividendable, story 5.4)
 │   ├── schemas/
 │   │   ├── transaction.schema.ts
 │   │   ├── statement.schema.ts
@@ -680,7 +682,7 @@ personnalFinance/
 | Réconciliation (FR11-15) | `reconciliation/[hash].post.ts` | `reconciler` | `ReconciliationGap`, `AddManualTransaction`, `ReliabilityBadge` |
 | Charges (FR16-18) | `fixed-charges/*` | `charge-suggester` | `FixedChargeList`, `FixedChargeForm`, `SuggestedChargesPanel` |
 | Revenus (FR19-22) | `revenues.{get,put}.ts` | — | `ArePanel`, `SasRentPanel`, `ReimbursementsPanel` |
-| SAS (FR23-28) | `sas-config.{get,put}.ts` | `dividend-calculator` (capacité) | `SasConfigForm`, `DividendCapacityCard`, `FiscalYearForm` |
+| SAS (FR23-28) | `sas-config.{get,put}.ts` | `shared/services/dividend-capacity` | `SasConfigForm`, `DividendCapacityCard`, `FiscalYearForm` |
 | Dettes (FR29-34) | `debts/*` | `debt-projection` | `DebtCard`, `DebtForm`, `DebtRepaymentMode`, `DebtAdvanceForm`, `DebtImpactOnDividend` |
 | Fiscalité (FR35-36) | `tax-settings.{get,put}.ts` | — | `TaxSettingsForm` |
 | Dashboard narratif (FR37-40) | `dashboard.get.ts` | `narrative-generator` | `MonthlyNarrative`, `BalanceSummary`, `MonthSelector` |
@@ -794,7 +796,7 @@ PdfDropZone (UI)
 | FR11-15 (Réconciliation) | `reconciliation/[hash]` | `reconciler` | `ReconciliationGap`, `AddManualTransaction`, `ReliabilityBadge` | ✅ |
 | FR16-18 (Charges) | `fixed-charges/*` | `charge-suggester` | `FixedChargeList`, `SuggestedChargesPanel` | ✅ |
 | FR19-22 (Revenus) | `revenues.*` | — | `ArePanel`, `SasRentPanel`, `ReimbursementsPanel` | ✅ |
-| FR23-28 (SAS) | `sas-config.*` | `dividend-calculator` | `SasConfigForm`, `DividendCapacityCard` | ✅ |
+| FR23-28 (SAS) | `sas-config.*` | `shared/services/dividend-capacity` | `SasConfigForm`, `DividendCapacityCard` | ✅ |
 | FR29-34 (Dettes) | `debts/*` | `debt-projection` | `DebtCard`, `DebtForm`, `DebtAdvanceForm`, `DebtImpactOnDividend` | ✅ |
 | FR35-36 (Fiscalité) | `tax-settings.*` | — | `TaxSettingsForm` | ✅ |
 | FR37-40 (Dashboard narratif) | `dashboard.get` | `narrative-generator` | `MonthlyNarrative`, `MonthSelector` | ✅ |

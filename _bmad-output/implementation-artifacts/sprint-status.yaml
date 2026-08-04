@@ -36,7 +36,8 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30
-last_updated: 2026-07-19
+last_updated: 2026-08-04
+# (2026-08-04 : code review lot 1 epic-5 → 5-3, 5-4 done (26 patchs, 3 décisions, 5 defer))
 # (2026-07-19 : code review epic-7 → 9 patchs appliqués, 2 defer ; stories 7-1..7-8 + epic-7 → done)
 # (2026-07-12 : Sprint Change Proposal — ajout epics 8-11 Phase 1.x multi-profils/comptes, backlog)
 # (stories 5-1, 5-2 : review → done ; reste epic-5 : 5-3..5-6 ready-for-dev)
@@ -97,8 +98,8 @@ development_status:
   epic-5: in-progress
   5-1-fixed-charges-crud-et-ui: done
   5-2-charge-suggester-et-suggestions-ui: done
-  5-3-revenue-models-endpoints-et-ui: review
-  5-4-sas-config-dividend-capacity-et-ui: review
+  5-3-revenue-models-endpoints-et-ui: done
+  5-4-sas-config-dividend-capacity-et-ui: done
   5-5-tax-settings-endpoints-et-ui: review
   5-6-gestion-categories-crud-et-ui: review
   epic-5-retrospective: optional
