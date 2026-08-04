@@ -66,6 +66,33 @@ export function nextMonths(fromMonth: string, n: number): string[] {
 }
 
 /**
+ * Mois (`YYYY-MM`) de la prochaine occurrence d'une clôture `MM-DD` à partir de `fromMonth`.
+ * Année courante si le mois de clôture ≥ mois courant, sinon année suivante (FR52, story 7.5).
+ * resolveNextAgMonth('2026-07', '12-31') → '2026-12' ; resolveNextAgMonth('2026-07', '03-31') → '2027-03'
+ */
+export function resolveNextAgMonth(fromMonth: string, fiscalYearEndMMDD: string): string {
+  const parsed = parseMonth(fromMonth)
+  if (!parsed) throw new Error(`resolveNextAgMonth: mois invalide '${fromMonth}'`)
+  const mm = Number(fiscalYearEndMMDD.slice(0, 2))
+  if (!Number.isInteger(mm) || mm < 1 || mm > 12) {
+    throw new Error(`resolveNextAgMonth: clôture invalide '${fiscalYearEndMMDD}'`)
+  }
+  const year = mm >= parsed.month ? parsed.year : parsed.year + 1
+  return `${String(year).padStart(4, '0')}-${String(mm).padStart(2, '0')}`
+}
+
+/**
+ * Nombre de mois de `fromMonth` à `toMonth` (toMonth − fromMonth), signé.
+ * monthOffset('2026-01', '2026-04') → 3 ; monthOffset('2026-04', '2026-01') → -3
+ */
+export function monthOffset(fromMonth: string, toMonth: string): number {
+  const a = parseMonth(fromMonth)
+  const b = parseMonth(toMonth)
+  if (!a || !b) throw new Error(`monthOffset: mois invalide '${fromMonth}' / '${toMonth}'`)
+  return (b.year * 12 + (b.month - 1)) - (a.year * 12 + (a.month - 1))
+}
+
+/**
  * Retourne le mois précédant `month` (YYYY-MM).
  * previousMonth('2026-04') → '2026-03'
  * previousMonth('2026-01') → '2025-12'

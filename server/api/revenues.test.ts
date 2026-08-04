@@ -93,12 +93,12 @@ describe('Revenue model singleton API', () => {
   it('PUT partial updates only provided field, leaves others, regenerates updatedAt', async () => {
     const updated = (await putHandler(makeEvent({
       method: 'PUT',
-      body: { unemploymentBenefitMonthlyCents: 110000 },
+      body: { sasMonthlyRentCents: 110000 },
     }))) as RevenueRow
     expect(updated.id).toBe(1)
-    expect(updated.unemploymentBenefitMonthlyCents).toBe(110000)
+    expect(updated.sasMonthlyRentCents).toBe(110000)
     // Champs non fournis inchangés.
-    expect(updated.sasMonthlyRentCents).toBe(0)
+    expect(updated.unemploymentBenefitMonthlyCents).toBe(0)
     expect(updated.expenseReimbursementsMonthlyCents).toBe(0)
     expect(updated.unemploymentBenefitEndDate).toBeNull()
     // updated_at régénéré (était 1000).
@@ -106,23 +106,49 @@ describe('Revenue model singleton API', () => {
 
     // Persistance confirmée par un GET ultérieur.
     const after = (await getHandler(makeEvent({ method: 'GET' }))) as RevenueRow
-    expect(after.unemploymentBenefitMonthlyCents).toBe(110000)
+    expect(after.sasMonthlyRentCents).toBe(110000)
   })
 
-  it('PUT accepts endDate + zero amounts and persists null when set explicitly', async () => {
+  it('PUT accepts an ARE amount when an end date is provided', async () => {
     const updated = (await putHandler(makeEvent({
       method: 'PUT',
       body: { unemploymentBenefitMonthlyCents: 90000, unemploymentBenefitEndDate: '2026-12-31' },
     }))) as RevenueRow
     expect(updated.unemploymentBenefitEndDate).toBe('2026-12-31')
+    expect(updated.unemploymentBenefitMonthlyCents).toBe(90000)
+  })
 
+  /**
+   * Invariant ARE : le forecast ne compte l'ARE que jusqu'à sa date de fin. Un montant sans
+   * date serait saisi puis silencieusement ignoré sur tout l'horizon → refus explicite.
+   */
+  it('rejects an ARE amount > 0 without an end date → 422', async () => {
+    await expect(
+      putHandler(makeEvent({ method: 'PUT', body: { unemploymentBenefitMonthlyCents: 110000 } })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  it('rejects clearing the end date while an ARE amount remains → 422', async () => {
+    await putHandler(makeEvent({
+      method: 'PUT',
+      body: { unemploymentBenefitMonthlyCents: 90000, unemploymentBenefitEndDate: '2026-12-31' },
+    }))
+    await expect(
+      putHandler(makeEvent({ method: 'PUT', body: { unemploymentBenefitEndDate: null } })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  it('allows clearing the end date once the ARE amount is back to zero', async () => {
+    await putHandler(makeEvent({
+      method: 'PUT',
+      body: { unemploymentBenefitMonthlyCents: 90000, unemploymentBenefitEndDate: '2026-12-31' },
+    }))
     const cleared = (await putHandler(makeEvent({
       method: 'PUT',
-      body: { unemploymentBenefitEndDate: null },
+      body: { unemploymentBenefitMonthlyCents: 0, unemploymentBenefitEndDate: null },
     }))) as RevenueRow
+    expect(cleared.unemploymentBenefitMonthlyCents).toBe(0)
     expect(cleared.unemploymentBenefitEndDate).toBeNull()
-    // Le montant posé précédemment reste (patch partiel).
-    expect(cleared.unemploymentBenefitMonthlyCents).toBe(90000)
   })
 
   it('rejects PUT with negative amount → 422', async () => {

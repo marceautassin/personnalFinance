@@ -1,28 +1,21 @@
 import { defineEventHandler, getRouterParam, setResponseStatus } from 'h3'
 import { eq, sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { categoryDefinitions, transactions, fixedCharges } from '~~/server/db/schema'
+import { categoryDefinitions, transactions, fixedCharges, monthlyOverrides } from '~~/server/db/schema'
 import { notFound, domainError } from '~~/server/utils/errors'
-import { monthlyOverridesTableExists } from '~~/server/utils/monthly-overrides'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { isProtectedCategory } from '~~/shared/constants/protected-categories'
 
 /** Compte les lignes référençant `code` dans une table via `category_code`. */
-function refCount(table: typeof transactions | typeof fixedCharges, code: string): number {
+function refCount(
+  table: typeof transactions | typeof fixedCharges | typeof monthlyOverrides,
+  code: string,
+): number {
   const row = db
     .select({ cnt: sql<number>`count(*)` })
     .from(table)
     .where(eq(table.categoryCode, code))
     .get()
-  return Number(row?.cnt ?? 0)
-}
-
-/** Compte les `monthly_overrides` référençant `code` (table absente avant Story 7.2 → 0). */
-function overrideRefCount(code: string): number {
-  if (!monthlyOverridesTableExists()) return 0
-  const row = db.get<{ cnt: number }>(
-    sql`SELECT count(*) AS cnt FROM monthly_overrides WHERE category_code = ${code}`,
-  )
   return Number(row?.cnt ?? 0)
 }
 
@@ -49,7 +42,7 @@ export default defineEventHandler(async (event): Promise<null> => {
 
   const transactionCount = refCount(transactions, code)
   const fixedChargeCount = refCount(fixedCharges, code)
-  const monthlyOverrideCount = overrideRefCount(code)
+  const monthlyOverrideCount = refCount(monthlyOverrides, code)
   if (transactionCount + fixedChargeCount + monthlyOverrideCount > 0) {
     throw domainError(
       ApiErrorCode.CategoryInUse,

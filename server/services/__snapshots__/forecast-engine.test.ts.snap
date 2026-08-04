@@ -1,0 +1,66 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`computeForecast — pure > snapshot d'un scénario complet (G5) 1`] = `
+{
+  "firstNegativeMonth": null,
+  "horizonMonths": 6,
+  "months": [
+    {
+      "endingBalanceCents": 1065000,
+      "fixedChargesCents": -90000,
+      "incomeCents": 220000,
+      "month": "2026-01",
+      "netCents": 65000,
+      "punctualCents": 0,
+      "variableCents": -65000,
+    },
+    {
+      "endingBalanceCents": 1090000,
+      "fixedChargesCents": -130000,
+      "incomeCents": 220000,
+      "month": "2026-02",
+      "netCents": 25000,
+      "punctualCents": 0,
+      "variableCents": -65000,
+    },
+    {
+      "endingBalanceCents": 1115000,
+      "fixedChargesCents": -130000,
+      "incomeCents": 220000,
+      "month": "2026-03",
+      "netCents": 25000,
+      "punctualCents": 0,
+      "variableCents": -65000,
+    },
+    {
+      "endingBalanceCents": 760000,
+      "fixedChargesCents": -390000,
+      "incomeCents": 100000,
+      "month": "2026-04",
+      "netCents": -355000,
+      "punctualCents": 0,
+      "variableCents": -65000,
+    },
+    {
+      "endingBalanceCents": 635000,
+      "fixedChargesCents": -90000,
+      "incomeCents": 100000,
+      "month": "2026-05",
+      "netCents": -125000,
+      "punctualCents": 0,
+      "variableCents": -135000,
+    },
+    {
+      "endingBalanceCents": 330000,
+      "fixedChargesCents": -90000,
+      "incomeCents": 100000,
+      "month": "2026-06",
+      "netCents": -305000,
+      "punctualCents": -250000,
+      "variableCents": -65000,
+    },
+  ],
+  "startMonth": "2026-01",
+  "startingTreasuryCents": 1000000,
+}
+`;

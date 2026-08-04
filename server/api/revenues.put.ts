@@ -3,15 +3,37 @@ import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { revenueModels } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
+import { domainError } from '~~/server/utils/errors'
+import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { RevenueModelPatchSchema } from '~~/shared/schemas/revenue-model.schema'
 
 /**
  * Met à jour le singleton `revenue_models` (id=1). Body = patch partiel (au moins un
  * champ, cf. Dev Notes story 5.3) : seuls les champs fournis sont écrits, les autres
  * restent inchangés. `updated_at` régénéré à chaque mutation. Pas de 404 (seed garanti).
+ *
+ * Invariant ARE : un montant d'ARE > 0 exige une date de fin de droits. Le forecast ne
+ * compte l'ARE que jusqu'à `unemployment_benefit_end_date` (cf. `incomeForMonth`) : sans
+ * date, le montant serait saisi puis silencieusement ignoré sur tout l'horizon. Contrôle
+ * croisé sur l'état APRÈS patch (le body étant partiel, le schéma Zod seul ne suffit pas).
  */
 export default defineEventHandler(async (event) => {
   const body = await validateBody(event, RevenueModelPatchSchema)
+
+  const current = db.select().from(revenueModels).where(eq(revenueModels.id, 1)).limit(1).get()
+  const merged = {
+    unemploymentBenefitMonthlyCents: body.unemploymentBenefitMonthlyCents ?? current?.unemploymentBenefitMonthlyCents ?? 0,
+    unemploymentBenefitEndDate: body.unemploymentBenefitEndDate !== undefined
+      ? body.unemploymentBenefitEndDate
+      : current?.unemploymentBenefitEndDate ?? null,
+  }
+  if (merged.unemploymentBenefitMonthlyCents > 0 && merged.unemploymentBenefitEndDate === null) {
+    throw domainError(
+      ApiErrorCode.ValidationFailed,
+      { reason: 'unemployment_benefit_end_date_required', field: 'unemploymentBenefitEndDate' },
+      422,
+    )
+  }
 
   const [updated] = await db
     .update(revenueModels)

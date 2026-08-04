@@ -1,8 +1,7 @@
 import { defineEventHandler } from 'h3'
 import { sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { categoryDefinitions, transactions, fixedCharges } from '~~/server/db/schema'
-import { monthlyOverridesTableExists } from '~~/server/utils/monthly-overrides'
+import { categoryDefinitions, transactions, fixedCharges, monthlyOverrides } from '~~/server/db/schema'
 
 export interface CategoryListItem {
   code: string
@@ -13,24 +12,14 @@ export interface CategoryListItem {
 }
 
 /** Compte les lignes par `category_code` d'une table, en map `code → count`. */
-function countByCategory(table: typeof transactions | typeof fixedCharges): Map<string, number> {
+function countByCategory(
+  table: typeof transactions | typeof fixedCharges | typeof monthlyOverrides,
+): Map<string, number> {
   const rows = db
     .select({ code: table.categoryCode, cnt: sql<number>`count(*)` })
     .from(table)
     .groupBy(table.categoryCode)
     .all()
-  return new Map(rows.map(r => [r.code, Number(r.cnt)]))
-}
-
-/**
- * Compte `monthly_overrides` par catégorie. La table n'existe pas avant la story 7.2
- * (cf. `monthlyOverridesTableExists`) : retourne une map vide tant qu'elle est absente.
- */
-function countOverridesByCategory(): Map<string, number> {
-  if (!monthlyOverridesTableExists()) return new Map()
-  const rows = db.all<{ code: string, cnt: number }>(
-    sql`SELECT category_code AS code, count(*) AS cnt FROM monthly_overrides GROUP BY category_code`,
-  )
   return new Map(rows.map(r => [r.code, Number(r.cnt)]))
 }
 
@@ -49,7 +38,7 @@ export default defineEventHandler(async (): Promise<CategoryListItem[]> => {
 
   const txCounts = countByCategory(transactions)
   const chargeCounts = countByCategory(fixedCharges)
-  const overrideCounts = countOverridesByCategory()
+  const overrideCounts = countByCategory(monthlyOverrides)
 
   const withCount = rows.map(r => ({
     ...r,

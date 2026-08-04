@@ -62,6 +62,14 @@ beforeAll(async () => {
       end_date TEXT,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
+    CREATE TABLE monthly_overrides (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      month TEXT NOT NULL,
+      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
+      amount_cents INTEGER NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      UNIQUE(month, category_code)
+    );
   `)
 
   getHandler = (await import('./index.get')).default as Handler
@@ -78,6 +86,7 @@ afterAll(() => {
 })
 
 beforeEach(() => {
+  dbMod.db.delete(schema.monthlyOverrides).run()
   dbMod.db.delete(schema.transactions).run()
   dbMod.db.delete(schema.fixedCharges).run()
   dbMod.db.delete(schema.categoryDefinitions).run()
@@ -152,6 +161,12 @@ describe('GET /api/categories', () => {
     expect(list.find(c => c.code === 'logement')!.referenceCount).toBe(0)
   })
 
+  it('referenceCount includes monthly_overrides (Story 7.2)', async () => {
+    dbMod.db.insert(schema.monthlyOverrides).values({ month: '2026-05', categoryCode: 'courses', amountCents: 30_000 }).run()
+    const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
+    expect(list.find(c => c.code === 'courses')!.referenceCount).toBe(1)
+  })
+
   it('orders variables first then fixed, alpha inside each group', async () => {
     // Fixture insérée DANS LE DÉSORDRE (≠ sortie attendue) pour exercer réellement le tri,
     // avec 2 catégories par groupe pour vérifier l'ordre alpha intra-groupe.
@@ -223,6 +238,17 @@ describe('DELETE /api/categories/[code]', () => {
       statusCode: 409,
       statusMessage: ApiErrorCode.CategoryInUse,
       data: { transactionCount: 1, fixedChargeCount: 0, monthlyOverrideCount: 0 },
+    })
+  })
+
+  it('rejects deletion when the only reference is a monthly_override → 409 (Story 7.2)', async () => {
+    dbMod.db.insert(schema.monthlyOverrides).values({ month: '2026-05', categoryCode: 'courses', amountCents: 30_000 }).run()
+    await expect(
+      deleteHandler(makeEvent({ method: 'DELETE', code: 'courses' })),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: ApiErrorCode.CategoryInUse,
+      data: { transactionCount: 0, fixedChargeCount: 0, monthlyOverrideCount: 1 },
     })
   })
 

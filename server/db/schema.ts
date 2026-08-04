@@ -14,7 +14,7 @@
  * V1 : drizzle-kit push (pas de migrations versionnées). Bascule possible vers
  * drizzle-kit generate + apply-migration plus tard sans changement de schéma.
  */
-import { sqliteTable, integer, text, index, check } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, integer, text, index, uniqueIndex, check } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 /**
@@ -281,3 +281,28 @@ export const debtAdvances = sqliteTable('debt_advances', {
 
 export type DebtAdvanceRow = typeof debtAdvances.$inferSelect
 export type NewDebtAdvanceRow = typeof debtAdvances.$inferInsert
+
+/**
+ * monthly_overrides — valeur manuelle qui outrepasse la projection d'une catégorie variable
+ * pour un mois donné (FR44, story 7.2).
+ *
+ *  - `month` au format `YYYY-MM`.
+ *  - `amount_cents` NON signé (≥ 0) : dépense projetée forcée pour ce mois × catégorie.
+ *  - UNIQUE(month, category_code) : un seul override par couple (POST = upsert).
+ *  - FK `category_code` RESTRICT : la catégorie référencée ne peut être supprimée (cf. 5.6).
+ */
+export const monthlyOverrides = sqliteTable('monthly_overrides', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  month: text('month').notNull(),
+  categoryCode: text('category_code')
+    .notNull()
+    .references(() => categoryDefinitions.code, { onDelete: 'restrict' }),
+  amountCents: integer('amount_cents').notNull(),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, t => ({
+  monthlyOverridesUnique: uniqueIndex('monthly_overrides_month_cat_idx').on(t.month, t.categoryCode),
+  monthlyOverridesAmountPositive: check('monthly_overrides_amount_positive', sql`${t.amountCents} >= 0`),
+}))
+
+export type MonthlyOverrideRow = typeof monthlyOverrides.$inferSelect
+export type NewMonthlyOverrideRow = typeof monthlyOverrides.$inferInsert
