@@ -32,13 +32,29 @@ export interface DividendCapacity {
  *  - les dividendes antérieurs déjà distribués
  * Voir defer-work si enrichissement V2 nécessaire.
  *
+ * HYPOTHÈSE SUR LA TRÉSORERIE (explicitée à la revue 2026-08-04) : `currentTreasuryCents`
+ * est additionné au résultat APRÈS IS, donc il doit représenter la trésorerie **hors
+ * résultat de l'exercice en cours** (report à nouveau, bénéfices non distribués des
+ * exercices antérieurs). Y saisir la trésorerie brute du compte en cours d'exercice
+ * comptabiliserait deux fois le résultat déjà encaissé et surestimerait la capacité.
+ * Le libellé UI porte cette précision (`SasConfigForm.vue`).
+ *
  * Règles :
  *  - profitBeforeTax = revenue - expenses (signé, peut être négatif)
  *  - tax = profitBeforeTax > 0 ? floor(profitBeforeTax × isRatePct / 10000) : 0
  *  - profitAfterTax = profitBeforeTax - tax
  *  - capacity = max(0, profitAfterTax + treasury) (floor à 0 — pas de dividende négatif)
+ *
+ * @throws RangeError si `isRatePct` n'est pas un entier de 0 à 10000 (pct × 100). La
+ * décomposition arithmétique ci-dessous suppose un entier : un taux fractionnaire
+ * produirait des « cents » à décimales et romprait l'invariant `Cents`, un taux négatif
+ * une taxe négative qui gonflerait la capacité.
  */
 export function computeDividendCapacity(input: SasConfigInput): DividendCapacity {
+  if (!Number.isInteger(input.isRatePct) || input.isRatePct < 0 || input.isRatePct > 10000) {
+    throw new RangeError(`isRatePct doit être un entier de 0 à 10000 (pct × 100), reçu : ${input.isRatePct}`)
+  }
+
   const profitBeforeTaxCents = subCents(input.revenueForecastCents, input.expensesForecastCents)
 
   // floor(profit × isRatePct / 10000), décomposé pour rester exact même au plafond du schéma :

@@ -97,6 +97,24 @@ describe('SAS config singleton API', () => {
     expect(updated.expensesForecastCents).toBe(0)
     expect(updated.fiscalYearEndDate).toBe('12-31')
     expect(updated.updatedAt).toBeGreaterThan(1000)
+
+    // Relecture : le `returning()` pourrait refléter un état intermédiaire correct alors
+    // qu'un `.set()` fautif aurait écrasé les colonnes non fournies (cf. homologue 5.3).
+    const after = (await getHandler(makeEvent({ method: 'GET' }))) as SasRow
+    expect(after.revenueForecastCents).toBe(10_000_000)
+    expect(after.isRatePct).toBe(2500)
+    expect(after.expensesForecastCents).toBe(0)
+    expect(after.fiscalYearEndDate).toBe('12-31')
+  })
+
+  it('PUT updates currentTreasuryCents', async () => {
+    const updated = (await putHandler(makeEvent({
+      method: 'PUT',
+      body: { currentTreasuryCents: 4_250_000 },
+    }))) as SasRow
+    expect(updated.currentTreasuryCents).toBe(4_250_000)
+    const after = (await getHandler(makeEvent({ method: 'GET' }))) as SasRow
+    expect(after.currentTreasuryCents).toBe(4_250_000)
   })
 
   it('PUT accepts a valid fiscalYearEndDate', async () => {
@@ -135,5 +153,52 @@ describe('SAS config singleton API', () => {
     await expect(
       putHandler(makeEvent({ method: 'PUT', body: { bogus: 1 } })),
     ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  /**
+   * Une clôture d'exercice est récurrente chaque année : `02-29` n'existe pas 3 années sur 4
+   * et n'a aucune règle de repli définie → rejet à la saisie (revue 2026-08-04).
+   */
+  it('rejects PUT with a 29 February fiscal year end (not yearly recurring) → 422', async () => {
+    await expect(
+      putHandler(makeEvent({ method: 'PUT', body: { fiscalYearEndDate: '02-29' } })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  it('accepts 02-28, the latest February closing date that exists every year', async () => {
+    const updated = (await putHandler(makeEvent({
+      method: 'PUT',
+      body: { fiscalYearEndDate: '02-28' },
+    }))) as SasRow
+    expect(updated.fiscalYearEndDate).toBe('02-28')
+  })
+
+  // Bornes hautes des schémas : seules protections contre une perte de précision dans
+  // `computeDividendCapacity`, jamais assertées jusqu'ici.
+  it('rejects PUT above the schema bounds → 422', async () => {
+    await expect(
+      putHandler(makeEvent({ method: 'PUT', body: { isRatePct: 10001 } })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+    await expect(
+      putHandler(makeEvent({ method: 'PUT', body: { revenueForecastCents: 1e12 + 1 } })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  describe('when the seeded singleton row is missing', () => {
+    beforeEach(() => {
+      dbMod.db.delete(schema.sasConfig).run()
+    })
+
+    it('GET fails with singleton_missing instead of returning an empty body', async () => {
+      await expect(
+        getHandler(makeEvent({ method: 'GET' })),
+      ).rejects.toMatchObject({ statusCode: 500, statusMessage: ApiErrorCode.SingletonMissing })
+    })
+
+    it('PUT fails with singleton_missing instead of reporting a phantom success', async () => {
+      await expect(
+        putHandler(makeEvent({ method: 'PUT', body: { isRatePct: 2500 } })),
+      ).rejects.toMatchObject({ statusCode: 500, statusMessage: ApiErrorCode.SingletonMissing })
+    })
   })
 })

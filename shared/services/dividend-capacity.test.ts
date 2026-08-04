@@ -92,4 +92,45 @@ describe('computeDividendCapacity (story 5.4)', () => {
     const expected = Number((BigInt(revenue) * BigInt(isRatePct)) / 10000n)
     expect(r.taxCents).toBe(expected)
   })
+
+  // Bords de la condition `profitBeforeTaxCents > 0` et du `Math.max(0, …)` : la frontière
+  // stricte n'était assertée nulle part (revue 2026-08-04, NFR18).
+  it('profit exactement nul : tax 0, capacity = trésorerie seule', () => {
+    const r = computeDividendCapacity({
+      revenueForecastCents: c(4_000_000),
+      expensesForecastCents: c(4_000_000),
+      currentTreasuryCents: c(750_000),
+      isRatePct: 2500,
+    })
+    expect(r.profitBeforeTaxCents).toBe(0)
+    expect(r.taxCents).toBe(0)
+    expect(r.profitAfterTaxCents).toBe(0)
+    expect(r.dividendableCapacityCents).toBe(750_000)
+  })
+
+  it('profit après IS + trésorerie exactement nul : capacity 0 (bord du floor)', () => {
+    const r = computeDividendCapacity({
+      revenueForecastCents: c(1_000_000),
+      expensesForecastCents: c(3_000_000),
+      currentTreasuryCents: c(2_000_000),
+      isRatePct: 1500,
+    })
+    expect(r.profitAfterTaxCents).toBe(-2_000_000)
+    expect(r.dividendableCapacityCents).toBe(0)
+  })
+
+  // `isRatePct` doit être un entier de 0 à 10000 : la décomposition arithmétique le suppose.
+  it.each([
+    ['fractionnaire', 1550.5],
+    ['négatif', -500],
+    ['au-delà de 100 %', 10001],
+    ['NaN', Number.NaN],
+  ])('rejette un isRatePct %s', (_label, isRatePct) => {
+    expect(() => computeDividendCapacity({
+      revenueForecastCents: c(10_000_000),
+      expensesForecastCents: c(6_000_000),
+      currentTreasuryCents: c(0),
+      isRatePct,
+    })).toThrow(RangeError)
+  })
 })

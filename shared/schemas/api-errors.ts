@@ -23,6 +23,11 @@ export const ApiErrorCode = {
   // Domaine — Catégories
   CategoryInUse: 'category_in_use',
   CategoryProtected: 'category_protected',
+
+  // Domaine — Modèles financiers (singletons)
+  SingletonMissing: 'singleton_missing',
+  UnemploymentEndDateRequired: 'unemployment_end_date_required',
+  UnemploymentEndDatePast: 'unemployment_end_date_past',
 } as const
 
 export type ApiErrorCodeValue = (typeof ApiErrorCode)[keyof typeof ApiErrorCode]

@@ -71,6 +71,19 @@ function makeEvent(opts: { method: string, body?: unknown }): H3Event {
   } as unknown as H3Event
 }
 
+/**
+ * Dates relatives à l'exécution : l'invariant ARE compare la date de fin au mois courant,
+ * une date en dur ("2026-12-31") ferait basculer ces tests de verts à rouges avec le temps.
+ */
+function isoMonthsFromNow(delta: number): string {
+  const now = new Date()
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + delta, 15))
+    .toISOString()
+    .slice(0, 10)
+}
+const FUTURE_DATE = isoMonthsFromNow(6)
+const PAST_DATE = isoMonthsFromNow(-6)
+
 interface RevenueRow {
   id: number
   unemploymentBenefitMonthlyCents: number
@@ -112,36 +125,56 @@ describe('Revenue model singleton API', () => {
   it('PUT accepts an ARE amount when an end date is provided', async () => {
     const updated = (await putHandler(makeEvent({
       method: 'PUT',
-      body: { unemploymentBenefitMonthlyCents: 90000, unemploymentBenefitEndDate: '2026-12-31' },
+      body: { unemploymentBenefitMonthlyCents: 90000, unemploymentBenefitEndDate: FUTURE_DATE },
     }))) as RevenueRow
-    expect(updated.unemploymentBenefitEndDate).toBe('2026-12-31')
+    expect(updated.unemploymentBenefitEndDate).toBe(FUTURE_DATE)
     expect(updated.unemploymentBenefitMonthlyCents).toBe(90000)
   })
 
   /**
-   * Invariant ARE : le forecast ne compte l'ARE que jusqu'à sa date de fin. Un montant sans
-   * date serait saisi puis silencieusement ignoré sur tout l'horizon → refus explicite.
+   * Invariant ARE (amendement revue 2026-08-04) : le forecast ne compte l'ARE que si
+   * `monthOf(endDate) >= month`. Un montant sans date — ou avec une date échue — serait
+   * saisi puis silencieusement ignoré sur tout l'horizon → refus explicite, erreur métier
+   * 400 avec code dédié (et non 422 `validation_failed`, réservé à la forme du payload).
    */
-  it('rejects an ARE amount > 0 without an end date → 422', async () => {
+  it('rejects an ARE amount > 0 without an end date → 400', async () => {
     await expect(
       putHandler(makeEvent({ method: 'PUT', body: { unemploymentBenefitMonthlyCents: 110000 } })),
-    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+    ).rejects.toMatchObject({ statusCode: 400, statusMessage: ApiErrorCode.UnemploymentEndDateRequired })
   })
 
-  it('rejects clearing the end date while an ARE amount remains → 422', async () => {
+  it('rejects an ARE amount > 0 with an already-past end date → 400', async () => {
+    await expect(
+      putHandler(makeEvent({
+        method: 'PUT',
+        body: { unemploymentBenefitMonthlyCents: 110000, unemploymentBenefitEndDate: PAST_DATE },
+      })),
+    ).rejects.toMatchObject({ statusCode: 400, statusMessage: ApiErrorCode.UnemploymentEndDatePast })
+  })
+
+  it('accepts an end date within the current month (boundary of the past-date guard)', async () => {
+    const thisMonth = `${new Date().toISOString().slice(0, 7)}-01`
+    const updated = (await putHandler(makeEvent({
+      method: 'PUT',
+      body: { unemploymentBenefitMonthlyCents: 90000, unemploymentBenefitEndDate: thisMonth },
+    }))) as RevenueRow
+    expect(updated.unemploymentBenefitEndDate).toBe(thisMonth)
+  })
+
+  it('rejects clearing the end date while an ARE amount remains → 400', async () => {
     await putHandler(makeEvent({
       method: 'PUT',
-      body: { unemploymentBenefitMonthlyCents: 90000, unemploymentBenefitEndDate: '2026-12-31' },
+      body: { unemploymentBenefitMonthlyCents: 90000, unemploymentBenefitEndDate: FUTURE_DATE },
     }))
     await expect(
       putHandler(makeEvent({ method: 'PUT', body: { unemploymentBenefitEndDate: null } })),
-    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+    ).rejects.toMatchObject({ statusCode: 400, statusMessage: ApiErrorCode.UnemploymentEndDateRequired })
   })
 
   it('allows clearing the end date once the ARE amount is back to zero', async () => {
     await putHandler(makeEvent({
       method: 'PUT',
-      body: { unemploymentBenefitMonthlyCents: 90000, unemploymentBenefitEndDate: '2026-12-31' },
+      body: { unemploymentBenefitMonthlyCents: 90000, unemploymentBenefitEndDate: FUTURE_DATE },
     }))
     const cleared = (await putHandler(makeEvent({
       method: 'PUT',
@@ -173,5 +206,28 @@ describe('Revenue model singleton API', () => {
     await expect(
       putHandler(makeEvent({ method: 'PUT', body: { bogus: 1 } })),
     ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  /**
+   * Ligne seedée absente : le handler doit échouer explicitement. Renvoyer `undefined`
+   * produirait un 200 à corps vide côté client (page blanche sans diagnostic) et, sur le
+   * PUT, un `{ok: true}` alors que rien n'a été écrit.
+   */
+  describe('when the seeded singleton row is missing', () => {
+    beforeEach(() => {
+      dbMod.db.delete(schema.revenueModels).run()
+    })
+
+    it('GET fails with singleton_missing instead of returning an empty body', async () => {
+      await expect(
+        getHandler(makeEvent({ method: 'GET' })),
+      ).rejects.toMatchObject({ statusCode: 500, statusMessage: ApiErrorCode.SingletonMissing })
+    })
+
+    it('PUT fails with singleton_missing instead of reporting a phantom success', async () => {
+      await expect(
+        putHandler(makeEvent({ method: 'PUT', body: { sasMonthlyRentCents: 1000 } })),
+      ).rejects.toMatchObject({ statusCode: 500, statusMessage: ApiErrorCode.SingletonMissing })
+    })
   })
 })

@@ -1,16 +1,22 @@
 import { z } from 'zod'
+import type { Cents } from '../types/money'
 import { DateIsoSchema } from './transaction.schema'
 
 /**
  * Montant de revenu mensuel en cents : NON signé (un revenu est toujours ≥ 0).
  * Borne haute ±1e11 cohérente avec fixed-charge.schema (story 5.1). Contrairement aux
  * charges, 0 est autorisé (un champ non renseigné vaut zéro — état initial du singleton).
+ *
+ * La sortie est brandée `Cents` : ce schéma est la source de vérité du contrat API, les
+ * types dérivés (`RevenueModel`, `RevenueModelPatch`) sont consommés tels quels côté client
+ * et doivent porter la marque (CLAUDE.md §Représentation monétaire).
  */
 const RevenueAmountCentsSchema = z
   .number()
   .int('Montant en cents entier attendu')
   .min(0, 'Un revenu ne peut pas être négatif')
   .max(1e11, 'Montant hors bornes')
+  .transform(v => v as Cents)
 
 /** Modèle de revenus en lecture (sortie d'API) — singleton `id = 1`. */
 export const RevenueModelSchema = z.object({
