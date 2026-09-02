@@ -46,3 +46,8 @@ coverage/
 # Fixtures sensibles (vrais relevés bancaires) — versionner uniquement le .gitkeep
 tests/fixtures/pdfs/*.pdf
 !tests/fixtures/pdfs/.gitkeep
+
+# Claude Code — local, non versionné
+.claude/settings.local.json
+.claude/.cc-writes/
+.claude/.review-gate/
