@@ -269,6 +269,85 @@ Forecast = endpoint pur, pas d'état persisté.
 
 Pas de CI, pas de Docker, pas de déploiement en V1.
 
+### Phase 1.x — Décisions multi-profils / multi-comptes (D11-D15, actées le 2026-09-04)
+
+Amendent le Sprint Change Proposal du 2026-07-12 (§4.2). D11 et D14 sont reprises telles
+quelles ; **D12 est amendée**, D15 est nouvelle.
+
+**D11 — Modèle multi-profils/comptes.** Tables `profiles (id, name, kind: owner|managed,
+created_at)` et `accounts (id, profile_id FK, name, bank, created_at)`.
+
+**D12 — Scoping : observé par compte, déclaré par profil.** *(amendée — la rédaction initiale
+scopait `fixed_charges`, `revenue_models` et `monthly_overrides` par compte)*
+
+La découpe n'est pas technique, elle est sémantique. Deux natures de données :
+
+| Nature | Portée | Tables |
+|---|---|---|
+| **Observé** — ce que la banque dit | **Compte** | `bank_statements` porte `account_id` ; `transactions` héritent via `statement_hash` (aucune dénormalisation, invariant « aucun état dérivé ») |
+| **Déclaré** — le modèle financier de la personne | **Profil** | `fixed_charges`, `revenue_models`, `monthly_overrides`, `sas_config`, `tax_settings`, `debts` portent `profile_id` |
+
+Motif : le forecast répond à « quel dividende voter pour couvrir **mes** dépenses ». C'est une
+question qui porte sur une personne, pas sur un compte. Le forecast d'un compte isolé est une
+réponse partielle à une question qui ne se pose pas. Scoper les charges par compte obligerait à
+répartir loyer et ARE entre comptes à la saisie — du travail pour produire une donnée moins vraie.
+
+Conséquences : **une seule table reçoit `account_id`**. Le forecast d'un profil `owner`
+consolide les projections variables de tous ses comptes. Les stories 8.3 et 8.4 s'allègent
+(l'essentiel du re-scoping devient « ajouter un `profileId` »), et le sélecteur de contexte est
+d'abord un **sélecteur de profil**, le filtre compte n'existant que sur `/import`,
+`/transactions/[period]` et le dashboard.
+
+Renoncement assumé : pas de forecast par compte isolé (YAGNI).
+
+**D13 — Forecast/reconciler scopés.** `computeForecast({ profileId, ... })` *(et non
+`accountId`, conséquence de D12 amendée)*. `reconcile` inchangé, déjà par statement.
+Forecast et dividende actifs **seulement si `profile.kind === 'owner'`**.
+
+**D14 — Extraction dispatchée.** `extractStatement(buffer, bank)` route vers une stratégie
+(`boursorama`, …). Chaque stratégie encapsule parsing texte / période / soldes (G3 par format).
+
+**D15 — Migration de scoping : wipe & re-seed.** La story 8.1 recrée la base plutôt que de
+migrer l'existant : seed d'un profil `owner` « Marceau » + un compte Boursorama, puis
+ré-ingestion des PDFs conservés dans `_data/raw/`.
+
+Sanctionné par NFR11 (« la perte totale de la base est acceptable ; la base doit pouvoir être
+reconstruite intégralement à partir des PDFs sources »). Mesuré au 2026-09-04 : 2 relevés,
+207 transactions, 1 modèle de revenu, 0 dette, 0 charge fixe, et les 2 PDFs sources présents.
+Un back-fill additif imposerait un rebuild de ~7 tables SQLite (une FK `NOT NULL` exige la
+procédure en 12 étapes) pour préserver 207 lignes ré-ingérables en 2 appels LLM.
+
+⚠️ **Cette décision a une date de péremption.** Le coût du wipe croît avec chaque mois ingéré
+et chaque correction manuelle de catégorie. Avec un an d'historique, l'arbitrage s'inverse et
+le back-fill redevient le bon choix. **Exécuter 8.1 tôt est donc une décision d'architecture,
+pas seulement de planning.**
+
+**D16 — Compte-courant conjoint : `debts` rendu signé, pas de table dédiée.** *(question
+ouverte du 2026-07-12, close le 2026-09-04 par la revue de l'epic 6)*
+
+Le critère de résolution était : `debt-balance.ts` produit-il un solde signé ? **Non.** La revue
+a établi trois verrous : `initial_balance_cents` contraint ≥ 0 (`NonNegativeCentsSchema`), donc
+une créance est inexprimable ; `debt_advances.amount_cents` en `positive()`, donc aucun événement
+ne peut diminuer le solde hors transaction marquée ; et `transactions/[id].patch.ts:51` refuse
+tout `amountCents >= 0`, donc un règlement **entrant** du conjoint ne peut pas être rattaché.
+
+Le modèle livré **ne supporte pas FR66-FR68** tel que le PRD l'annonce. FR66 (« s'appuie sur le
+modèle Dettes ») repose sur une hypothèse fausse.
+
+Décision : **pas de table `shared_ledger`** — la règle de trois tient (un seul cas d'usage), et
+deux mécaniques de solde en parallèle coûteraient plus que le problème. Mais on ne réutilise pas
+un modèle incapable de porter le cas : `debt_advances` est remplacée par un **ledger d'événements
+signés** `debt_events(debt_id, event_date, amount_cents SIGNED, kind, source_transaction_id)`, et
+`initial_balance_cents` devient signé (ou reçoit une `direction`).
+
+⚠️ **À exécuter dans l'epic 6, pas dans l'epic 10.** Même logique que D15 : aujourd'hui
+`debt_advances` contient **0 ligne** — c'est une migration de schéma sans données. Reporté à
+l'epic 10, c'est la réécriture de `debt-balance.ts`, du PATCH transactions et de trois endpoints,
+sur du code entre-temps consommé par le forecast. Le coût est asymétrique et croissant.
+
+Conséquence sur le périmètre : l'epic 6 cesse d'être « 4 stories en attente de patches de revue »
+et redevient un chantier de modélisation. À arbitrer côté produit.
+
 ### Décisions différées (post-MVP)
 
 - Backups SQLite → Growth
