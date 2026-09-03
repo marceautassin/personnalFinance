@@ -9,6 +9,20 @@ import { test, expect, type Page } from '@playwright/test'
  * catégorie de test en fin de parcours.
  */
 
+/**
+ * Acquitte le disclaimer (G1), rendu après hydratation et modal : sans ça, il intercepte les
+ * clics de la page. Le flag vit en `localStorage`, donc il réapparaît à chaque contexte
+ * Playwright neuf. Ce spec ne l'acquittait pas et ne passait que par chance de timing —
+ * la course s'est réveillée à la revue 2026-09-04. Même motif que `ingestion.spec.ts`.
+ */
+async function dismissDisclaimer(page: Page) {
+  const ack = page.getByRole('button', { name: /J'ai compris/i })
+  if (await ack.isVisible({ timeout: 5_000 }).catch(() => false)) {
+    await ack.click()
+    await expect(ack).toBeHidden()
+  }
+}
+
 /** Supprime toutes les lignes dont le code commence par `carburant` (résidus de runs précédents). */
 async function cleanupCarburant(page: Page) {
   const rows = page.locator('[data-testid^="cat-row-carburant"]')
@@ -28,6 +42,7 @@ test.describe('Catégories — CRUD + protection système', () => {
   test('ajouter, renommer, supprimer ; divers non supprimable', async ({ page }) => {
     await page.goto('/categories')
     await expect(page.getByRole('heading', { name: 'Catégories' })).toBeVisible()
+    await dismissDisclaimer(page)
     await cleanupCarburant(page)
 
     // Ajout d'une catégorie variable « Carburant » → code garanti `carburant`.
@@ -37,12 +52,43 @@ test.describe('Catégories — CRUD + protection système', () => {
     const row = page.getByTestId('cat-row-carburant')
     await expect(row).toBeVisible()
 
-    // Renommage inline « Carburant » → « Essence ».
+    // Renommage inline « Carburant » → « Essence ». On compte les PATCH : `@keyup.enter` et
+    // `@blur` étaient montés tous deux sur l'input et en envoyaient DEUX pour une seule
+    // validation (revue 2026-08-04). `fill()` ne dit rien du focus : on ouvre l'édition puis
+    // on tape au clavier, ce qui exerce aussi le focus posé par `startEdit` (revue 2026-09-04).
+    let patchCount = 0
+    await page.route('**/api/categories/**', (route) => {
+      if (route.request().method() === 'PATCH') patchCount++
+      return route.continue()
+    })
+
     await row.getByRole('button', { name: 'Carburant', exact: true }).click()
     const editInput = page.getByLabel('Renommer Carburant')
-    await editInput.fill('Essence')
-    await editInput.press('Enter')
+    await expect(editInput).toBeFocused()
+    await page.keyboard.type('Essence')
+    await expect(editInput).toHaveValue('Essence')
+    await page.keyboard.press('Enter')
     await expect(row.getByRole('button', { name: 'Essence', exact: true })).toBeVisible()
+    expect(patchCount).toBe(1)
+
+    // Escape abandonne le renommage et rend le focus au bouton-libellé.
+    await row.getByRole('button', { name: 'Essence', exact: true }).click()
+    await page.keyboard.type('Abandonné')
+    await page.keyboard.press('Escape')
+    const labelButton = row.getByRole('button', { name: 'Essence', exact: true })
+    await expect(labelButton).toBeVisible()
+    await expect(labelButton).toBeFocused()
+    expect(patchCount).toBe(1)
+
+    // Partir sur « Supprimer » AU CLAVIER pendant une édition abandonne le renommage au lieu
+    // de le persister : `@mousedown` ne couvrait que la souris (revue 2026-08-04).
+    await labelButton.click()
+    await page.keyboard.type('Jamais persisté')
+    await page.keyboard.press('Tab')
+    await expect(row.getByRole('button', { name: 'Supprimer Essence' })).toBeFocused()
+    await expect(row.getByRole('button', { name: 'Essence', exact: true })).toBeVisible()
+    expect(patchCount).toBe(1)
+    await page.unroute('**/api/categories/**')
 
     // Persistance après reload.
     await page.reload()

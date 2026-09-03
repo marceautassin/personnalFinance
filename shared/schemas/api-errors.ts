@@ -23,6 +23,8 @@ export const ApiErrorCode = {
   // Domaine — Catégories
   CategoryInUse: 'category_in_use',
   CategoryProtected: 'category_protected',
+  CategoryLabelTaken: 'category_label_taken',
+  CategoriesNotSeeded: 'categories_not_seeded',
 
   // Domaine — Modèles financiers (singletons)
   SingletonMissing: 'singleton_missing',

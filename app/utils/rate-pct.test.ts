@@ -26,6 +26,21 @@ describe('ratePctToInput', () => {
   it('affiche un taux nul plutôt qu\'une chaîne vide', () => {
     expect(ratePctToInput(0)).toBe('0')
     expect(ratePctToInput(1500)).toBe('15')
-    expect(ratePctToInput(1550)).toBe('15.5')
+  })
+
+  /**
+   * Séparateur décimal en virgule : le champ est saisi en fr-FR, réafficher `"15.5"` après un
+   * save contredisait la convention assumée par l'AC#6 amendé (revue 2026-09-04).
+   */
+  it('réaffiche les décimales avec une virgule, pas un point', () => {
+    expect(ratePctToInput(1550)).toBe('15,5')
+    expect(ratePctToInput(1725)).toBe('17,25')
+  })
+
+  /** Aller-retour : ce qui est réaffiché doit être re-saisissable à l'identique. */
+  it('fait un aller-retour stable avec parseRatePct', () => {
+    for (const pct of [0, 1500, 1550, 1725, 3000, 10000]) {
+      expect(parseRatePct(ratePctToInput(pct))).toBe(pct)
+    }
   })
 })

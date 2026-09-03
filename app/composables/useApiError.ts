@@ -14,8 +14,10 @@ const FR_MESSAGES: Record<ApiErrorCodeValue, string> = {
   [ApiErrorCode.LlmExtractionFailed]: 'L\'analyse automatique du relevé a échoué. Réessaie ou ajoute les transactions manuellement.',
   [ApiErrorCode.LlmUnavailable]: 'Le service de catégorisation est indisponible. Réessaie dans quelques instants.',
   [ApiErrorCode.ReconciliationFailed]: 'Les transactions extraites ne correspondent pas au solde du relevé. Une vérification manuelle est nécessaire.',
-  [ApiErrorCode.CategoryInUse]: 'Catégorie utilisée par des transactions ou charges fixes — supprime les références d\'abord.',
+  [ApiErrorCode.CategoryInUse]: 'Catégorie encore utilisée — supprime les références d\'abord.',
   [ApiErrorCode.CategoryProtected]: 'Catégorie système, ne peut pas être supprimée.',
+  [ApiErrorCode.CategoryLabelTaken]: 'Ce libellé est déjà utilisé par une autre catégorie.',
+  [ApiErrorCode.CategoriesNotSeeded]: 'Aucune catégorie en base : relance l\'application pour rejouer l\'initialisation.',
   [ApiErrorCode.SingletonMissing]: 'Données de configuration absentes en base. Relance l\'application pour rejouer l\'initialisation.',
   [ApiErrorCode.UnemploymentEndDateRequired]: 'Renseigne la date de fin de droits : sans elle, le montant d\'ARE serait ignoré par le forecast.',
   [ApiErrorCode.UnemploymentEndDatePast]: 'La date de fin de droits est déjà passée : l\'ARE ne serait comptée sur aucun mois du forecast.',
@@ -34,6 +36,32 @@ export interface MutationOutcome {
   errorCode?: string
 }
 
+/** Pluriel FR simple : `1 transaction` / `3 transactions`. */
+function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count} ${count > 1 ? pluralForm : singular}`
+}
+
+/**
+ * Message détaillé du 409 `category_in_use` à partir des compteurs renvoyés par l'API
+ * (story 5.6 AC#14 : « Catégorie utilisée par X transactions, Y charges fixes »). Le mapping
+ * statique ne mentionnait ni les chiffres, ni les ajustements mensuels — l'utilisateur
+ * cherchait des transactions inexistantes (revue 2026-08-04).
+ */
+function categoryInUseMessage(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null
+  const d = data as Record<string, unknown>
+  const parts = [
+    [d.transactionCount, 'transaction', 'transactions'],
+    [d.fixedChargeCount, 'charge fixe', 'charges fixes'],
+    [d.monthlyOverrideCount, 'ajustement mensuel', 'ajustements mensuels'],
+  ] as const
+  const listed = parts
+    .filter(([n]) => typeof n === 'number' && n > 0)
+    .map(([n, s, p]) => plural(n as number, s, p))
+  if (listed.length === 0) return null
+  return `Catégorie utilisée par ${listed.join(', ')} — supprime les références d'abord.`
+}
+
 /**
  * Composable de mapping erreur API → message utilisateur FR.
  * Accepte n'importe quelle erreur Nuxt/Fetch, extrait `statusMessage`, retourne FR.
@@ -44,10 +72,18 @@ export function useApiError() {
 
     // Pour les FetchError ofetch/Nuxt, err.statusMessage = phrase HTTP ("Bad Request")
     // et le code domaine est dans err.data.statusMessage. On lit data en priorité.
-    const e = err as { statusMessage?: unknown, data?: { statusMessage?: unknown } }
+    const e = err as {
+      statusMessage?: unknown
+      data?: { statusMessage?: unknown, data?: unknown }
+    }
     const code = e.data?.statusMessage ?? e.statusMessage
     if (typeof code !== 'string') return FALLBACK_MESSAGE
     if (!Object.hasOwn(FR_MESSAGES, code)) return FALLBACK_MESSAGE
+
+    if (code === ApiErrorCode.CategoryInUse) {
+      const detailed = categoryInUseMessage(e.data?.data)
+      if (detailed) return detailed
+    }
 
     return FR_MESSAGES[code as ApiErrorCodeValue]
   }

@@ -118,6 +118,21 @@ function seedTransaction(code: string) {
   }).run()
 }
 
+function seedFixedCharge(code: string) {
+  dbMod.db.insert(schema.fixedCharges).values({
+    label: 'Abonnement', amountCents: -1000, categoryCode: code, frequency: 'monthly', startDate: '2026-01-01',
+  }).run()
+}
+
+function seedOverride(code: string, month = '2026-05') {
+  dbMod.db.insert(schema.monthlyOverrides).values({ month, categoryCode: code, amountCents: 30_000 }).run()
+}
+
+/** Statut HTTP posé par le handler via `setResponseStatus` (défaut 200 si non touché). */
+function statusOf(event: H3Event): number {
+  return (event as unknown as { node: { res: { statusCode: number } } }).node.res.statusCode
+}
+
 describe('POST /api/categories', () => {
   it('slugifies the label into a code, referenceCount 0', async () => {
     const created = (await postHandler(makeEvent({ method: 'POST', body: { label: 'Carburant', isVariable: true } }))) as Cat
@@ -127,10 +142,22 @@ describe('POST /api/categories', () => {
     expect(created.referenceCount).toBe(0)
   })
 
-  it('suffixes -2 on code collision', async () => {
+  // Deux libellés DISTINCTS qui slugifient vers le même code : c'est la seule collision de
+  // code encore atteignable depuis que le libellé est unique (décision de revue 2026-09-03).
+  // Reposter le même libellé, comme le faisait ce test avant, est désormais un 409.
+  it('suffixes -2 on code collision between two distinct labels', async () => {
+    const first = (await postHandler(makeEvent({ method: 'POST', body: { label: 'Café & Co', isVariable: true } }))) as Cat
+    expect(first.code).toBe('cafe-co')
+    const second = (await postHandler(makeEvent({ method: 'POST', body: { label: 'Cafe Co', isVariable: true } }))) as Cat
+    expect(second.code).toBe('cafe-co-2')
+    expect(second.label).toBe('Cafe Co')
+  })
+
+  it('rejects a duplicate label → 409 (case- and accent-insensitive)', async () => {
     await postHandler(makeEvent({ method: 'POST', body: { label: 'Carburant', isVariable: true } }))
-    const second = (await postHandler(makeEvent({ method: 'POST', body: { label: 'Carburant', isVariable: true } }))) as Cat
-    expect(second.code).toBe('carburant-2')
+    await expect(
+      postHandler(makeEvent({ method: 'POST', body: { label: '  cARbûrant ', isVariable: true } })),
+    ).rejects.toMatchObject({ statusCode: 409, statusMessage: ApiErrorCode.CategoryLabelTaken })
   })
 
   it('strips accents and special chars (Café & Co → cafe-co)', async () => {
@@ -149,6 +176,14 @@ describe('POST /api/categories', () => {
       postHandler(makeEvent({ method: 'POST', body: { label: 'X', isVariable: true, code: 'x' } })),
     ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
   })
+
+  // Le contrat HTTP lui-même n'était asserté nulle part : seul le corps l'était (revue
+  // 2026-08-04). Un handler qui oublierait `setResponseStatus` passait au vert.
+  it('responds 201 Created', async () => {
+    const event = makeEvent({ method: 'POST', body: { label: 'Carburant', isVariable: true } })
+    await postHandler(event)
+    expect(statusOf(event)).toBe(201)
+  })
 })
 
 describe('GET /api/categories', () => {
@@ -165,6 +200,25 @@ describe('GET /api/categories', () => {
     dbMod.db.insert(schema.monthlyOverrides).values({ month: '2026-05', categoryCode: 'courses', amountCents: 30_000 }).run()
     const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
     expect(list.find(c => c.code === 'courses')!.referenceCount).toBe(1)
+  })
+
+  // La branche `fixedCharges` du comptage n'était jamais exercée non nulle : une erreur de
+  // table sur ce copier-coller de trois blocs identiques passait au vert (revue 2026-08-04).
+  it('referenceCount includes fixed_charges', async () => {
+    seedFixedCharge('logement')
+    const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
+    expect(list.find(c => c.code === 'logement')!.referenceCount).toBe(1)
+  })
+
+  // L'ADDITION des trois sources n'était vérifiée par aucun cas : chaque test n'en peuplait
+  // qu'une seule, donc un total qui écraserait au lieu de sommer restait invisible.
+  it('referenceCount sums the three referencing tables at once', async () => {
+    seedTransaction('courses')
+    seedTransaction('courses')
+    seedFixedCharge('courses')
+    seedOverride('courses')
+    const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
+    expect(list.find(c => c.code === 'courses')!.referenceCount).toBe(4)
   })
 
   it('orders variables first then fixed, alpha inside each group', async () => {
@@ -216,6 +270,36 @@ describe('PATCH /api/categories/[code]', () => {
     ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
   })
 
+  // Le 409 `category_label_taken` n'était couvert que sur le POST. Surtout, l'auto-exclusion
+  // `excludeCode` ne l'était pas : un `excludeCode` oublié ferait échouer tout rename
+  // idempotent et passerait au vert (revue 2026-09-04).
+  it('rejects a rename toward a label already taken → 409', async () => {
+    await expect(
+      patchHandler(makeEvent({ method: 'PATCH', code: 'courses', body: { label: 'Logement' } })),
+    ).rejects.toMatchObject({ statusCode: 409, statusMessage: ApiErrorCode.CategoryLabelTaken })
+  })
+
+  it('allows renaming a category to its own label (idempotent)', async () => {
+    const updated = (await patchHandler(makeEvent({ method: 'PATCH', code: 'courses', body: { label: 'Courses' } }))) as Cat
+    expect(updated.label).toBe('Courses')
+  })
+
+  it('allows a case-only rename of a category (self-exclusion)', async () => {
+    const updated = (await patchHandler(makeEvent({ method: 'PATCH', code: 'courses', body: { label: 'COURSES' } }))) as Cat
+    expect(updated.label).toBe('COURSES')
+  })
+
+  // Seul `isVariable` était testé : l'immuabilité du `code` — celle qui protège les FK
+  // transactions/charges/overrides — n'était assertée nulle part (revue 2026-08-04).
+  it('rejects patch trying to change the code → 422 (strict)', async () => {
+    await expect(
+      patchHandler(makeEvent({ method: 'PATCH', code: 'courses', body: { label: 'X', code: 'autre' } })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+    const rows = dbMod.db.select().from(schema.categoryDefinitions).all()
+    expect(rows.find(r => r.code === 'courses')).toBeDefined()
+    expect(rows.find(r => r.code === 'autre')).toBeUndefined()
+  })
+
   it('returns 404 for unknown category', async () => {
     await expect(
       patchHandler(makeEvent({ method: 'PATCH', code: 'nope', body: { label: 'X' } })),
@@ -224,10 +308,14 @@ describe('PATCH /api/categories/[code]', () => {
 })
 
 describe('DELETE /api/categories/[code]', () => {
-  it('deletes an unreferenced category → 204', async () => {
-    await deleteHandler(makeEvent({ method: 'DELETE', code: 'logement' }))
+  it('deletes an unreferenced category → 204 with no body', async () => {
+    const event = makeEvent({ method: 'DELETE', code: 'logement' })
+    const result = await deleteHandler(event)
     const rows = dbMod.db.select().from(schema.categoryDefinitions).all()
     expect(rows.find(r => r.code === 'logement')).toBeUndefined()
+    // Le 204 n'était pas asserté malgré le nom du test (revue 2026-08-04).
+    expect(statusOf(event)).toBe(204)
+    expect(result).toBeNull()
   })
 
   it('rejects deletion of a referenced category → 409 category_in_use + counts', async () => {

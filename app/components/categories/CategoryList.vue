@@ -15,20 +15,82 @@ const emit = defineEmits<{
 const editingCode = ref<string | null>(null)
 const editLabel = ref('')
 
-function startEdit(cat: CategoryListItem) {
+/**
+ * Un seul input d'édition existe à la fois (`v-if` sur la ligne éditée), mais il vit DANS un
+ * `v-for` : un `ref` statique y serait collecté par Vue dans un tableau, et `.focus()` sur un
+ * tableau ne fait rien silencieusement. D'où le ref de fonction (revue 2026-09-04).
+ */
+const editInput = ref<HTMLInputElement | null>(null)
+function setEditInput(el: Element | null) {
+  editInput.value = el as HTMLInputElement | null
+}
+
+/**
+ * Boutons-libellés par `code`, pour rendre le focus à la fin de l'édition. Le `v-if`/`v-else`
+ * détruit le bouton qui portait le focus au moment d'ouvrir l'édition : sans restitution
+ * explicite, le focus retomberait sur `document.body` et la navigation Tab repartirait du
+ * début du document (revue 2026-09-04).
+ */
+const labelButtons = new Map<string, HTMLButtonElement>()
+function setLabelButton(code: string, el: Element | null) {
+  if (el) labelButtons.set(code, el as HTMLButtonElement)
+  else labelButtons.delete(code)
+}
+
+async function focusLabelButton(code: string) {
+  await nextTick()
+  labelButtons.get(code)?.focus()
+}
+
+/**
+ * Ouvre l'édition inline ET donne le focus au champ. Sans ce `focus()`, l'input apparaissait
+ * non focalisé : au clavier le renommage était purement impossible (la frappe partait dans le
+ * vide), à la souris il fallait un second clic. Le trou était masqué par l'E2E, dont le
+ * `fill()` focalise lui-même l'élément (revue 2026-09-04).
+ */
+async function startEdit(cat: CategoryListItem) {
   editingCode.value = cat.code
   editLabel.value = cat.label
+  await nextTick()
+  editInput.value?.focus()
+  editInput.value?.select()
 }
 
-function cancelEdit() {
+/**
+ * Ferme l'édition. `refocus` rend le focus au bouton-libellé : vrai quand l'utilisateur reste
+ * sur la ligne (Escape, validation par Entrée), faux quand le focus part ailleurs de lui-même
+ * (blur, clic sur « Supprimer ») — le lui reprendre casserait le déplacement en cours.
+ */
+function cancelEdit(refocus = false) {
+  const code = editingCode.value
   editingCode.value = null
   editLabel.value = ''
+  if (refocus && code) focusLabelButton(code)
 }
 
-function commitEdit(cat: CategoryListItem) {
+function commitEdit(cat: CategoryListItem, refocus = false) {
+  // Garde de ré-entrance : `Entrée` validait, puis le démontage de l'input déclenchait un
+  // `blur` qui rappelait `commitEdit` — deux `PATCH` pour une seule validation (revue
+  // 2026-08-04). L'état est remis à zéro AVANT l'emit pour que la garde soit effective.
+  if (editingCode.value !== cat.code) return
   const next = editLabel.value.trim()
+  cancelEdit(refocus)
   if (next.length > 0 && next !== cat.label) emit('rename', cat.code, next)
-  cancelEdit()
+}
+
+/**
+ * Sortie du champ d'édition. Quitter vers « Supprimer » abandonne le renommage au lieu de le
+ * persister : `@mousedown` couvrait le clic, mais pas l'activation clavier (Tab+Entrée), car
+ * `blur` se déclenche avant que le bouton reçoive le focus. On lit donc la destination dans
+ * `relatedTarget` (revue 2026-08-04).
+ */
+function onEditBlur(cat: CategoryListItem, event: FocusEvent) {
+  const target = event.relatedTarget as HTMLElement | null
+  if (target?.dataset.cancelsEdit !== undefined) {
+    cancelEdit()
+    return
+  }
+  commitEdit(cat)
 }
 
 /** Raison textuelle du blocage de suppression, ou null si supprimable. */
@@ -61,17 +123,19 @@ function blockReason(cat: CategoryListItem): string | null {
           <td>
             <input
               v-if="editingCode === cat.code"
+              :ref="el => setEditInput(el as Element | null)"
               v-model="editLabel"
               type="text"
               class="cat-list__edit"
               maxlength="50"
               :aria-label="`Renommer ${cat.label}`"
-              @keyup.enter="commitEdit(cat)"
-              @keyup.escape="cancelEdit"
-              @blur="commitEdit(cat)"
+              @keyup.enter="commitEdit(cat, true)"
+              @keyup.escape="cancelEdit(true)"
+              @blur="onEditBlur(cat, $event)"
             >
             <button
               v-else
+              :ref="el => setLabelButton(cat.code, el as Element | null)"
               type="button"
               class="cat-list__label"
               :disabled="savingCode === cat.code"
@@ -93,17 +157,21 @@ function blockReason(cat: CategoryListItem): string | null {
           </td>
           <td class="cat-list__actions">
             <!--
-              `mousedown` se déclenche AVANT le `blur` de l'input d'édition : on annule d'abord
-              l'édition en cours pour qu'un rename entamé mais non validé ne soit pas persisté
-              silencieusement quand l'utilisateur clique « Supprimer » (puis annule la confirmation).
+              Un renommage entamé mais non validé ne doit pas être persisté silencieusement
+              quand l'utilisateur part sur « Supprimer » (puis annule la confirmation).
+              Deux chemins, parce qu'aucun ne couvre l'autre :
+                - souris : `mousedown` se déclenche AVANT le `blur` de l'input ;
+                - clavier : `blur` part en premier, donc `onEditBlur` reconnaît la destination
+                  via `data-cancels-edit`.
             -->
             <button
               type="button"
               class="cat-list__del"
+              data-cancels-edit
               :disabled="blockReason(cat) !== null || savingCode === cat.code"
               :title="blockReason(cat) ?? 'Supprimer'"
               :aria-label="`Supprimer ${cat.label}`"
-              @mousedown="cancelEdit"
+              @mousedown="cancelEdit()"
               @click="emit('remove', cat)"
             >
               Supprimer

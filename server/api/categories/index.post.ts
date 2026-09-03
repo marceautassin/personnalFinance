@@ -3,7 +3,12 @@ import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { categoryDefinitions } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
-import { NewCategoryInputSchema, slugifyCategoryLabel } from '~~/shared/schemas/category.schema'
+import { assertLabelAvailable } from '~~/server/utils/category-labels'
+import {
+  NewCategoryInputSchema,
+  slugifyCategoryLabel,
+  CATEGORY_CODE_MAX_LENGTH,
+} from '~~/shared/schemas/category.schema'
 import type { CategoryListItem } from './index.get'
 
 /** Vrai si le `code` existe déjà en base. */
@@ -17,11 +22,19 @@ function codeExists(code: string): boolean {
   return row !== undefined
 }
 
-/** Résout un `code` libre : `base`, puis `base-2`, `base-3`… (plus petit suffixe disponible). */
-function resolveUniqueCode(base: string): string {
+/**
+ * Résout un `code` libre : `base`, puis `base-2`, `base-3`… (plus petit suffixe disponible).
+ *
+ * La base est re-tronquée pour laisser la place au suffixe : sans ça, un libellé long donnait
+ * un code de 34 caractères, au-delà de `CategoryCodeSchema.max(32)` (revue 2026-08-04).
+ */
+function resolveUniqueCode(label: string): string {
+  const base = slugifyCategoryLabel(label)
   if (!codeExists(base)) return base
   for (let i = 2; ; i++) {
-    const candidate = `${base}-${i}`
+    const suffix = `-${i}`
+    const truncated = slugifyCategoryLabel(label, CATEGORY_CODE_MAX_LENGTH - suffix.length)
+    const candidate = `${truncated}${suffix}`
     if (!codeExists(candidate)) return candidate
   }
 }
@@ -29,13 +42,15 @@ function resolveUniqueCode(base: string): string {
 /**
  * Crée une catégorie (Story 5.6). Le `code` est généré par slugification du `label` ;
  * collision → suffixe `-2`/`-3`… Un `label` produisant un code vide (`'!!!'`) est rejeté
- * en amont par `NewCategoryInputSchema` (422), donc `slugifyCategoryLabel` renvoie ici un
- * code non vide. Retour 201 avec la catégorie complète (`referenceCount: 0`).
+ * en amont par `NewCategoryInputSchema` (422). Libellé déjà pris → 409. Retour 201 avec la
+ * catégorie complète (`referenceCount: 0`).
  */
 export default defineEventHandler(async (event): Promise<CategoryListItem> => {
   const body = await validateBody(event, NewCategoryInputSchema)
 
-  const code = resolveUniqueCode(slugifyCategoryLabel(body.label))
+  assertLabelAvailable(body.label)
+
+  const code = resolveUniqueCode(body.label)
   const inserted = db
     .insert(categoryDefinitions)
     .values({ code, label: body.label, isVariable: body.isVariable })

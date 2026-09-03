@@ -52,19 +52,52 @@ export type CategoryWithCount = z.infer<typeof CategoryWithCountSchema>
 export type NewCategoryInput = z.infer<typeof NewCategoryInputSchema>
 export type CategoryPatch = z.infer<typeof CategoryPatchSchema>
 
+/** Longueur maximale d'un `code`, alignée sur `CategoryCodeSchema.max(32)`. */
+export const CATEGORY_CODE_MAX_LENGTH = 32
+
+/**
+ * Latins non décomposables par NFD : sans translittération explicite, `Œ` et consorts sont
+ * traités comme des séparateurs et la lettre disparaît silencieusement (`'Œufs'` → `'ufs'`,
+ * `'Ø'` → `''` avec un message d'erreur trompeur). Découvert à la revue 2026-08-04.
+ */
+const NON_DECOMPOSABLE_LATIN: Record<string, string> = {
+  œ: 'oe', æ: 'ae', ø: 'o', ß: 'ss', ł: 'l', đ: 'd', ð: 'd', þ: 'th', ħ: 'h', ŋ: 'ng',
+}
+
+/** Translittère les latins non décomposables, caractère par caractère. */
+function transliterateLatin(input: string): string {
+  return Array.from(input, ch => NON_DECOMPOSABLE_LATIN[ch] ?? ch).join('')
+}
+
 /**
  * Slugifie un libellé en `code` kebab-case ASCII (sans suffixe de collision) :
- *  1. NFD normalize + strip diacritiques  2. lowercase  3. `[^a-z0-9]+` → `-`
- *  4. trim des `-` en tête/queue  5. tronque à 32 chars.
+ *  1. lowercase  2. translittération des latins non décomposables  3. NFD + strip diacritiques
+ *  4. `[^a-z0-9]+` → `-`  5. trim des `-`  6. tronque à `maxLength`.
+ *
+ * `maxLength` est paramétrable pour laisser la place au suffixe de collision : tronquer à 32
+ * PUIS concaténer `-2` produisait un code de 34 caractères, en violation de
+ * `CategoryCodeSchema.max(32)` (revue 2026-08-04).
+ *
  * Retourne `''` si rien d'exploitable ne subsiste (ex: `'!!!'`) → l'appelant rejette en 422.
  */
-export function slugifyCategoryLabel(label: string): string {
-  return label
+export function slugifyCategoryLabel(label: string, maxLength = CATEGORY_CODE_MAX_LENGTH): string {
+  return transliterateLatin(label.toLowerCase())
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 32)
+    .slice(0, maxLength)
     .replace(/-+$/g, '')
+}
+
+/**
+ * Forme canonique d'un libellé pour la détection de doublon : insensible à la casse, aux
+ * accents et aux espaces multiples (revue 2026-08-04 — deux catégories au libellé identique
+ * rendaient la taxonomie envoyée au LLM ambiguë et l'UI illisible).
+ */
+export function normalizeCategoryLabel(label: string): string {
+  return transliterateLatin(label.trim().toLowerCase())
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/gu, ' ')
 }

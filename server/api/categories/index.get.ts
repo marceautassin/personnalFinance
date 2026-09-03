@@ -1,27 +1,16 @@
 import { defineEventHandler } from 'h3'
-import { sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { categoryDefinitions, transactions, fixedCharges, monthlyOverrides } from '~~/server/db/schema'
+import { categoryDefinitions } from '~~/server/db/schema'
+import { referenceCountsByCategory } from '~~/server/utils/category-references'
+import type { CategoryWithCount } from '~~/shared/schemas/category.schema'
 
-export interface CategoryListItem {
-  code: string
-  label: string
-  isVariable: boolean
-  /** Nombre de références (transactions + charges fixes + overrides) — bloque la suppression. */
-  referenceCount: number
-}
-
-/** Compte les lignes par `category_code` d'une table, en map `code → count`. */
-function countByCategory(
-  table: typeof transactions | typeof fixedCharges | typeof monthlyOverrides,
-): Map<string, number> {
-  const rows = db
-    .select({ code: table.categoryCode, cnt: sql<number>`count(*)` })
-    .from(table)
-    .groupBy(table.categoryCode)
-    .all()
-  return new Map(rows.map(r => [r.code, Number(r.cnt)]))
-}
+/**
+ * Contrat de sortie du listing = `CategoryWithCountSchema` (AC#4). L'interface était
+ * redéclarée à la main ici, en parallèle du schéma : deux sources de vérité qui pouvaient
+ * diverger sans que rien ne le signale (revue 2026-08-04). `referenceCount` = transactions
+ * + charges fixes + overrides ; > 0 bloque la suppression.
+ */
+export type CategoryListItem = CategoryWithCount
 
 /**
  * Référentiel des catégories + compteur de références (Story 5.6, étend Story 2.10).
@@ -36,17 +25,12 @@ export default defineEventHandler(async (): Promise<CategoryListItem[]> => {
     })
     .from(categoryDefinitions)
 
-  const txCounts = countByCategory(transactions)
-  const chargeCounts = countByCategory(fixedCharges)
-  const overrideCounts = countByCategory(monthlyOverrides)
+  // Même source de vérité que le refus de suppression (`server/utils/category-references.ts`) :
+  // la liste des tables référençantes ne doit exister qu'à un seul endroit, sinon l'UI et le
+  // serveur divergent sur ce qui est supprimable (revue 2026-08-04).
+  const counts = referenceCountsByCategory()
 
-  const withCount = rows.map(r => ({
-    ...r,
-    referenceCount:
-      (txCounts.get(r.code) ?? 0)
-      + (chargeCounts.get(r.code) ?? 0)
-      + (overrideCounts.get(r.code) ?? 0),
-  }))
+  const withCount = rows.map(r => ({ ...r, referenceCount: counts.get(r.code) ?? 0 }))
 
   // Variables avant fixes, label alpha à l'intérieur de chaque groupe. Tri en JS avec
   // `localeCompare('fr')` : le ORDER BY SQLite est en collation binaire (code-point), qui

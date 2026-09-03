@@ -31,5 +31,8 @@ export function parseRatePct(input: string): number | null {
  * un taux nul indiscernable d'un champ non renseigné (revue 2026-08-04).
  */
 export function ratePctToInput(ratePct: number): string {
-  return String(ratePct / 100)
+  // Virgule décimale : le champ est saisi en fr-FR (`parseRatePct` accepte `"15,5"`), et
+  // réafficher `"15.5"` après un save contredisait la convention que l'AC#6 amendé assume
+  // explicitement (revue 2026-09-04).
+  return String(ratePct / 100).replace('.', ',')
 }

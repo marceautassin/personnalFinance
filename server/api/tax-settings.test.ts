@@ -111,6 +111,31 @@ describe('tax_settings singleton API', () => {
     ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
   })
 
+  // Bornes du taux : seul `12000` (hors bornes haut) était couvert. `0` et `10000` sont les
+  // deux extrémités ACCEPTÉES, et `10000` (100 %) propage `requiredGrossCents: null` dans
+  // `dividend-calculator` — un chemin qu'aucun PUT réel n'atteignait (revue 2026-08-04).
+  it('accepts the lower bound { dividendTaxRatePct: 0 } (0 %)', async () => {
+    const updated = (await putHandler(makeEvent({ method: 'PUT', body: { dividendTaxRatePct: 0 } }))) as TaxRow
+    expect(updated.dividendTaxRatePct).toBe(0)
+  })
+
+  it('accepts the upper bound { dividendTaxRatePct: 10000 } (100 %)', async () => {
+    const updated = (await putHandler(makeEvent({ method: 'PUT', body: { dividendTaxRatePct: 10000 } }))) as TaxRow
+    expect(updated.dividendTaxRatePct).toBe(10000)
+  })
+
+  it('rejects a negative rate → 422', async () => {
+    await expect(
+      putHandler(makeEvent({ method: 'PUT', body: { dividendTaxRatePct: -1 } })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
+  it('rejects a non-integer rate → 422 (pct×100 entier attendu)', async () => {
+    await expect(
+      putHandler(makeEvent({ method: 'PUT', body: { dividendTaxRatePct: 1750.5 } })),
+    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  })
+
   it('rejects PUT with empty body → 422', async () => {
     await expect(
       putHandler(makeEvent({ method: 'PUT', body: {} })),

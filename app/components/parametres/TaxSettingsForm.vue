@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { DIVIDEND_TAX_MODES, type DividendTaxMode } from '~~/shared/constants/fiscal-defaults'
+import { parseRatePct, ratePctToInput } from '~/utils/rate-pct'
 import type { TaxSettingsPatch } from '~~/shared/schemas/tax-settings.schema'
 
 const props = defineProps<{
@@ -16,32 +17,29 @@ const rateInput = ref('')
 const modeInput = ref<DividendTaxMode>('flat_tax')
 const error = ref<string | null>(null)
 
+// Pas de taux dans le libellé : il est éditable indépendamment du mode, et un « (30 %) » figé
+// contredisait l'affichage dès que l'utilisateur saisissait autre chose (revue 2026-08-04).
 const MODE_LABELS: Record<DividendTaxMode, string> = {
-  flat_tax: 'Flat tax PFU (30 %)',
+  flat_tax: 'Flat tax PFU',
   progressive: 'Barème progressif IR',
 }
 
-/** Parse un pourcentage saisi (ex: "30", "17.5") en pct×100 entier, ou null si invalide. */
-function parseRatePct(input: string): number | null {
-  const normalized = input.replace(/\s+/gu, '').replace(',', '.')
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null
-  const pct = Number(normalized)
-  if (!Number.isFinite(pct) || pct < 0 || pct > 100) return null
-  return Math.round(pct * 100)
-}
+// `parseRatePct` / `ratePctToInput` viennent de `app/utils/rate-pct.ts` (extrait au lot 1) :
+// la copie locale dupliquait la convention pct × 100 et avalait les espaces internes.
+const { markDirty, markPristine, syncIfPristine } = useDirtyForm()
 
 // Ne réécrit le champ taux que si sa saisie ne représente PAS déjà la valeur persistée :
 // préserve le format utilisateur après un save équivalent au lieu de le normaliser.
 function syncFromProps() {
-  rateInput.value = parseRatePct(rateInput.value || '') === props.dividendTaxRatePct
+  rateInput.value = parseRatePct(rateInput.value) === props.dividendTaxRatePct
     ? rateInput.value
-    : String(props.dividendTaxRatePct / 100)
+    : ratePctToInput(props.dividendTaxRatePct)
   modeInput.value = props.dividendTaxMode
   error.value = null
 }
 watch(
   () => [props.dividendTaxRatePct, props.dividendTaxMode],
-  syncFromProps,
+  () => syncIfPristine(syncFromProps),
   { immediate: true },
 )
 
@@ -52,6 +50,7 @@ function onSubmit() {
     error.value = 'Taux invalide (0 à 100 %, max 2 décimales).'
     return
   }
+  markPristine()
   emit('save', {
     dividendTaxRatePct: rate,
     dividendTaxMode: modeInput.value,
@@ -62,6 +61,8 @@ function onSubmit() {
 <template>
   <form
     class="rev-panel"
+    data-testid="tax-settings-form"
+    @input="markDirty"
     @submit.prevent="onSubmit"
   >
     <h3 class="rev-panel__title">
