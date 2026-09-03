@@ -1037,6 +1037,90 @@ So that I can decide whether to settle it via the next AG.
 
 ---
 
+### Stories de remédiation *(ajoutées le 2026-09-04 — revue de l'epic 6)*
+
+> L'epic 6 a été implémenté le 2026-07-08 et reviewé pour la première fois le 2026-09-04.
+> Verdict **CHANGEMENTS REQUIS** : l'implémentation est propre et conforme aux invariants
+> monétaires du projet, mais **la modélisation ne supporte pas FR66-FR68** (décision D16) et
+> **deux biais faussent le chiffre du dividende**. Ces 4 stories closent l'epic.
+>
+> Arbitrages tranchés le 2026-09-04 : suppression d'une dette → **SET NULL avec avertissement
+> chiffré** (AC#8 de 6.1, resté ouvert) ; couplage `debt_id`/`is_debt_repayment` → **contrainte
+> `CHECK`** plutôt que suppression du flag dérivé (1 fichier contre 28).
+
+### Story 6.5: Ledger d'événements signés (D16) — prérequis de l'epic 10
+
+As a user,
+I want a debt to carry signed events so a balance can go either way,
+So that a spouse current account (créance ou dette) is expressible.
+
+**Acceptance Criteria:**
+
+**Given** la table `debt_events` (`id`, `debt_id` FK, `event_date`, `amount_cents` **signé**, `kind`, `source_transaction_id` nullable) remplaçant `debt_advances`,
+**And** `debts.initial_balance_cents` rendu **signé**,
+**When** un solde est calculé,
+**Then** il peut être négatif (créance) sans traitement particulier, et `debt-balance.ts` est typé en `Cents`.
+
+**And** `GET` et `DELETE` des événements existent (une saisie erronée est corrigeable — trou de FR31).
+
+**And** `PATCH /api/transactions/[id]` accepte une transaction **entrante** comme événement (levée de la garde `amountCents >= 0`), condition de FR66/FR67.
+
+### Story 6.6: Corriger les deux biais sur le dividende
+
+As a user,
+I want debt projections not to double-count,
+So that the dividend to vote is right.
+
+**Acceptance Criteria:**
+
+**Given** une dette `monthly` dont la mensualité du mois courant est déjà payée et marquée,
+**When** l'impact est projeté,
+**Then** ce mois n'est pas recompté (`impact.get.ts` et `forecast-engine.ts` partagent l'ancrage corrigé).
+
+**Given** une transaction marquée remboursement mais laissée dans une catégorie variable,
+**When** la projection variable est construite,
+**Then** elle est exclue de `buildVariableHistory` — sinon elle est comptée par la moyenne mobile **et** reprojetée par `projectDebt`.
+
+**And** les snapshots forecast (G5) sont régénérés et les écarts justifiés.
+
+### Story 6.7: Sûreté des données de dette
+
+As a user,
+I want to be warned before losing repayment markings,
+So that a deletion is never a silent data loss.
+
+**Acceptance Criteria:**
+
+**Given** une contrainte `CHECK((debt_id IS NULL) = (is_debt_repayment = 0))` + back-fill des lignes historiques,
+**When** une transaction est écrite,
+**Then** l'état incohérent `debt_id` seul (produit par le PATCH antérieur à 6.3) devient impossible.
+
+**Given** la suppression d'une dette rattachée à N transactions,
+**When** la confirmation s'affiche,
+**Then** elle annonce le nombre exact de transactions qui perdront leur marquage (**SET NULL**, arbitrage du 2026-09-04), et le déliage + la suppression sont dans une même transaction SQL.
+
+**And** `transactions.debt_id` reçoit une FK `ON DELETE SET NULL`, et `deleteDebt` invalide les clés `transactions-<mois>`.
+
+### Story 6.8: Couverture NFR18 et honnêteté des specs
+
+As a dev,
+I want the debt balance covered and the specs to match the code,
+So that a regression is caught and the docs stop lying.
+
+**Acceptance Criteria:**
+
+**Given** `server/utils/debt-balance.ts` — fonction de calcul financier sans fichier de test dédié,
+**When** `debt-balance.test.ts` est écrit,
+**Then** il couvre : plusieurs dettes (le chemin `balanceSumsByDebt` de `GET /api/debts`, jamais exercé au-delà d'une dette), dette sans événement, transaction `debt_id` non marquée ignorée, solde négatif.
+
+**And** le mode `lump_sum` est testé au niveau endpoint (seul mode dépendant du mois courant serveur).
+
+**And** l'AC#4 de la story 6.4 est amendée (une échéance `lump_sum` **passée** est imputée au mois 0, ce que la spec contredit), et la mention des cas limites « mois 28/29/30/31 » est retirée comme **non applicable** — `projectDebt` raisonne en `YYYY-MM`.
+
+**And** `DebtImpactOnDividend.vue` est renommé `DebtProjectedExpense.vue` (il n'affiche pas de dividende), et `isManual` n'est plus posé que si `categoryCode` est présent dans le patch.
+
+---
+
 ## Epic 7: Forecast inverse
 
 ### Story 7.1: Service `variable-projection` (moyenne mobile par catégorie) + tests

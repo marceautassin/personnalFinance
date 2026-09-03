@@ -130,3 +130,17 @@ claude-opus-4-8 (dev-story workflow)
 - 2026-07-08 : Implémentation story 6.2 — UI dettes (page, card, formulaires, composable) sur les endpoints 6.1. Status → review.
 
 ### Review Findings
+
+**Revue `pr-reviewer` du 2026-09-04 (contexte neuf, première revue de l'epic 6) — verdict CHANGEMENTS REQUIS.**
+
+L'implémentation est propre et conforme aux invariants monétaires du projet (aucun `*100`/`parseFloat`
+sur de l'argent, aucun `try/catch` silencieux, aucun `$fetch` en composant, `projectDebt` réellement
+pure, solde jamais stocké). Ce qui bloque la clôture n'est pas la qualité du code mais **la
+modélisation** et **deux biais qui faussent le dividende**.
+
+Les remarques ne sont pas traitées dans ce fichier : elles sont découpées en 4 stories de remédiation
+— **6.5** (ledger d'événements signés, D16), **6.6** (biais sur le dividende), **6.7** (sûreté des
+données), **6.8** (couverture NFR18 et specs). Cette story reste en `review` jusqu'à leur clôture.
+
+⚠️ Validation visuelle **NON FAITE** (MCP Playwright indisponible dans le contexte du reviewer,
+deuxième occurrence). Responsive 375/1440, contrastes, débordements et console restent à vérifier.

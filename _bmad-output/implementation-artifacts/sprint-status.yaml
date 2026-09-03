@@ -36,7 +36,10 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-30
-last_updated: 2026-08-04
+last_updated: 2026-09-04
+# (2026-09-04 : revue epic-6 → CHANGEMENTS REQUIS ; ajout stories 6-5..6-8 de remédiation)
+# (2026-09-04 : archi D11-D16 actées — D12 amendée (scoping par profil), D15 wipe, D16 ledger signé)
+# (2026-09-04 : revue lot 2 epic-5 → 5-5, 5-6 patchées ; validation visuelle restant à faire)
 # (2026-08-04 : code review lot 1 epic-5 → 5-3, 5-4 done (26 patchs, 3 décisions, 5 defer))
 # (2026-07-19 : code review epic-7 → 9 patchs appliqués, 2 defer ; stories 7-1..7-8 + epic-7 → done)
 # (2026-07-12 : Sprint Change Proposal — ajout epics 8-11 Phase 1.x multi-profils/comptes, backlog)
@@ -110,6 +113,12 @@ development_status:
   6-2-ui-debts-page-card-form: review
   6-3-marquage-transaction-remboursement-fr9: review
   6-4-debt-projection-et-impact-ui: review
+  # Revue du 2026-09-04 (première revue de l'epic) → CHANGEMENTS REQUIS.
+  # 6-1..6-4 restent en review : leur clôture est conditionnée à 6-5..6-8 ci-dessous.
+  6-5-ledger-evenements-signes: ready-for-dev
+  6-6-corriger-biais-dividende: ready-for-dev
+  6-7-surete-donnees-dette: ready-for-dev
+  6-8-couverture-nfr18-et-specs: ready-for-dev
   epic-6-retrospective: optional
 
   # Epic 7 — Forecast inverse
