@@ -211,10 +211,22 @@ Single Page Application (SPA) Nuxt 3 avec `ssr: false`, backend Nitro intégré.
 
 | Navigateur | Support V1 |
 |---|---|
-| Chrome / Chromium | 2 dernières versions stables — supporté |
-| Firefox | 2 dernières versions stables — supporté |
+| Chrome / Chromium | 2 dernières versions stables — supporté, seul navigateur couvert par les E2E |
+| Firefox | Hors scope V1 |
 | Safari | Non supporté en V1 |
 | Edge | Non testé en V1 |
+
+**Amendement du 2026-09-04 — Firefox sort du scope V1.** La matrice initiale listait Firefox
+en « supporté », rédaction héritée des produits web publics. Elle ne correspond ni à l'usage
+réel (application **mono-utilisateur**, locale, `ssr: false`, ouverte par une seule personne
+sur sa propre machine) ni à ce qui était réellement vérifié : le projet Playwright `firefox`
+était déclaré mais son binaire ne démarrait pas, si bien que `yarn test:e2e` échouait
+systématiquement sans que personne ne teste quoi que ce soit sous Firefox.
+
+Le maintenir aurait coûté un environnement de test supplémentaire pour un bénéfice nul
+(YAGNI). La V1 est validée sous Chromium, qui est le navigateur d'usage. Si le besoin
+Firefox réapparaît — partage de l'app, second utilisateur — c'est un amendement à rouvrir,
+pas une régression silencieuse.
 
 CSS modernes utilisables librement (nesting natif, `:has()`, container queries, `@layer`, color-mix). JavaScript moderne (ES2024+).
 

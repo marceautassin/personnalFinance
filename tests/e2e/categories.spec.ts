@@ -9,20 +9,6 @@ import { test, expect, type Page } from '@playwright/test'
  * catégorie de test en fin de parcours.
  */
 
-/**
- * Acquitte le disclaimer (G1), rendu après hydratation et modal : sans ça, il intercepte les
- * clics de la page. Le flag vit en `localStorage`, donc il réapparaît à chaque contexte
- * Playwright neuf. Ce spec ne l'acquittait pas et ne passait que par chance de timing —
- * la course s'est réveillée à la revue 2026-09-04. Même motif que `ingestion.spec.ts`.
- */
-async function dismissDisclaimer(page: Page) {
-  const ack = page.getByRole('button', { name: /J'ai compris/i })
-  if (await ack.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await ack.click()
-    await expect(ack).toBeHidden()
-  }
-}
-
 /** Supprime toutes les lignes dont le code commence par `carburant` (résidus de runs précédents). */
 async function cleanupCarburant(page: Page) {
   const rows = page.locator('[data-testid^="cat-row-carburant"]')
@@ -42,7 +28,6 @@ test.describe('Catégories — CRUD + protection système', () => {
   test('ajouter, renommer, supprimer ; divers non supprimable', async ({ page }) => {
     await page.goto('/categories')
     await expect(page.getByRole('heading', { name: 'Catégories' })).toBeVisible()
-    await dismissDisclaimer(page)
     await cleanupCarburant(page)
 
     // Ajout d'une catégorie variable « Carburant » → code garanti `carburant`.
