@@ -1,5 +1,6 @@
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
 import type { ReliabilityValue } from '~~/server/db/schema'
+import type { Ratio } from '~~/shared/types/ratio'
 
 export interface StatementListItem {
   hash: string
@@ -8,6 +9,9 @@ export interface StatementListItem {
   reliability: ReliabilityValue
   ingestedAt: number
   transactionCount: number
+  manualCount: number
+  /** `null` sur un relevé sans transaction : le taux n'est pas défini, il n'est pas nul. */
+  correctionRate: Ratio | null
 }
 
 export interface StatementsListResponse {

@@ -14,7 +14,7 @@ const FIXTURE = findFirstFixture()
 
 test.describe('Ingestion d\'un relevé PDF', () => {
   test.skip(!FIXTURE, 'Aucun PDF de fixture sous tests/fixtures/pdfs/')
-  test.skip(!process.env.ANTHROPIC_API_KEY, 'ANTHROPIC_API_KEY non défini : E2E LLM-dépendant skippé')
+  test.skip(!process.env.MISTRAL_API_KEY, 'MISTRAL_API_KEY non défini : E2E LLM-dépendant skippé')
 
   test('drop PDF → succès → navigation transactions', async ({ page }) => {
     await page.goto('/import')

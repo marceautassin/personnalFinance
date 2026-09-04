@@ -15,13 +15,13 @@ const FIXTURE = findFirstFixture()
 /**
  * E2E dashboard mensuel (Story 4.3).
  *
- * Pré-requis : PDF de fixture + ANTHROPIC_API_KEY (pipeline d'ingestion réel), même setup que
+ * Pré-requis : PDF de fixture + MISTRAL_API_KEY (pipeline d'ingestion réel), même setup que
  * `reconciliation.spec.ts`. Exécuté en série sur une base fraîche (le cas "état vide" suppose
  * qu'aucun relevé n'a encore été ingéré — cf. Task 7 : wipe `_data` avant le run).
  */
 test.describe.serial('Dashboard mensuel', () => {
   test.skip(!FIXTURE, 'Aucun PDF de fixture sous tests/fixtures/pdfs/')
-  test.skip(!process.env.ANTHROPIC_API_KEY, 'ANTHROPIC_API_KEY non défini : E2E LLM-dépendant skippé')
+  test.skip(!process.env.MISTRAL_API_KEY, 'MISTRAL_API_KEY non défini : E2E LLM-dépendant skippé')
 
   async function ingestFixture(page: import('@playwright/test').Page) {
     await page.goto('/import')

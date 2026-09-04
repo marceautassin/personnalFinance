@@ -1,10 +1,26 @@
 <script setup lang="ts">
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
 import { formatEuros, type Cents } from '~~/shared/types/money'
-import { isRetryableErrorCode, useStatementsList, type OverlapInfo } from '~/composables/useStatements'
+import { isRetryableErrorCode, useStatementsList, type OverlapInfo, type StatementListItem } from '~/composables/useStatements'
+import { formatRatio } from '~~/shared/types/ratio'
+import { MANUAL_CORRECTION_THRESHOLD } from '~~/shared/constants/quality-thresholds'
 
 const { uploadStatement } = useStatements()
 const { data: listData, refresh: refreshList } = useStatementsList()
+
+/**
+ * Un taux au-dessus du seuil est signalé visuellement. Le seuil vient d'une constante
+ * partagée, pas d'un littéral dans le rendu : c'est le critère de succès du produit, et le
+ * jalon de l'epic 14 s'appuie sur la même valeur.
+ */
+function isRateHigh(stmt: StatementListItem): boolean {
+  return stmt.correctionRate !== null && stmt.correctionRate > MANUAL_CORRECTION_THRESHOLD
+}
+
+function correctionTitle(stmt: StatementListItem): string {
+  if (stmt.correctionRate === null) return 'Aucune transaction : taux non défini'
+  return `${stmt.manualCount} ligne(s) reprises à la main sur ${stmt.transactionCount}`
+}
 
 const monthFormatter = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
 function monthLabel(periodStart: string): string {
@@ -164,6 +180,15 @@ const transactionsLink = computed(() => {
         >
           <span class="statements__period">{{ monthLabel(stmt.periodStart) }}</span>
           <span class="statements__count">{{ stmt.transactionCount }} tx</span>
+          <!--
+            Taux de correction manuelle (FR24) — le chiffre du jalon de décision du MVP.
+            Au-delà de 10 %, la corvée que le produit devait supprimer est de retour.
+          -->
+          <span
+            class="statements__rate"
+            :class="{ 'statements__rate--high': isRateHigh(stmt) }"
+            :title="correctionTitle(stmt)"
+          >{{ formatRatio(stmt.correctionRate) }} corrigé</span>
           <ReliabilityBadge :reliability="stmt.reliability" />
           <span class="statements__links">
             <NuxtLink :to="`/transactions/${periodSlug(stmt.periodStart)}`">
@@ -235,5 +260,7 @@ const transactionsLink = computed(() => {
 }
 .statements__period { font-weight: 500; }
 .statements__count { color: var(--color-text-muted); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.statements__rate { color: var(--color-text-muted); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.statements__rate--high { color: var(--color-danger); font-weight: 600; }
 .statements__links { display: flex; gap: var(--space-3); font-size: var(--font-size-sm); }
 </style>

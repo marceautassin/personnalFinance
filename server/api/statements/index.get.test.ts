@@ -107,3 +107,82 @@ describe('GET /api/statements', () => {
     expect(result.statements[1]!.reliability).toBe('reliable')
   })
 })
+
+/**
+ * FR24 — le taux de correction manuelle par relevé. C'est le chiffre observé au jalon de
+ * décision de l'epic 14 : au-delà de 10 %, la construction des vues d'analyse s'arrête.
+ */
+describe('GET /api/statements — taux de correction manuelle (FR24)', () => {
+  function seedStatement(hash: string, periodStart: string) {
+    dbMod.db.insert(schema.bankStatements).values({
+      hashSha256: hash,
+      periodStart,
+      periodEnd: periodStart.slice(0, 8) + '28',
+      openingBalanceCents: 0,
+      closingBalanceCents: 0,
+    }).run()
+  }
+
+  function seedTransactions(hash: string, total: number, manual: number) {
+    for (let i = 0; i < total; i++) {
+      dbMod.db.insert(schema.transactions).values({
+        statementHash: hash,
+        transactionDate: '2026-04-05',
+        label: `op-${i}`,
+        amountCents: -1000,
+        categoryItemCode: 'alimentation-courses',
+        isManual: i < manual,
+      }).run()
+    }
+  }
+
+  it('compte les lignes corrigées et rend le taux', async () => {
+    seedStatement(HASH_A, '2026-04-01')
+    seedTransactions(HASH_A, 20, 3)
+
+    const { statements } = (await handler(makeEvent())) as {
+      statements: { transactionCount: number, manualCount: number, correctionRate: number | null }[]
+    }
+    expect(statements[0]).toMatchObject({ transactionCount: 20, manualCount: 3 })
+    expect(statements[0]!.correctionRate).toBeCloseTo(0.15, 5)
+  })
+
+  it('rend 0 — et non « — » — quand aucune ligne n\'a été corrigée', async () => {
+    seedStatement(HASH_A, '2026-04-01')
+    seedTransactions(HASH_A, 10, 0)
+
+    const { statements } = (await handler(makeEvent())) as {
+      statements: { correctionRate: number | null }[]
+    }
+    expect(statements[0]!.correctionRate).toBe(0)
+  })
+
+  /**
+   * Cas limite imposé par NFR3 : dénominateur nul. Un relevé sans transaction n'a pas un taux
+   * de correction de 0 %, il n'en a pas — et l'afficher à 0 % laisserait croire à une
+   * catégorisation parfaite.
+   */
+  it('rend null sur un relevé sans transaction, jamais 0', async () => {
+    seedStatement(HASH_A, '2026-04-01')
+
+    const { statements } = (await handler(makeEvent())) as {
+      statements: { correctionRate: number | null, transactionCount: number }[]
+    }
+    expect(statements[0]!.transactionCount).toBe(0)
+    expect(statements[0]!.correctionRate).toBeNull()
+  })
+
+  it('calcule le taux par relevé, sans mélanger deux relevés', async () => {
+    seedStatement(HASH_A, '2026-04-01')
+    seedStatement(HASH_B, '2026-03-01')
+    seedTransactions(HASH_A, 10, 1)
+    seedTransactions(HASH_B, 10, 9)
+
+    const { statements } = (await handler(makeEvent())) as {
+      statements: { hash: string, correctionRate: number | null }[]
+    }
+    const byHash = new Map(statements.map(s => [s.hash, s.correctionRate]))
+    expect(byHash.get(HASH_A)).toBeCloseTo(0.1, 5)
+    expect(byHash.get(HASH_B)).toBeCloseTo(0.9, 5)
+  })
+})

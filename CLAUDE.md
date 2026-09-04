@@ -44,7 +44,7 @@ Toute fonctionnalité non listée dans le PRD passe en Growth — ne pas l'ajout
 
 ## Sécurité (garde-fous absolus)
 
-- ❌ **Jamais** de clé API en dur, en logs, en réponse HTTP, en commit. Toujours lue depuis l'environnement, `.env` gitignored.
+- ❌ **Jamais** de clé API en dur, en logs, en réponse HTTP, en commit. Toujours `process.env.MISTRAL_API_KEY`, `.env` gitignored.
 - ❌ **Jamais** d'upload de PDF brut vers un service tiers. Les PDFs vivent dans `_data/raw/` (gitignored), uniquement.
 - ❌ **Jamais** d'envoi au fournisseur LLM d'autre chose que `{date, libellé, montant}` extraits. Pas d'IBAN, RIB, nom complet, adresse.
 - ❌ **Jamais** d'écriture en base hors Drizzle (pas de SQL brut sauf migrations / benchs explicites).

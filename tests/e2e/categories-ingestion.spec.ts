@@ -7,7 +7,7 @@ import { existsSync, readdirSync } from 'node:fs'
  *
  * Confirme AC#10 : le `llm-categorizer` lit la taxonomie depuis la DB (pas DEFAULT_CATEGORIES).
  * Une catégorie créée via `/categories` doit être proposée dans le `CategoryEditor` (story 2.10)
- * après import d'un relevé. Auto-skip sans fixture PDF ou sans ANTHROPIC_API_KEY.
+ * après import d'un relevé. Auto-skip sans fixture PDF ou sans MISTRAL_API_KEY.
  */
 const FIXTURE_DIR = resolve('tests/fixtures/pdfs')
 
@@ -21,7 +21,7 @@ const FIXTURE = findFirstFixture()
 
 test.describe('Catégorie utilisateur → taxonomie LLM DB-driven', () => {
   test.skip(!FIXTURE, 'Aucun PDF de fixture sous tests/fixtures/pdfs/')
-  test.skip(!process.env.ANTHROPIC_API_KEY, 'ANTHROPIC_API_KEY non défini : E2E LLM-dépendant skippé')
+  test.skip(!process.env.MISTRAL_API_KEY, 'MISTRAL_API_KEY non défini : E2E LLM-dépendant skippé')
 
   test('créer une catégorie puis l\'ingestion la voit dans le CategoryEditor', async ({ page }) => {
     // Créer la catégorie « Carburant ».

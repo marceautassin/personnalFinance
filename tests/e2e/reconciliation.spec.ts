@@ -15,14 +15,14 @@ const FIXTURE = findFirstFixture()
 /**
  * E2E réconciliation manuelle (Story 3.3).
  *
- * Pré-requis : PDF de fixture + ANTHROPIC_API_KEY (pipeline d'ingestion réel).
+ * Pré-requis : PDF de fixture + MISTRAL_API_KEY (pipeline d'ingestion réel).
  * Les scénarios `add_transaction` et `accept_gap` (AC#6 + AC#7) exigent un statement
  * déséquilibré ; ils sont skippés en runtime si la fixture est équilibrée
  * (la majorité des relevés Boursorama réels le sont).
  */
 test.describe('Réconciliation manuelle', () => {
   test.skip(!FIXTURE, 'Aucun PDF de fixture sous tests/fixtures/pdfs/')
-  test.skip(!process.env.ANTHROPIC_API_KEY, 'ANTHROPIC_API_KEY non défini : E2E LLM-dépendant skippé')
+  test.skip(!process.env.MISTRAL_API_KEY, 'MISTRAL_API_KEY non défini : E2E LLM-dépendant skippé')
 
   async function ingestFixture(page: import('@playwright/test').Page) {
     await page.goto('/import')

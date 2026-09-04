@@ -19,7 +19,7 @@ Nuxt 4 (SPA) · Nitro · SQLite + Drizzle · `unpdf` · Claude API · CSS vanill
 ```bash
 yarn install
 cp .env.example .env
-# Éditer .env et y mettre la vraie ANTHROPIC_API_KEY
+# Éditer .env et y mettre la vraie MISTRAL_API_KEY
 ```
 
 ## Développement

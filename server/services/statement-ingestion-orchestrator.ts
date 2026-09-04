@@ -23,7 +23,7 @@
  */
 import { eq, and, lte, gte } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { bankStatements, transactions, categoryItems } from '~~/server/db/schema'
+import { bankStatements, transactions, categoryItems, categoryGroups } from '~~/server/db/schema'
 import { extractStatement } from '~~/server/services/pdf-extractor'
 import {
   categorizeStatement,
@@ -94,12 +94,23 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
   // `ORDER BY code` : sans tri, l'ordre des catégories dans le prompt dépend du rowid, donc
   // de l'historique de création/suppression — la catégorisation n'était pas reproductible
   // d'une base à l'autre (revue 2026-08-04).
+  // Les postes portent leur rubrique et leur nature : sans la rubrique, le modèle ne peut pas
+  // trancher entre `alimentation-restaurant` et `voyages-restaurant` ; sans la nature, rien ne
+  // lui dit qu'un virement vers un livret n'est pas une dépense (D17).
+  //
+  // `ORDER BY code` : le code étant préfixé par sa rubrique (AR4), ce tri groupe naturellement
+  // les postes par rubrique ET rend l'ordre du prompt indépendant de l'historique de création
+  // en base — sans quoi la catégorisation n'était pas reproductible (revue 2026-08-04).
   const availableCategories = (await db
     .select({
       code: categoryItems.code,
       label: categoryItems.label,
+      nature: categoryItems.nature,
+      groupCode: categoryGroups.code,
+      groupLabel: categoryGroups.label,
     })
     .from(categoryItems)
+    .innerJoin(categoryGroups, eq(categoryItems.groupCode, categoryGroups.code))
     .orderBy(categoryItems.code))
     // Les libellés sont du texte libre saisi par l'utilisateur et sont concaténés dans le
     // message envoyé au LLM : on neutralise sauts de ligne et caractères de contrôle, qui
@@ -108,8 +119,15 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
     // `"\u0001"` (`.trim().min(1)` ne voit pas les caractères de contrôle), qui se réduirait
     // ici à une chaîne vide envoyée telle quelle au LLM (revue 2026-09-04).
     .map((c) => {
-      const label = c.label.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').trim()
-      return { ...c, label: label.length > 0 ? label : c.code }
+      const clean = (value: string) => {
+        const cleaned = value.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').trim()
+        return cleaned.length > 0 ? cleaned : null
+      }
+      return {
+        ...c,
+        label: clean(c.label) ?? c.code,
+        groupLabel: clean(c.groupLabel) ?? c.groupCode,
+      }
     })
 
   // `DEFAULT_REFERENTIAL` garantit une liste non vide ; la lecture DB, non. Sans garde,
