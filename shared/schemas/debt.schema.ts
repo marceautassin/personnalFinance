@@ -5,12 +5,17 @@ import { REPAYMENT_MODES } from '~~/shared/types/repayment-mode'
 /** Nom du créancier — non vide, borné. */
 const CreditorSchema = z.string().trim().min(1, 'Créancier requis').max(80, 'Créancier trop long (max 80)')
 
-/** Solde dû initial en cents NON signé : 0 à 1e11 (≈ 1 milliard d'euros). */
-const NonNegativeCentsSchema = z
+/**
+ * Solde dû initial en cents, **signé** (story 6.5, D16) : `> 0` = je dois, `< 0` = on me doit.
+ *
+ * Était contraint ≥ 0, ce qui rendait une **créance** inexprimable et donc FR68 (« solde net
+ * créance/dette ») impossible à satisfaire — alors que FR66 prescrit de s'appuyer sur ce
+ * modèle pour le compte-courant conjoint (revue du 2026-09-04).
+ */
+const SignedBalanceCentsSchema = z
   .number()
   .int('Montant en cents entier attendu')
-  .min(0, 'Un montant ne peut pas être négatif')
-  .max(1e11, 'Montant hors bornes')
+  .refine(n => Math.abs(n) <= 1e11, 'Montant hors bornes')
 
 /** Mensualité en cents strictement positive (une mensualité à 0 n'a pas de sens). */
 const PositiveCentsSchema = z
@@ -50,11 +55,17 @@ function refineModeFields(
 export const DebtSchema = z.object({
   id: z.number().int().positive(),
   creditor: CreditorSchema,
-  initialBalanceCents: NonNegativeCentsSchema,
+  initialBalanceCents: SignedBalanceCentsSchema,
   repaymentMode: RepaymentModeSchema,
   monthlyAmountCents: PositiveCentsSchema.nullable(),
   lumpSumDate: DateIsoSchema.nullable(),
   currentBalanceCents: z.number().int(),
+  /**
+   * Nombre de transactions marquées comme remboursement de cette dette. Exposé pour que l'UI
+   * puisse CHIFFRER l'avertissement avant suppression (story 6.7) plutôt que d'annoncer
+   * vaguement une action « définitive ».
+   */
+  linkedTransactionCount: z.number().int().min(0),
   createdAt: z.number().int(),
 })
 
@@ -62,7 +73,7 @@ export const DebtSchema = z.object({
 export const NewDebtSchema = z
   .object({
     creditor: CreditorSchema,
-    initialBalanceCents: NonNegativeCentsSchema,
+    initialBalanceCents: SignedBalanceCentsSchema,
     repaymentMode: RepaymentModeSchema,
     monthlyAmountCents: PositiveCentsSchema.nullable().optional(),
     lumpSumDate: DateIsoSchema.nullable().optional(),

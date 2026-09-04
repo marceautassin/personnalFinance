@@ -40,7 +40,7 @@ beforeAll(async () => {
     CREATE TABLE tax_settings (id INTEGER PRIMARY KEY, dividend_tax_rate_pct INTEGER NOT NULL DEFAULT 3000, dividend_tax_mode TEXT NOT NULL DEFAULT 'flat_tax', updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')));
     CREATE TABLE monthly_overrides (id INTEGER PRIMARY KEY AUTOINCREMENT, month TEXT NOT NULL, category_code TEXT NOT NULL, amount_cents INTEGER NOT NULL, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), UNIQUE(month, category_code));
     CREATE TABLE debts (id INTEGER PRIMARY KEY AUTOINCREMENT, creditor TEXT NOT NULL, initial_balance_cents INTEGER NOT NULL, repayment_mode TEXT NOT NULL DEFAULT 'free', monthly_amount_cents INTEGER, lump_sum_date TEXT, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')));
-    CREATE TABLE debt_advances (id INTEGER PRIMARY KEY AUTOINCREMENT, debt_id INTEGER NOT NULL, amount_cents INTEGER NOT NULL, advance_date TEXT NOT NULL, note TEXT, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')));
+    CREATE TABLE debt_events (id INTEGER PRIMARY KEY AUTOINCREMENT, debt_id INTEGER NOT NULL, amount_cents INTEGER NOT NULL, event_date TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'advance', source_transaction_id INTEGER, note TEXT, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')));
   `)
   handler = (await import('./forecast.get')).default as Handler
 })
@@ -53,7 +53,7 @@ afterAll(() => {
 })
 
 function reset() {
-  for (const t of ['debt_advances', 'debts', 'monthly_overrides', 'transactions', 'fixed_charges', 'bank_statements', 'sas_config', 'tax_settings', 'revenue_models', 'category_definitions']) {
+  for (const t of ['debt_events', 'debts', 'monthly_overrides', 'transactions', 'fixed_charges', 'bank_statements', 'sas_config', 'tax_settings', 'revenue_models', 'category_definitions']) {
     sqlite.exec(`DELETE FROM ${t};`)
   }
   dbMod.db.insert(schema.sasConfig).values({ id: 1 }).run()

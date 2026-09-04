@@ -38,8 +38,8 @@ const errorMessage = computed(() => (error.value ? mapError(error.value) : null)
         </li>
       </ul>
       <p class="debt-impact__note">
-        Impact sur les dépenses futures. Le calcul du dividende net correspondant arrive avec le
-        forecast (à venir).
+        Impact sur les dépenses futures. Le dividende net correspondant se lit sur la page
+        Forecast.
       </p>
     </template>
   </div>

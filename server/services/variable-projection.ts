@@ -84,6 +84,13 @@ export function buildVariableHistory(
   if (variableCats.length === 0) return []
 
   // Total net de dépense par (catégorie, mois) : max(0, −Σ amount_cents).
+  //
+  // Les remboursements de dette marqués sont EXCLUS (story 6.6) : `projectDebt` les reprojette
+  // déjà, donc les laisser ici les comptait DEUX FOIS dans le forecast. La catégorie dédiée
+  // `remboursement_dette` est `isVariable: false`, mais rien ne force son usage — un
+  // remboursement laissé en « courses » entrait dans la moyenne mobile (revue du 2026-09-04).
+  // L'exclusion porte donc sur le FLAG, pas sur la catégorie : elle reste correcte même si
+  // l'utilisateur ne classe jamais ses remboursements dans la catégorie dédiée.
   const totals = db
     .select({
       code: transactions.categoryCode,
@@ -91,6 +98,7 @@ export function buildVariableHistory(
       net: sql<number>`max(0, -sum(${transactions.amountCents}))`,
     })
     .from(transactions)
+    .where(sql`${transactions.isDebtRepayment} = 0`)
     .groupBy(transactions.categoryCode, sql`strftime('%Y-%m', ${transactions.transactionDate})`)
     .all()
   const byKey = new Map(totals.map(t => [`${t.code}|${t.month}`, Number(t.net)]))

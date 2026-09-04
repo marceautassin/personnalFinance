@@ -147,4 +147,23 @@ describe('buildVariableHistory — accès DB', () => {
   it('aucune transaction → historique vide', () => {
     expect(mod.buildVariableHistory(3)).toEqual([])
   })
+
+  /**
+   * Biais 2 (story 6.6) : un remboursement de dette marqué mais laissé dans une catégorie
+   * VARIABLE entrait dans la moyenne mobile, alors que `projectDebt` le reprojette déjà —
+   * double comptage direct dans le forecast. L'exclusion porte sur le flag, pas sur la
+   * catégorie : c'est ce qui la rend correcte quand l'utilisateur n'utilise pas
+   * `remboursement_dette`.
+   */
+  it('exclut un remboursement marqué resté dans une catégorie variable', () => {
+    tx('2026-01-05', 'courses', -30_000)
+    dbMod.db.insert(schema.transactions).values({
+      statementHash: 'h', transactionDate: '2026-01-20', label: 'remb conjointe',
+      amountCents: -50_000, categoryCode: 'courses', isDebtRepayment: true, debtId: 1,
+    }).run()
+
+    const courses = mod.buildVariableHistory(3).find(h => h.categoryCode === 'courses')!
+    // 30 000 seulement : sans l'exclusion, on lirait 80 000 et le dividende serait gonflé.
+    expect(courses.monthlyTotalsCents).toEqual([30_000])
+  })
 })

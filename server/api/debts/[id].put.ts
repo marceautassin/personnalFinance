@@ -1,10 +1,11 @@
 import { defineEventHandler, getRouterParam } from 'h3'
 import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
+import type { Cents } from '~~/shared/types/money'
 import { debts } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { domainError, notFound } from '~~/server/utils/errors'
-import { currentBalanceForDebt } from '~~/server/utils/debt-balance'
+import { currentBalanceForDebt, linkedTransactionCountForDebt } from '~~/server/utils/debt-balance'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { DebtPutSchema, type Debt } from '~~/shared/schemas/debt.schema'
 
@@ -38,5 +39,9 @@ export default defineEventHandler(async (event): Promise<Debt> => {
     .returning()
     .get()
 
-  return { ...updated, currentBalanceCents: currentBalanceForDebt(id, updated.initialBalanceCents) }
+  return {
+    ...updated,
+    linkedTransactionCount: linkedTransactionCountForDebt(id),
+    currentBalanceCents: currentBalanceForDebt(id, updated.initialBalanceCents as Cents),
+  }
 })

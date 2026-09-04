@@ -85,12 +85,34 @@ export const transactions = sqliteTable(
       .references(() => categoryDefinitions.code, { onDelete: 'restrict' }),
     isManual: integer('is_manual', { mode: 'boolean' }).notNull().default(false),
     isDebtRepayment: integer('is_debt_repayment', { mode: 'boolean' }).notNull().default(false),
-    debtId: integer('debt_id'),
+    /**
+     * FK `ON DELETE SET NULL` (story 6.7) : l'intégrité ne dépend plus du seul handler de
+     * suppression. Elle en dépendait entièrement — choix documenté à l'origine, mais fragile
+     * dès qu'un second chemin d'écriture apparaît (epic 10).
+     */
+    debtId: integer('debt_id').references(() => debts.id, { onDelete: 'set null' }),
     createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
   },
   t => ({
     transactionsPeriodIdx: index('transactions_period_idx').on(t.transactionDate),
     transactionsStatementIdx: index('transactions_statement_idx').on(t.statementHash),
+    /**
+     * `debt_id` et `is_debt_repayment` encodent LE MÊME FAIT. Le calcul de solde filtre sur les
+     * deux : une ligne `debt_id = 3, is_debt_repayment = 0` disparaissait silencieusement du
+     * solde. Ce n'est pas théorique — le PATCH antérieur à la story 6.3 persistait un `debtId`
+     * seul (revue du 2026-09-04).
+     *
+     * ⚠️ ÉCART ASSUMÉ au CLAUDE.md (« pas d'état dérivé ») : `is_debt_repayment` EST dérivable
+     * de `debt_id IS NOT NULL`. Le supprimer serait plus pur, mais il est consommé par
+     * **28 fichiers**, très majoritairement des tests d'autres epics (dashboard, réconciliation,
+     * statements, charge-suggester, forecast) — 28 fichiers contre une contrainte. Arbitrage
+     * rendu le 2026-09-04 : on garde le flag et on rend l'incohérence IMPOSSIBLE, ce qui est
+     * l'objectif réel. Ne pas « nettoyer » ce doublon sans repayer ce coût.
+     */
+    transactionsDebtCoherenceCheck: check(
+      'transactions_debt_coherence_check',
+      sql`(${t.debtId} IS NULL) = (${t.isDebtRepayment} = 0)`,
+    ),
   }),
 )
 
@@ -260,27 +282,42 @@ export type DebtRow = typeof debts.$inferSelect
 export type NewDebtRow = typeof debts.$inferInsert
 
 /**
- * debt_advances — historique des avances reçues d'un créancier (FR31, story 6.1).
- * Chaque avance incrémente le solde courant de la dette (calcul, pas de mutation de colonne).
+ * debt_events — ledger d'événements SIGNÉS d'une dette (FR31, FR66-FR68 ; story 6.5, D16).
+ * Remplace `debt_advances`, qui ne portait que des montants positifs.
  *
- *  - `amount_cents` NON signé (> 0), garanti par Zod.
- *  - `debt_id` → cascade : supprimer une dette supprime ses avances.
+ *  - `amount_cents` **signé** : > 0 augmente le solde dû (une avance reçue), < 0 le diminue
+ *    (un règlement, un ajustement). C'est ce qui rend un solde négatif — une **créance** —
+ *    exprimable, condition de FR68 (« solde net créance/dette ») et donc de l'epic 10.
+ *  - `kind` : `advance` (avance reçue) | `settlement` (règlement) | `adjustment` (correction).
+ *    Purement descriptif — le signe seul porte l'arithmétique.
+ *  - `source_transaction_id` : trace optionnelle vers la transaction bancaire à l'origine de
+ *    l'événement. Pas de FK : une transaction peut être supprimée avec son relevé sans que
+ *    l'historique de la dette devienne faux.
+ *  - `debt_id` → cascade : supprimer une dette supprime ses événements.
+ *
+ * Pourquoi ce modèle (revue du 2026-09-04) : `debt_advances.amount_cents` était `positive()`,
+ * donc aucun événement ne pouvait diminuer le solde hors transaction marquée, et
+ * `initial_balance_cents` était contraint ≥ 0. Une créance était inexprimable.
  */
-export const debtAdvances = sqliteTable('debt_advances', {
+export const debtEvents = sqliteTable('debt_events', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   debtId: integer('debt_id')
     .notNull()
     .references(() => debts.id, { onDelete: 'cascade' }),
   amountCents: integer('amount_cents').notNull(),
-  advanceDate: text('advance_date').notNull(),
+  eventDate: text('event_date').notNull(),
+  kind: text('kind', { enum: ['advance', 'settlement', 'adjustment'] })
+    .notNull()
+    .default('advance'),
+  sourceTransactionId: integer('source_transaction_id'),
   note: text('note'),
   createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, t => ({
-  debtAdvancesDebtIdx: index('debt_advances_debt_idx').on(t.debtId),
+  debtEventsDebtIdx: index('debt_events_debt_idx').on(t.debtId),
 }))
 
-export type DebtAdvanceRow = typeof debtAdvances.$inferSelect
-export type NewDebtAdvanceRow = typeof debtAdvances.$inferInsert
+export type DebtEventRow = typeof debtEvents.$inferSelect
+export type NewDebtEventRow = typeof debtEvents.$inferInsert
 
 /**
  * monthly_overrides — valeur manuelle qui outrepasse la projection d'une catégorie variable

@@ -2,19 +2,36 @@
 import { useDebts } from '~/composables/useDebts'
 import { useApiError } from '~/composables/useApiError'
 import type { Debt, NewDebt } from '~~/shared/schemas/debt.schema'
-import type { NewDebtAdvance } from '~~/shared/schemas/debt-advance.schema'
+import type { NewDebtEvent } from '~~/shared/schemas/debt-event.schema'
 
-const { data, pending, error, addDebt, updateDebt, deleteDebt, addAdvance } = useDebts()
+const { data, pending, error, addDebt, updateDebt, deleteDebt, addEvent } = useDebts()
 const { mapError } = useApiError()
 
 const showForm = ref(false)
 const editing = ref<Debt | null>(null)
 const submitting = ref(false)
-const savingAdvanceId = ref<number | null>(null)
+const savingEventId = ref<number | null>(null)
 const actionError = ref<string | null>(null)
 
 const pendingDelete = ref<Debt | null>(null)
 const confirmOpen = computed(() => pendingDelete.value !== null)
+
+/**
+ * Message de confirmation CHIFFRÉ (story 6.7) : supprimer une dette délie ses transactions,
+ * sans undo. Le message ne disait que « Cette action est définitive » — 18 remboursements
+ * marqués sur 12 mois pouvaient disparaître sans que rien ne l'annonce (revue du 2026-09-04).
+ */
+const deleteMessage = computed(() => {
+  const debt = pendingDelete.value
+  if (!debt) return ''
+  const base = `Supprimer la dette « ${debt.creditor} » ? Cette action est définitive.`
+  const n = debt.linkedTransactionCount
+  if (n === 0) return base
+  const detail = n > 1
+    ? `${n} transactions perdront leur marquage de remboursement.`
+    : '1 transaction perdra son marquage de remboursement.'
+  return `${base} ${detail}`
+})
 
 const fetchErrorMessage = computed(() => (error.value ? mapError(error.value) : null))
 
@@ -44,11 +61,11 @@ async function onSubmit(payload: NewDebt) {
   else closeForm()
 }
 
-async function onAdvance(debtId: number, payload: NewDebtAdvance) {
+async function onEvent(debtId: number, payload: NewDebtEvent) {
   actionError.value = null
-  savingAdvanceId.value = debtId
-  const outcome = await addAdvance(debtId, payload)
-  savingAdvanceId.value = null
+  savingEventId.value = debtId
+  const outcome = await addEvent(debtId, payload)
+  savingEventId.value = null
   if (outcome.error) actionError.value = outcome.error
 }
 
@@ -120,17 +137,17 @@ async function onConfirmDelete() {
         v-for="debt in data"
         :key="debt.id"
         :debt="debt"
-        :saving-advance="savingAdvanceId === debt.id"
+        :saving-event="savingEventId === debt.id"
         @edit="openEdit"
         @remove="d => pendingDelete = d"
-        @advance="onAdvance"
+        @event="onEvent"
       />
     </div>
 
     <ConfirmDialog
       :open="confirmOpen"
       title="Supprimer la dette"
-      :message="`Supprimer la dette « ${pendingDelete?.creditor} » ? Cette action est définitive.`"
+      :message="deleteMessage"
       confirm-label="Supprimer"
       @confirm="onConfirmDelete"
       @cancel="pendingDelete = null"

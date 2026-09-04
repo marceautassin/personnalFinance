@@ -25,5 +25,6 @@ export default defineEventHandler(async (event): Promise<Debt> => {
     .get()
 
   setResponseStatus(event, 201)
-  return { ...created, currentBalanceCents: created.initialBalanceCents }
+  // Dette neuve : aucune transaction ne peut encore lui être rattachée.
+  return { ...created, currentBalanceCents: created.initialBalanceCents, linkedTransactionCount: 0 }
 })

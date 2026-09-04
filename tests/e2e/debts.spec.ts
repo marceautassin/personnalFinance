@@ -1,9 +1,10 @@
 import { test, expect, type Page } from '@playwright/test'
 
 /**
- * E2E gestion des dettes (Story 6.2). Aucune dépendance LLM ni PDF.
- * Ajoute une dette (mode mensualité), vérifie la card + solde, ajoute une avance (solde
- * incrémenté), puis supprime. Idempotent : nettoie les dettes « E2E Créancier » au démarrage.
+ * E2E gestion des dettes (stories 6.2 puis 6.5). Aucune dépendance LLM ni PDF.
+ * Ajoute une dette (mode mensualité), vérifie la card + solde, enregistre un mouvement d'avance
+ * (solde incrémenté) PUIS un règlement signé qui bascule le solde en créance (D16), puis
+ * supprime. Idempotent : nettoie les dettes « E2E Créancier » au démarrage.
  */
 async function cleanup(page: Page) {
   for (let guard = 0; guard < 10; guard++) {
@@ -35,11 +36,23 @@ test.describe('Dettes — CRUD + avance', () => {
     await expect(card).toContainText('1 000,00')
 
     // Avance de 250 € → solde attendu 1 250 €.
-    await card.getByRole('button', { name: '+ Avance' }).click()
-    await card.getByLabel('Avance reçue (€)').fill('250')
+    await card.getByRole('button', { name: '+ Mouvement' }).click()
+    await card.getByLabel('Montant (€)').fill('250')
     await card.getByLabel('Date').fill('2026-02-01')
-    await card.getByRole('button', { name: 'Enregistrer l\'avance' }).click()
+    await card.getByLabel('Nature').selectOption('advance')
+    await card.getByRole('button', { name: 'Enregistrer', exact: true }).click()
     await expect(card).toContainText('1 250,00')
+    await expect(card).toContainText('Dette')
+
+    // Règlement de 2 000 € → le solde bascule en CRÉANCE (−750 €). C'est le cœur de D16 :
+    // ce cas était structurellement impossible avant la story 6.5.
+    await card.getByRole('button', { name: '+ Mouvement' }).click()
+    await card.getByLabel('Montant (€)').fill('2000')
+    await card.getByLabel('Date').fill('2026-03-01')
+    await card.getByLabel('Nature').selectOption('settlement')
+    await card.getByRole('button', { name: 'Enregistrer', exact: true }).click()
+    await expect(card).toContainText('750,00')
+    await expect(card).toContainText('Créance')
 
     // Suppression.
     await card.getByRole('button', { name: /Supprimer la dette/ }).click()

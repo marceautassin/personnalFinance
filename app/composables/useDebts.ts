@@ -1,5 +1,5 @@
 import type { Debt, NewDebt, DebtPut } from '~~/shared/schemas/debt.schema'
-import type { NewDebtAdvance } from '~~/shared/schemas/debt-advance.schema'
+import type { NewDebtEvent } from '~~/shared/schemas/debt-event.schema'
 import type { RepaymentMode } from '~~/shared/types/repayment-mode'
 import type { MutationOutcome } from './useApiError'
 import { useMutations } from './useMutations'
@@ -25,7 +25,7 @@ export function useDebtsList() {
 }
 
 /**
- * Dettes — lecture + mutations (CRUD + avances) + invalidations transversales.
+ * Dettes — lecture + mutations (CRUD + événements de ledger) + invalidations transversales.
  * Le composable possède toute la logique de mutation (CLAUDE.md : pas de `$fetch` direct
  * dans les composants). Chaque mutation réussie refetch la liste `debts` ; les mutations
  * qui changent le solde d'une dette précise invalident aussi son `debt-impact-<id>`.
@@ -45,13 +45,22 @@ export function useDebts() {
     )
   }
 
+  /**
+   * Supprimer une dette DÉLIE ses transactions côté serveur : les pages `/transactions/[period]`
+   * déjà chargées affichaient encore « ↳ créancier » sur des lignes désormais non marquées
+   * (revue du 2026-09-04). `refreshNuxtData()` sans clé rafraîchit les données actives — les
+   * clés `transactions-<mois>` sont dynamiques, on ne peut pas les énumérer ici.
+   */
   function deleteDebt(id: number): Promise<MutationOutcome> {
-    return runMutation(() => apiMutate(`/api/debts/${id}`, { method: 'DELETE' }))
+    return runMutation(
+      () => apiMutate(`/api/debts/${id}`, { method: 'DELETE' }),
+      () => refreshNuxtData(),
+    )
   }
 
-  function addAdvance(debtId: number, input: NewDebtAdvance): Promise<MutationOutcome> {
+  function addEvent(debtId: number, input: NewDebtEvent): Promise<MutationOutcome> {
     return runMutation(
-      () => apiMutate(`/api/debts/${debtId}/advances`, { method: 'POST', body: input }),
+      () => apiMutate(`/api/debts/${debtId}/events`, { method: 'POST', body: input }),
       () => refreshNuxtData(`debt-impact-${debtId}`),
     )
   }
@@ -61,6 +70,6 @@ export function useDebts() {
     addDebt,
     updateDebt,
     deleteDebt,
-    addAdvance,
+    addEvent,
   }
 }

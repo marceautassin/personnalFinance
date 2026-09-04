@@ -2,22 +2,31 @@
 import { formatEuros, type Cents } from '~~/shared/types/money'
 import { REPAYMENT_MODE_LABELS } from '~/composables/useDebts'
 import type { Debt } from '~~/shared/schemas/debt.schema'
-import type { NewDebtAdvance } from '~~/shared/schemas/debt-advance.schema'
-import DebtAdvanceForm from './DebtAdvanceForm.vue'
-import DebtImpactOnDividend from './DebtImpactOnDividend.vue'
+import type { NewDebtEvent } from '~~/shared/schemas/debt-event.schema'
+import DebtEventForm from './DebtEventForm.vue'
+import DebtProjectedExpense from './DebtProjectedExpense.vue'
 
 const props = defineProps<{
   debt: Debt
-  savingAdvance?: boolean
+  savingEvent?: boolean
 }>()
 const emit = defineEmits<{
   edit: [debt: Debt]
   remove: [debt: Debt]
-  advance: [debtId: number, payload: NewDebtAdvance]
+  event: [debtId: number, payload: NewDebtEvent]
 }>()
 
-const showAdvance = ref(false)
+const showEventForm = ref(false)
 const showImpact = ref(false)
+
+/**
+ * Un solde négatif est une CRÉANCE (on me doit), pas une anomalie d'affichage. Il devient
+ * possible depuis le ledger signé (story 6.5, D16) ; auparavant il ne pouvait provenir que
+ * d'un sur-remboursement et s'affichait tel quel, sans rien indiquer (revue du 2026-09-04).
+ */
+const isCredit = computed(() => props.debt.currentBalanceCents < 0)
+const balanceLabel = computed(() => (isCredit.value ? 'Créance' : 'Dette'))
+const balanceAbs = computed(() => Math.abs(props.debt.currentBalanceCents) as Cents)
 
 /** Détail du mode : mensualité formatée, date d'échéance, ou rien (libre). */
 const modeDetail = computed(() => {
@@ -28,9 +37,9 @@ const modeDetail = computed(() => {
   return null
 })
 
-function onAdvance(payload: NewDebtAdvance) {
-  emit('advance', props.debt.id, payload)
-  showAdvance.value = false
+function onEvent(payload: NewDebtEvent) {
+  emit('event', props.debt.id, payload)
+  showEventForm.value = false
 }
 </script>
 
@@ -43,7 +52,14 @@ function onAdvance(payload: NewDebtAdvance) {
       <h3 class="debt-card__creditor">
         {{ debt.creditor }}
       </h3>
-      <span class="debt-card__balance">{{ formatEuros(debt.currentBalanceCents as Cents) }}</span>
+      <span
+        class="debt-card__balance"
+        :class="{ 'debt-card__balance--credit': isCredit }"
+        :data-testid="`debt-balance-${debt.id}`"
+      >
+        <span class="debt-card__balance-kind">{{ balanceLabel }}</span>
+        {{ formatEuros(balanceAbs) }}
+      </span>
     </header>
 
     <p class="debt-card__mode">
@@ -58,9 +74,9 @@ function onAdvance(payload: NewDebtAdvance) {
       <button
         type="button"
         class="debt-card__btn"
-        @click="showAdvance = !showAdvance"
+        @click="showEventForm = !showEventForm"
       >
-        + Avance
+        + Mouvement
       </button>
       <button
         type="button"
@@ -86,14 +102,14 @@ function onAdvance(payload: NewDebtAdvance) {
       </button>
     </div>
 
-    <DebtAdvanceForm
-      v-if="showAdvance"
-      :saving="savingAdvance"
-      @submit="onAdvance"
-      @cancel="showAdvance = false"
+    <DebtEventForm
+      v-if="showEventForm"
+      :saving="savingEvent"
+      @submit="onEvent"
+      @cancel="showEventForm = false"
     />
 
-    <DebtImpactOnDividend
+    <DebtProjectedExpense
       v-if="showImpact"
       :debt-id="debt.id"
     />
@@ -121,6 +137,14 @@ function onAdvance(payload: NewDebtAdvance) {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold, 700);
   font-variant-numeric: tabular-nums;
+}
+.debt-card__balance--credit { color: var(--color-success, #1a7f37); }
+.debt-card__balance-kind {
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: normal;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .debt-card__mode { margin: 0; display: flex; align-items: center; gap: var(--space-2); }
 .debt-card__badge {

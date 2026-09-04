@@ -30,10 +30,14 @@ export default defineEventHandler(async (event) => {
   if (patch.categoryCode !== undefined) await assertCategoryExists(patch.categoryCode)
 
   const existingTx = existing[0]!
-  const update: Partial<typeof transactions.$inferInsert> = {
-    isManual: true,
+  const update: Partial<typeof transactions.$inferInsert> = {}
+  // `isManual` signifie « catégorie saisie ou CORRIGÉE à la main ». Rattacher une transaction à
+  // une dette n'est pas une correction de catégorisation : le flag n'est plus posé que lorsque
+  // le patch touche effectivement la catégorie (story 6.8, revue du 2026-09-04).
+  if (patch.categoryCode !== undefined) {
+    update.categoryCode = patch.categoryCode
+    update.isManual = true
   }
-  if (patch.categoryCode !== undefined) update.categoryCode = patch.categoryCode
 
   // Marquage remboursement de dette (Story 6.3) : ne touche les colonnes dette QUE si le
   // patch les vise (`isDebtRepayment` et/ou `debtId`), pour ne pas parasiter un simple
@@ -47,9 +51,15 @@ export default defineEventHandler(async (event) => {
         throw domainError(ApiErrorCode.ValidationFailed, { reason: 'debtId required to mark repayment' }, 422)
       }
       await assertDebtExists(debtId)
-      // FR9 : seule une transaction SORTANTE (montant négatif) peut être un remboursement.
-      if (existingTx.amountCents >= 0) {
-        throw domainError(ApiErrorCode.ValidationFailed, { reason: 'only outgoing transactions can be a repayment' }, 422)
+      // Une transaction ENTRANTE peut être rattachée à une dette depuis la story 6.5 (D16) :
+      // c'est la condition d'un compte-courant conjoint, où un règlement reçu diminue le solde
+      // (FR66/FR67). La garde `amountCents >= 0` bloquait ce cas.
+      //
+      // FR9 reste vrai pour ce qu'il dit : seule une SORTIE est un « remboursement ». Une
+      // entrée rattachée est un mouvement de sens inverse, pas un remboursement — d'où le
+      // rejet d'un montant nul, qui n'est ni l'un ni l'autre.
+      if (existingTx.amountCents === 0) {
+        throw domainError(ApiErrorCode.ValidationFailed, { reason: 'a zero-amount transaction cannot be attached to a debt' }, 422)
       }
       update.isDebtRepayment = true
       update.debtId = debtId

@@ -174,6 +174,20 @@ describe('PATCH /api/transactions/[id]', () => {
 
     expect(result.isDebtRepayment).toBe(true)
     expect(result.debtId).toBe(debtId)
+    // Contrat CHANGÉ par la story 6.8 : `isManual` signifie « catégorie saisie ou CORRIGÉE à la
+    // main ». Rattacher une transaction à une dette ne touche pas sa catégorisation, donc ne
+    // doit plus lever ce flag (revue du 2026-09-04).
+    expect(result.isManual).toBe(false)
+  })
+
+  it('sets isManual only when the patch touches the category (Story 6.8)', async () => {
+    seedStatement()
+    const id = seedTransaction()
+    const result = (await handler(makeEvent(String(id), { categoryCode: 'restaurants' }))) as {
+      categoryCode: string
+      isManual: boolean
+    }
+    expect(result.categoryCode).toBe('restaurants')
     expect(result.isManual).toBe(true)
   })
 
@@ -185,12 +199,32 @@ describe('PATCH /api/transactions/[id]', () => {
     ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
   })
 
-  it('rejects marking an incoming (positive) transaction → 422 (FR9 sortante)', async () => {
+  // Contrat CHANGÉ par la story 6.5 (D16) : une transaction ENTRANTE peut être rattachée à une
+  // dette — c'est la condition d'un compte-courant conjoint, où un règlement reçu diminue le
+  // solde (FR66/FR67). La garde précédente refusait tout `amountCents >= 0`, ce qui rendait ce
+  // cas structurellement impossible. FR9 reste vrai pour ce qu'il dit : seule une SORTIE est un
+  // « remboursement » ; une entrée rattachée est un mouvement de sens inverse.
+  it('accepts attaching an incoming (positive) transaction to a debt (D16)', async () => {
     seedStatement()
     const debtId = seedDebt()
     const id = seedIncomingTransaction()
+    const updated = (await handler(makeEvent(String(id), { isDebtRepayment: true, debtId }))) as {
+      isDebtRepayment: boolean
+      debtId: number | null
+    }
+    expect(updated.isDebtRepayment).toBe(true)
+    expect(updated.debtId).toBe(debtId)
+  })
+
+  it('rejects attaching a zero-amount transaction to a debt → 422', async () => {
+    seedStatement()
+    const debtId = seedDebt()
+    const r = dbMod.db.insert(schema.transactions).values({
+      statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Écriture nulle',
+      amountCents: 0, categoryCode: 'courses',
+    }).run()
     await expect(
-      handler(makeEvent(String(id), { isDebtRepayment: true, debtId })),
+      handler(makeEvent(String(Number(r.lastInsertRowid)), { isDebtRepayment: true, debtId })),
     ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
   })
 

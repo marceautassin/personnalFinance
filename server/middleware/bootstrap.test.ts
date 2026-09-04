@@ -54,6 +54,31 @@ beforeAll(async () => {
         CHECK(dividend_tax_mode IN ('flat_tax','progressive')),
       updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
+    -- Repères vérifiés par assertSchemaUpToDate (story 6.7) : sans eux le bootstrap refuse
+    -- de démarrer, ce qui est précisément son rôle sur une base périmée.
+    CREATE TABLE debt_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      debt_id INTEGER NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      event_date TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'advance',
+      source_transaction_id INTEGER,
+      note TEXT,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    );
+    CREATE TABLE transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      statement_hash TEXT NOT NULL,
+      transaction_date TEXT NOT NULL,
+      label TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      category_code TEXT NOT NULL,
+      is_manual INTEGER NOT NULL DEFAULT 0,
+      is_debt_repayment INTEGER NOT NULL DEFAULT 0,
+      debt_id INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      CONSTRAINT transactions_debt_coherence_check CHECK ((debt_id IS NULL) = (is_debt_repayment = 0))
+    );
   `)
 })
 
@@ -113,5 +138,59 @@ describe('bootstrap — seed singletons (stories 5.3, 5.4, 5.5)', () => {
     expect(rows[0]!.id).toBe(1)
     expect(rows[0]!.dividendTaxRatePct).toBe(3000)
     expect(rows[0]!.dividendTaxMode).toBe('flat_tax')
+  })
+})
+
+describe('assertSchemaUpToDate — détection d\'un schéma périmé', () => {
+  /**
+   * La sonde ne testait que `category_definitions` : une base antérieure au lot 6.5/6.7 passait
+   * le bootstrap sans bruit, puis échouait en 500 à l'usage — ou tournait sans la contrainte
+   * d'intégrité sur laquelle la story 6.7 s'appuie (revue du 2026-09-04).
+   */
+  it('refuse de démarrer si `debt_events` manque', async () => {
+    const mod = await import('./0.bootstrap')
+    expect(() => mod.assertSchemaUpToDate()).not.toThrow()
+
+    sqlite.exec('DROP TABLE debt_events')
+    expect(() => mod.assertSchemaUpToDate()).toThrow(/schéma de base périmé/i)
+
+    // Remise en état : les autres cas du fichier partagent cette base.
+    sqlite.exec(`
+      CREATE TABLE debt_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        debt_id INTEGER NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        event_date TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'advance',
+        source_transaction_id INTEGER,
+        note TEXT,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+      );
+    `)
+    expect(() => mod.assertSchemaUpToDate()).not.toThrow()
+  })
+
+  it('refuse de démarrer si la contrainte de cohérence dette manque', async () => {
+    const mod = await import('./0.bootstrap')
+    sqlite.exec('ALTER TABLE transactions RENAME TO transactions_backup')
+    sqlite.exec(`
+      CREATE TABLE transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        statement_hash TEXT NOT NULL,
+        transaction_date TEXT NOT NULL,
+        label TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        category_code TEXT NOT NULL,
+        is_manual INTEGER NOT NULL DEFAULT 0,
+        is_debt_repayment INTEGER NOT NULL DEFAULT 0,
+        debt_id INTEGER,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+      );
+    `)
+    expect(() => mod.assertSchemaUpToDate()).toThrow(/schéma de base périmé/i)
+
+    sqlite.exec('DROP TABLE transactions')
+    sqlite.exec('ALTER TABLE transactions_backup RENAME TO transactions')
+    expect(() => mod.assertSchemaUpToDate()).not.toThrow()
   })
 })

@@ -1,4 +1,5 @@
 import { defineEventHandler } from 'h3'
+import { currentMonth } from '~~/server/utils/debt-anchor'
 import { z } from 'zod'
 import { sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
@@ -31,10 +32,6 @@ export interface ForecastResponse {
 }
 
 /** Mois courant serveur `YYYY-MM` (ancre ; le calcul reste pur). */
-function currentMonth(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-}
 
 /**
  * Forecast inverse assemblé (FR46-53), calculé à la demande (D9, non stocké). Orchestre

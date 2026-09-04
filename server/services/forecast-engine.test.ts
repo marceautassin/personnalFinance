@@ -54,7 +54,7 @@ beforeAll(async () => {
     CREATE TABLE revenue_models (id INTEGER PRIMARY KEY, unemployment_benefit_monthly_cents INTEGER NOT NULL DEFAULT 0, unemployment_benefit_end_date TEXT, sas_monthly_rent_cents INTEGER NOT NULL DEFAULT 0, expense_reimbursements_monthly_cents INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')));
     CREATE TABLE monthly_overrides (id INTEGER PRIMARY KEY AUTOINCREMENT, month TEXT NOT NULL, category_code TEXT NOT NULL, amount_cents INTEGER NOT NULL, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), UNIQUE(month, category_code));
     CREATE TABLE debts (id INTEGER PRIMARY KEY AUTOINCREMENT, creditor TEXT NOT NULL, initial_balance_cents INTEGER NOT NULL, repayment_mode TEXT NOT NULL DEFAULT 'free', monthly_amount_cents INTEGER, lump_sum_date TEXT, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')));
-    CREATE TABLE debt_advances (id INTEGER PRIMARY KEY AUTOINCREMENT, debt_id INTEGER NOT NULL, amount_cents INTEGER NOT NULL, advance_date TEXT NOT NULL, note TEXT, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')));
+    CREATE TABLE debt_events (id INTEGER PRIMARY KEY AUTOINCREMENT, debt_id INTEGER NOT NULL, amount_cents INTEGER NOT NULL, event_date TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'advance', source_transaction_id INTEGER, note TEXT, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')));
   `)
   mod = await import('./forecast-engine')
 })

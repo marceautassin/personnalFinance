@@ -3,8 +3,8 @@ import { desc } from 'drizzle-orm'
 import { bankStatements, revenueModels, fixedCharges, monthlyOverrides, debts } from '~~/server/db/schema'
 import { nextMonths, monthOf, monthOffset } from '~~/server/utils/period'
 import { buildVariableHistory, projectVariableCategories } from './variable-projection'
-import { projectDebt } from './debt-projection'
 import { currentBalanceForDebt as currentDebtBalance } from '~~/server/utils/debt-balance'
+import { projectDebtFromCurrentMonth, repaidInMonthCents } from '~~/server/utils/debt-anchor'
 import type { Cents } from '~~/shared/types/money'
 import type { FrequencyValue } from '~~/server/db/schema'
 
@@ -176,15 +176,20 @@ export function buildForecastInput(startMonth: string, horizonMonths: number): F
   const debtPunctualByMonth = new Map<string, Cents>()
   for (const d of debtRows) {
     if (d.repaymentMode === 'free') continue
-    const series = projectDebt(
+    // Même ancrage que `GET /api/debts/[id]/impact` — la règle vit dans `debt-anchor.ts` et
+    // nulle part ailleurs. La dupliquer ferait diverger la carte d'impact et le dividende
+    // (story 6.6). Sans elle, une mensualité déjà réglée ce mois-ci était reprojetée, et le
+    // biais remontait jusqu'au dividende à voter.
+    const series = projectDebtFromCurrentMonth(
       {
-        currentBalanceCents: currentDebtBalance(d.id, d.initialBalanceCents) as Cents,
+        currentBalanceCents: currentDebtBalance(d.id, d.initialBalanceCents as Cents),
         repaymentMode: d.repaymentMode,
         monthlyAmountCents: d.monthlyAmountCents as Cents | null,
         lumpSumDate: d.lumpSumDate,
       },
       startMonth,
       horizonMonths,
+      repaidInMonthCents(d.id, startMonth),
     )
     const target = d.repaymentMode === 'monthly' ? debtRecurringByMonth : debtPunctualByMonth
     for (const o of series) {
