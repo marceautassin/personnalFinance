@@ -2,7 +2,7 @@
 import type { CategoryListItem } from '~/composables/useCategories'
 import { isProtectedCategory } from '~~/shared/constants/protected-categories'
 
-defineProps<{
+const props = defineProps<{
   categories: CategoryListItem[]
   savingCode?: string | null
 }>()
@@ -37,10 +37,41 @@ function setLabelButton(code: string, el: Element | null) {
   else labelButtons.delete(code)
 }
 
+/**
+ * Code dont le bouton-libellé doit reprendre le focus dès qu'il est de nouveau rendu.
+ *
+ * Un simple `nextTick` ne suffit pas après une VALIDATION : le renommage déclenche un refetch
+ * de la liste, et le re-rendu qui suit fait retomber le focus sur `<body>` — l'utilisateur au
+ * clavier était éjecté en haut de page à chaque renommage (recette du 2026-09-04). On retient
+ * donc l'intention et on la rejoue quand la liste change, plutôt que de deviner un délai.
+ */
+const pendingFocusCode = ref<string | null>(null)
+
 async function focusLabelButton(code: string) {
+  pendingFocusCode.value = code
   await nextTick()
-  labelButtons.get(code)?.focus()
+  applyPendingFocus()
 }
+
+/**
+ * Pose le focus sans consommer l'intention : elle doit survivre au re-rendu provoqué par le
+ * refetch, qui arrive APRÈS ce premier placement. La consommer ici — ce que faisait la
+ * première version de ce correctif — rendait le rattrapage impossible.
+ */
+function applyPendingFocus() {
+  const code = pendingFocusCode.value
+  if (!code) return
+  const btn = labelButtons.get(code)
+  if (btn?.isConnected) btn.focus()
+}
+
+// Le refetch remplace les lignes : on rejoue le focus, puis seulement là on l'oublie.
+watch(() => props.categories, async () => {
+  if (!pendingFocusCode.value) return
+  await nextTick()
+  applyPendingFocus()
+  pendingFocusCode.value = null
+})
 
 /**
  * Ouvre l'édition inline ET donne le focus au champ. Sans ce `focus()`, l'input apparaissait
@@ -49,6 +80,13 @@ async function focusLabelButton(code: string) {
  * `fill()` focalise lui-même l'élément (revue 2026-09-04).
  */
 async function startEdit(cat: CategoryListItem) {
+  // `aria-disabled` et non `disabled` sur le bouton-libellé : passer un élément FOCALISÉ en
+  // `disabled` le fait perdre le focus. Pendant la sauvegarde d'un renommage, `savingCode`
+  // désactivait ce bouton juste après qu'on lui ait rendu le focus — l'utilisateur au clavier
+  // était éjecté sur `<body>` à chaque validation (recette du 2026-09-04). On garde donc le
+  // bouton focalisable et on refuse l'action ici.
+  if (props.savingCode === cat.code) return
+  pendingFocusCode.value = null
   editingCode.value = cat.code
   editLabel.value = cat.label
   await nextTick()
@@ -65,6 +103,7 @@ function cancelEdit(refocus = false) {
   const code = editingCode.value
   editingCode.value = null
   editLabel.value = ''
+  if (!refocus) pendingFocusCode.value = null
   if (refocus && code) focusLabelButton(code)
 }
 
@@ -91,6 +130,28 @@ function onEditBlur(cat: CategoryListItem, event: FocusEvent) {
     return
   }
   commitEdit(cat)
+}
+
+/**
+ * `aria-disabled` plutôt que `disabled` (recette du 2026-09-04) — deux raisons :
+ *
+ * 1. Un bouton `disabled` sort du tab order. Or c'est LUI qui porte `data-cancels-edit`, le
+ *    garde-fou qui abandonne un renommage quand on part sur « Supprimer ». Dès qu'une
+ *    catégorie était référencée — le cas normal — le bouton devenait inatteignable au clavier
+ *    et le garde-fou ne se déclenchait jamais.
+ * 2. Le `title` qui EXPLIQUE le blocage était lui aussi hors de portée du clavier. La raison
+ *    est désormais dans l'`aria-label`, donc annoncée.
+ *
+ * Le clic reste inopérant : `onRemoveClick` refuse, et le style `--blocked` conserve
+ * l'apparence grisée.
+ */
+function isBlocked(cat: CategoryListItem): boolean {
+  return blockReason(cat) !== null
+}
+
+function onRemoveClick(cat: CategoryListItem) {
+  if (isBlocked(cat) || props.savingCode === cat.code) return
+  emit('remove', cat)
 }
 
 /** Raison textuelle du blocage de suppression, ou null si supprimable. */
@@ -138,7 +199,7 @@ function blockReason(cat: CategoryListItem): string | null {
               :ref="el => setLabelButton(cat.code, el as Element | null)"
               type="button"
               class="cat-list__label"
-              :disabled="savingCode === cat.code"
+              :aria-disabled="savingCode === cat.code"
               @click="startEdit(cat)"
             >
               {{ cat.label }}
@@ -168,11 +229,12 @@ function blockReason(cat: CategoryListItem): string | null {
               type="button"
               class="cat-list__del"
               data-cancels-edit
-              :disabled="blockReason(cat) !== null || savingCode === cat.code"
+              :class="{ 'cat-list__del--blocked': isBlocked(cat) }"
+              :aria-disabled="isBlocked(cat) || savingCode === cat.code"
               :title="blockReason(cat) ?? 'Supprimer'"
-              :aria-label="`Supprimer ${cat.label}`"
+              :aria-label="blockReason(cat) ? `Supprimer ${cat.label} — ${blockReason(cat)}` : `Supprimer ${cat.label}`"
               @mousedown="cancelEdit()"
-              @click="emit('remove', cat)"
+              @click="onRemoveClick(cat)"
             >
               Supprimer
             </button>
@@ -239,4 +301,8 @@ function blockReason(cat: CategoryListItem): string | null {
 }
 .cat-list__del:hover:not(:disabled) { border-color: var(--color-danger); color: var(--color-danger); }
 .cat-list__del:disabled { opacity: 0.45; cursor: not-allowed; }
+.cat-list__del--blocked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 </style>

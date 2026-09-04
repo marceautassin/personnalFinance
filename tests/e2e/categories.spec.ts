@@ -56,6 +56,11 @@ test.describe('Catégories — CRUD + protection système', () => {
     await expect(row.getByRole('button', { name: 'Essence', exact: true })).toBeVisible()
     expect(patchCount).toBe(1)
 
+    // Le focus doit revenir sur le bouton-libellé APRÈS le refetch. Il retombait sur `<body>` :
+    // pendant la sauvegarde, `savingCode` passait ce bouton en `disabled`, et désactiver un
+    // élément focalisé lui retire le focus (recette du 2026-09-04).
+    await expect(row.getByRole('button', { name: 'Essence', exact: true })).toBeFocused()
+
     // Escape abandonne le renommage et rend le focus au bouton-libellé.
     await row.getByRole('button', { name: 'Essence', exact: true }).click()
     await page.keyboard.type('Abandonné')
@@ -74,6 +79,32 @@ test.describe('Catégories — CRUD + protection système', () => {
     await expect(row.getByRole('button', { name: 'Essence', exact: true })).toBeVisible()
     expect(patchCount).toBe(1)
     await page.unroute('**/api/categories/**')
+
+    /**
+     * Validation par SORTIE DE CHAMP (clic ailleurs) : l'écran doit refléter la base.
+     *
+     * Ce chemin renvoyait le `PATCH` sans jamais déclencher le refetch — l'écran gardait
+     * l'ancien libellé pendant que la base portait le nouveau, et l'utilisateur croyait son
+     * renommage abandonné (recette du 2026-09-04). On compare l'affichage à ce que l'API
+     * renvoie vraiment, pas à une valeur attendue en dur : c'est la DIVERGENCE qu'on traque.
+     */
+    await row.getByRole('button', { name: 'Essence', exact: true }).click()
+    await page.keyboard.type('Essence Sortie')
+    await page.getByRole('heading', { name: 'Catégories' }).click()
+    await expect(row.getByRole('button', { name: 'Essence Sortie', exact: true })).toBeVisible()
+
+    const libelleServeur = await page.evaluate(async () => {
+      const cats = await fetch('/api/categories').then(r => r.json())
+      return cats.find((c: { code: string }) => c.code === 'carburant')?.label
+    })
+    const libelleAffiche = await row.locator('.cat-list__label').textContent()
+    expect(libelleAffiche?.trim()).toBe(libelleServeur)
+
+    // Remise à « Essence » pour la suite du parcours.
+    await row.getByRole('button', { name: 'Essence Sortie', exact: true }).click()
+    await page.keyboard.type('Essence')
+    await page.keyboard.press('Enter')
+    await expect(row.getByRole('button', { name: 'Essence', exact: true })).toBeVisible()
 
     // Persistance après reload.
     await page.reload()

@@ -22,9 +22,22 @@ export function useCategoryAdmin() {
   const { mapMutationError } = useApiError()
   const { invalidateForecast, invalidateDashboard } = useInvalidate()
 
-  /** Refetch la liste, puis les vues qui affichent des libellés de catégorie. */
+  /**
+   * Refetch la liste, puis les vues qui affichent des libellés de catégorie.
+   *
+   * ⚠️ `fetchState.refresh()` et NON `refreshNuxtData('categories')`. Le second dépend du
+   * contexte Nuxt ambiant, qui est perdu ici : ces fonctions sont appelées APRÈS un `await`,
+   * depuis un gestionnaire d'événement du composant. Constaté à la recette du 2026-09-04 —
+   * sur le chemin « blur vers un autre élément », le `PATCH` partait, aucun `GET` ne suivait,
+   * et l'écran continuait d'afficher l'ancien libellé pendant que la base portait le nouveau.
+   * Divergence silencieuse : l'utilisateur croyait son renommage abandonné alors qu'il était
+   * enregistré. `fetchState.refresh()` s'appuie sur l'instance capturée et ne peut pas rater.
+   *
+   * `useTaxSettings` (story 5.5) utilisait déjà `fetchState.refresh()` — c'est ce composable-ci
+   * qui divergeait du pattern.
+   */
   async function refreshList() {
-    await refreshNuxtData('categories')
+    await fetchState.refresh()
     await Promise.all([invalidateForecast(), invalidateDashboard()])
   }
 
