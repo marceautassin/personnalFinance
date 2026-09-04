@@ -40,7 +40,21 @@ moteur de forecast + `dividend-calculator` (**Epic 7**, non implémenté). Le de
 
 4. **Given** le mode `lump_sum` (date `D`, solde `B`),
    **When** projeté,
-   **Then** le mois correspondant à `YYYY-MM(D)` sort `B` s'il tombe dans `[startMonth, startMonth+horizon)`, sinon toutes les entrées sont à `0` (échéance hors horizon).
+   **Then** le mois correspondant à `YYYY-MM(D)` sort `B` s'il tombe dans `[startMonth, startMonth+horizon)`.
+   Sinon, deux cas **distincts** :
+   - échéance **future** hors horizon → toutes les entrées à `0` (la dépense sortira après la fenêtre) ;
+   - échéance **passée** et solde encore dû → imputée au **mois 0**, car la dépense reste à payer et
+     la faire disparaître du forecast la sous-estimerait.
+
+   *Amendé le 2026-09-04 (story 6.8).* La rédaction initiale disait « sinon toutes les entrées sont à 0 »
+   sans distinguer les deux cas, alors que `debt-projection.ts:69-72` impute bien une échéance passée au
+   mois 0 depuis l'origine — le test entérinait ce comportement sans que la spec le décrive.
+
+   ⚠️ **Effet de bord signalé, non corrigé** : une `lump_sum` datée d'il y a trois ans et jamais soldée
+   fait sortir la totalité du solde sur le mois courant, ce qui gonfle brutalement le forecast du mois.
+   Le comportement est défendable (la dépense est bien due) mais son ancrage au mois courant est
+   discutable. **Décision produit à ouvrir** si ce cas se présente — pas corrigé ici, le modifier
+   changerait le forecast sans arbitrage.
 
 5. **Given** `GET /api/debts/[id]/impact`,
    **When** appelé,
@@ -61,6 +75,12 @@ moteur de forecast + `dividend-calculator` (**Epic 7**, non implémenté). Le de
 9. **Given** des tests unitaires de `debt-projection.ts` (NFR9),
    **When** exécutés,
    **Then** ils couvrent : nominal `monthly` (série + somme = solde) ; `monthly` avec `B < M` (1 mois partiel) ; `monthly` solde 0 ; `lump_sum` dans l'horizon ; `lump_sum` hors horizon (tout à 0) ; `free` (tout à 0) ; longueur = `horizonMonths` ; passage d'année (`startMonth` déc → janv). Plus un test de l'endpoint impact (totaux 6/12/24, 404 dette inconnue).
+
+   *Amendé le 2026-09-04 (story 6.8) — cas limites « mois 28/29/30/31 jours » RETIRÉS.* Ils étaient
+   annoncés comme attendus par le NFR18, mais ils sont **non applicables** : `projectDebt` raisonne
+   exclusivement en `YYYY-MM` via `nextMonths`, la longueur des mois lui est indifférente. Les
+   réclamer entretenait la fiction d'un trou de couverture inexistant ; les couvrir aurait ajouté des
+   tests qui ne peuvent pas échouer.
 
 10. **Given** les conventions CLAUDE.md,
     **When** review,

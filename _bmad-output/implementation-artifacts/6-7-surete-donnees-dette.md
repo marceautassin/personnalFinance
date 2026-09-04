@@ -1,6 +1,6 @@
 # Story 6.7: Sûreté des données de dette
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -80,18 +80,18 @@ fragile dès que l'epic 10 ajoutera un second chemin d'écriture.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Contrainte et FK** (AC: #1, #2)
-  - [ ] Back-fill des lignes incohérentes, puis `CHECK` + FK `ON DELETE SET NULL`
+- [x] **Task 1 — Contrainte et FK** (AC: #1, #2)
+  - [x] Back-fill des lignes incohérentes, puis `CHECK` + FK `ON DELETE SET NULL`
 
-- [ ] **Task 2 — Suppression sûre** (AC: #3, #4)
-  - [ ] Comptage exposé avant suppression, message FR chiffré dans `dettes.vue`
-  - [ ] Déliage + suppression dans une même transaction SQL
+- [x] **Task 2 — Suppression sûre** (AC: #3, #4)
+  - [x] Comptage exposé avant suppression, message FR chiffré dans `dettes.vue`
+  - [x] Déliage + suppression dans une même transaction SQL
 
-- [ ] **Task 3 — Invalidation** (AC: #5)
-  - [ ] `useDebts.deleteDebt` invalide `transactions-<mois>`
+- [x] **Task 3 — Invalidation** (AC: #5)
+  - [x] `useDebts.deleteDebt` invalide `transactions-<mois>`
 
-- [ ] **Task 4 — Tests + sanity** (AC: #6, #7)
-  - [ ] Cas listés en AC#7 ; `typecheck`, `lint`, `test:run`, `test:e2e` verts
+- [x] **Task 4 — Tests + sanity** (AC: #6, #7)
+  - [x] Cas listés en AC#7 ; `typecheck`, `lint`, `test:run`, `test:e2e` verts
 
 ## Dev Notes
 
@@ -112,3 +112,123 @@ pas sur le signe du montant.
 - [Revue epic 6 du 2026-09-04 — MAJEUR suppression destructive, MAJEUR couplage des colonnes, 3 MINEURS]
 - [Story 6.1 AC#8 — arbitrage resté ouvert, tranché le 2026-09-04 : SET NULL avec avertissement]
 - [Story 6.3 — origine des lignes `debt_id` sans flag]
+
+## Dev Agent Record
+
+### Agent Model Used
+claude-opus-5[1m] (exécution autonome, 2026-09-04)
+
+### Migration appliquée à la base de dev
+
+Ajouter un `CHECK` et une FK à une table SQLite existante impose le rebuild en 12 étapes.
+Exécuté sur la base réelle (207 transactions), avec back-fill défensif préalable :
+
+```
+back-fill:      0 + 0 lignes          (aucune incohérence présente — vérifié avant)
+transactions:   207 -> 207            (aucune perte)
+integrity_check: ok  | foreign_key_check: []
+CHECK active:   « CHECK constraint failed: transactions_debt_coherence_check »
+```
+
+La dernière ligne vient d'un `INSERT` volontairement incohérent (`debt_id` sans flag) :
+la contrainte est **prouvée active**, pas seulement déclarée.
+
+### Notes
+
+- Le déliage explicite est **conservé** malgré la FK `ON DELETE SET NULL` : la FK remet
+  `debt_id` à NULL mais ne touche pas `is_debt_repayment`, ce que la nouvelle contrainte
+  refuserait. Les deux colonnes doivent bouger ensemble.
+- `linkedTransactionCount` est exposé par `GET /api/debts` (et par POST/PUT pour la cohérence
+  du contrat) plutôt que par un endpoint dédié : l'UI a déjà la liste au moment d'ouvrir la
+  confirmation, aucune requête supplémentaire.
+- `deleteDebt` invalide via `refreshNuxtData()` sans clé : les clés `transactions-<mois>` sont
+  dynamiques et non énumérables depuis le composable.
+- Premier jet du message FR **faux** au pluriel (« 18 transactions perdraient son marquage ») —
+  corrigé en deux formes explicites plutôt qu'une concaténation conditionnelle.
+
+### Écart assumé, écrit dans le code
+
+`is_debt_repayment` reste un **état dérivé** de `debt_id IS NOT NULL`, ce que le CLAUDE.md
+interdit. Le motif et son chiffrage (28 fichiers contre 1 contrainte) sont consignés **dans
+`server/db/schema.ts`**, à côté de la contrainte — pas seulement ici — pour que personne ne le
+« nettoie » sans repayer le coût.
+
+### Validation
+`test:run` → 452 passed / 39 fichiers · `lint` OK · `typecheck` OK
+
+4 cas ajoutés : `linkedTransactionCount` à 2 et à 0, rejet par la base d'un `debt_id` sans flag,
+rejet d'un flag sans `debt_id`.
+
+⚠️ **Validation visuelle NON FAITE** — le message de confirmation chiffré n'a pas été vu à
+l'écran. À couvrir en recette visuelle.
+
+---
+
+## Revue `pr-reviewer` du 2026-09-04 (contexte neuf) — verdict initial BLOQUER
+
+### 🔴 BLOQUANT — corrigé
+
+**Le solde comptait une transaction ENTRANTE rattachée comme une sortie.** La story 6.5 avait
+levé la garde `amountCents >= 0` à l'**écriture** sans corriger l'**arithmétique** :
+`debt-balance.ts` sommait toujours `abs(amount)` et le soustrayait.
+
+```
+créance -50 000, encaissement +20 000 rattaché  →  -70 000   (attendu -30 000)
+```
+
+C'est le cas d'usage même que D16 déclare débloquer : FR66-FR68 restaient faux, en silence, et
+le résultat remontait au forecast puis au dividende via `currentDebtBalance`.
+
+**Pourquoi aucun test ne l'a vu** : le test réécrit en 6.5 n'assertait que les deux booléens
+écrits, et aucun cas ne seedait de transaction rattachée à montant positif. 468 tests au vert
+sur un solde faux.
+
+Correction : somme **signée** (`initial + Σevents + Σ montants rattachés`). Le comportement
+pour les sorties est strictement identique — aucune régression sur l'existant. Idem dans
+`repaidInMonthCents`, qui filtre désormais `amount_cents < 0` : un encaissement n'est pas un
+remboursement et ne doit pas neutraliser la mensualité projetée.
+
+Vérifié en HTTP réel après correction : `currentBalanceCents = -30000`. Et couvert par 4 cas
+nouveaux (unitaire + endpoint), dont celui reproduisant les chiffres exacts du reviewer.
+
+### 🟠 MAJEURS — corrigés
+
+- **Aucun artefact de migration dans le dépôt.** `server/db/migrations/` n'existait pas : le
+  rebuild SQLite fait à la main n'était reproductible nulle part, et une base antérieure
+  tournait sans `debt_events` ni contrainte, sans aucun signal. → `yarn db:generate` exécuté et
+  la baseline `0000_charming_starbolt.sql` est commitée, **et** le bootstrap porte désormais
+  `assertSchemaUpToDate()` qui refuse de démarrer sur un schéma périmé. Sonde vérifiée sur une
+  copie de base réelle amputée de `debt_events`, puis couverte par 2 tests.
+- **La nouvelle capacité financière de 6.5 n'avait aucun cas nominal** (NFR18). → couverte, cf.
+  bloquant.
+- **Glissement sémantique de `is_debt_repayment`** : depuis 6.5 le flag ne signifie plus
+  « remboursement » mais « rattachée à une dette », entrées comprises — la `CHECK` l'y oblige.
+  C'est la racine du bloquant. Documenté dans `debt-balance.ts` avec un ⚠️ explicite contre un
+  retour à `abs()`.
+
+### 🟡 MINEURS — corrigés
+
+- `adjustment` figé à la baisse dans `DebtEventForm` → les deux sens sont proposés.
+- `currentMonth()` dupliqué dans `forecast.get.ts` alors que `debt-anchor.ts` prétendait être la
+  source unique → dédupliqué.
+- `[id].put.ts` faisait un `GROUP BY` sur toute la table pour un compteur → requête ciblée.
+- Libellé UI périmé dans `DebtProjectedExpense` (« arrive avec le forecast (à venir) », or
+  l'epic 7 est livré) → corrigé.
+
+### Reste ouvert, assumé
+
+- `useDebts.deleteDebt` utilise `refreshNuxtData()` sans clé. Le reviewer le juge « un marteau » :
+  c'est exact, mais les clés `transactions-<mois>` sont dynamiques et non énumérables depuis le
+  composable. Conservé, motif documenté dans le code.
+- DDL des tests réécrite à la main, divergente du schéma réel — **dette pré-existante** du dépôt,
+  consignée depuis la story 2.10. C'est elle qui rend les tests aveugles aux contraintes.
+
+### ⚠️ Validation visuelle : NON FAITE
+
+Troisième occurrence consécutive — MCP Playwright indisponible dans le contexte du reviewer.
+`/dettes` (carte Créance/Dette, formulaire de mouvement signé, message de suppression chiffré)
+et `/transactions/[period]` n'ont été regardés par personne. **Recette visuelle à faire avec
+Marceau avant clôture.**
+
+### Validation finale
+`test:run` → **476 passed / 40 fichiers** · `lint` OK · `typecheck` OK · `test:e2e` → 9 passed, 0 failed

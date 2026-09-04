@@ -1,6 +1,6 @@
 # Story 6.5: Ledger d'événements signés (D16) — prérequis de l'epic 10
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -92,24 +92,24 @@ Rayon de souffle mesuré : `debt_advances` n'est consommée que par **7 fichiers
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schéma** (AC: #1, #2)
-  - [ ] `debt_events` dans `server/db/schema.ts`, suppression de `debt_advances`
-  - [ ] `shared/schemas/debt-event.schema.ts` remplace `debt-advance.schema.ts`
-  - [ ] `debt.schema.ts` : `initialBalanceCents` signé
+- [x] **Task 1 — Schéma** (AC: #1, #2)
+  - [x] `debt_events` dans `server/db/schema.ts`, suppression de `debt_advances`
+  - [x] `shared/schemas/debt-event.schema.ts` remplace `debt-advance.schema.ts`
+  - [x] `debt.schema.ts` : `initialBalanceCents` signé
 
-- [ ] **Task 2 — Calcul de solde** (AC: #3)
-  - [ ] Réécriture de `server/utils/debt-balance.ts` (`toCurrentBalance`, `currentBalanceForDebt`, `balanceSumsByDebt`) avec typage `Cents`
+- [x] **Task 2 — Calcul de solde** (AC: #3)
+  - [x] Réécriture de `server/utils/debt-balance.ts` (`toCurrentBalance`, `currentBalanceForDebt`, `balanceSumsByDebt`) avec typage `Cents`
 
-- [ ] **Task 3 — Endpoints** (AC: #4, #5)
-  - [ ] `events.post.ts` (remplace `advances.post.ts`), `events.get.ts`, `events/[eventId].delete.ts`
-  - [ ] `transactions/[id].patch.ts` : levée de la garde `amountCents >= 0`
+- [x] **Task 3 — Endpoints** (AC: #4, #5)
+  - [x] `events.post.ts` (remplace `advances.post.ts`), `events.get.ts`, `events/[eventId].delete.ts`
+  - [x] `transactions/[id].patch.ts` : levée de la garde `amountCents >= 0`
 
-- [ ] **Task 4 — UI** (AC: #6, #7)
-  - [ ] `DebtCard.vue` : solde signé, libellé Créance/Dette
-  - [ ] `DebtAdvanceForm.vue` → formulaire d'événement signé
+- [x] **Task 4 — UI** (AC: #6, #7)
+  - [x] `DebtCard.vue` : solde signé, libellé Créance/Dette
+  - [x] `DebtAdvanceForm.vue` → formulaire d'événement signé
 
-- [ ] **Task 5 — Tests + sanity** (AC: #8, #9)
-  - [ ] Cas listés en AC#9 ; `typecheck`, `lint`, `test:run`, `test:e2e` verts
+- [x] **Task 5 — Tests + sanity** (AC: #8, #9)
+  - [x] Cas listés en AC#9 ; `typecheck`, `lint`, `test:run`, `test:e2e` verts
 
 ## Dev Notes
 
@@ -136,3 +136,112 @@ exprimables avec une seule table et un seul calcul.
 - [Source: `CLAUDE.md`#Cents partout, #Invariants critiques]
 - [Revue epic 6 du 2026-09-04 — MAJEUR modélisation, MAJEUR avances non listables, MINEUR typage `number` nu, MINEUR solde négatif non distingué]
 - [Story aval : epic 10 (`shared-expense`, FR65-FR68) — consomme ce ledger]
+
+## Dev Agent Record
+
+### Agent Model Used
+claude-opus-5[1m] (exécution autonome, 2026-09-04)
+
+### Completion Notes
+
+- `debt_advances` → `debt_events` (signé, `kind`, `source_transaction_id`). Migration appliquée
+  à la base de dev à la main : `yarn db:push` est interactif sur ce projet (drift connu) et
+  `debt_advances` contenait **0 ligne** — vérifié avant le `DROP`, avec abandon si non vide.
+- `debt-balance.ts` réécrit et **typé `Cents`**. Le typage a immédiatement révélé 4 sites
+  d'appel qui passaient des `number` nus (`index.get`, `[id].put`, `impact.get`,
+  `forecast-engine`) — ils sont désormais explicites.
+- Garde `amountCents >= 0` remplacée par un refus du **montant nul** seulement. Le test qui
+  asseyait l'ancien contrat (`rejects marking an incoming (positive) transaction`) a été
+  réécrit : il encodait le comportement que l'AC#5 supprime.
+- Le nom de fichier `[eventId].delete.ts` violait `unicorn/filename-case` → route
+  `[event-id].delete.ts`, paramètre `event-id`.
+
+### Vérification hors tests unitaires
+
+Les tests unitaires injectent les params de route directement et ne prouvent **rien** sur le
+routage. Parcours HTTP réel exécuté contre le serveur de dev :
+
+```
+POST /api/debts                    → 50 000 (dette)
+POST /api/debts/10/events {-80000} → kind déduit "settlement"
+GET  /api/debts                    → currentBalanceCents = -30000   ← créance, cœur de D16
+DELETE /api/debts/10/events/1      → 204
+GET  /api/debts                    → currentBalanceCents = 50000    ← solde restauré
+```
+
+### Validation
+`test:run` → 433 passed / 38 fichiers · `lint` OK · `typecheck` OK
+
+⚠️ **Validation visuelle NON FAITE** — `DebtCard` (Créance/Dette) et `DebtEventForm` (sélecteur
+de sens) n'ont pas été regardés. À couvrir en recette visuelle.
+
+---
+
+## Revue `pr-reviewer` du 2026-09-04 (contexte neuf) — verdict initial BLOQUER
+
+### 🔴 BLOQUANT — corrigé
+
+**Le solde comptait une transaction ENTRANTE rattachée comme une sortie.** La story 6.5 avait
+levé la garde `amountCents >= 0` à l'**écriture** sans corriger l'**arithmétique** :
+`debt-balance.ts` sommait toujours `abs(amount)` et le soustrayait.
+
+```
+créance -50 000, encaissement +20 000 rattaché  →  -70 000   (attendu -30 000)
+```
+
+C'est le cas d'usage même que D16 déclare débloquer : FR66-FR68 restaient faux, en silence, et
+le résultat remontait au forecast puis au dividende via `currentDebtBalance`.
+
+**Pourquoi aucun test ne l'a vu** : le test réécrit en 6.5 n'assertait que les deux booléens
+écrits, et aucun cas ne seedait de transaction rattachée à montant positif. 468 tests au vert
+sur un solde faux.
+
+Correction : somme **signée** (`initial + Σevents + Σ montants rattachés`). Le comportement
+pour les sorties est strictement identique — aucune régression sur l'existant. Idem dans
+`repaidInMonthCents`, qui filtre désormais `amount_cents < 0` : un encaissement n'est pas un
+remboursement et ne doit pas neutraliser la mensualité projetée.
+
+Vérifié en HTTP réel après correction : `currentBalanceCents = -30000`. Et couvert par 4 cas
+nouveaux (unitaire + endpoint), dont celui reproduisant les chiffres exacts du reviewer.
+
+### 🟠 MAJEURS — corrigés
+
+- **Aucun artefact de migration dans le dépôt.** `server/db/migrations/` n'existait pas : le
+  rebuild SQLite fait à la main n'était reproductible nulle part, et une base antérieure
+  tournait sans `debt_events` ni contrainte, sans aucun signal. → `yarn db:generate` exécuté et
+  la baseline `0000_charming_starbolt.sql` est commitée, **et** le bootstrap porte désormais
+  `assertSchemaUpToDate()` qui refuse de démarrer sur un schéma périmé. Sonde vérifiée sur une
+  copie de base réelle amputée de `debt_events`, puis couverte par 2 tests.
+- **La nouvelle capacité financière de 6.5 n'avait aucun cas nominal** (NFR18). → couverte, cf.
+  bloquant.
+- **Glissement sémantique de `is_debt_repayment`** : depuis 6.5 le flag ne signifie plus
+  « remboursement » mais « rattachée à une dette », entrées comprises — la `CHECK` l'y oblige.
+  C'est la racine du bloquant. Documenté dans `debt-balance.ts` avec un ⚠️ explicite contre un
+  retour à `abs()`.
+
+### 🟡 MINEURS — corrigés
+
+- `adjustment` figé à la baisse dans `DebtEventForm` → les deux sens sont proposés.
+- `currentMonth()` dupliqué dans `forecast.get.ts` alors que `debt-anchor.ts` prétendait être la
+  source unique → dédupliqué.
+- `[id].put.ts` faisait un `GROUP BY` sur toute la table pour un compteur → requête ciblée.
+- Libellé UI périmé dans `DebtProjectedExpense` (« arrive avec le forecast (à venir) », or
+  l'epic 7 est livré) → corrigé.
+
+### Reste ouvert, assumé
+
+- `useDebts.deleteDebt` utilise `refreshNuxtData()` sans clé. Le reviewer le juge « un marteau » :
+  c'est exact, mais les clés `transactions-<mois>` sont dynamiques et non énumérables depuis le
+  composable. Conservé, motif documenté dans le code.
+- DDL des tests réécrite à la main, divergente du schéma réel — **dette pré-existante** du dépôt,
+  consignée depuis la story 2.10. C'est elle qui rend les tests aveugles aux contraintes.
+
+### ⚠️ Validation visuelle : NON FAITE
+
+Troisième occurrence consécutive — MCP Playwright indisponible dans le contexte du reviewer.
+`/dettes` (carte Créance/Dette, formulaire de mouvement signé, message de suppression chiffré)
+et `/transactions/[period]` n'ont été regardés par personne. **Recette visuelle à faire avec
+Marceau avant clôture.**
+
+### Validation finale
+`test:run` → **476 passed / 40 fichiers** · `lint` OK · `typecheck` OK · `test:e2e` → 9 passed, 0 failed

@@ -38,6 +38,8 @@
 generated: 2026-04-30
 last_updated: 2026-09-04
 # (2026-09-04 : revue epic-6 → CHANGEMENTS REQUIS ; ajout stories 6-5..6-8 de remédiation)
+# (2026-09-04 : dev autonome 6-5..6-8 + revue → BLOQUER puis corrigé ; 476 tests, E2E 9/9.
+#  Clôture de l'epic 6 conditionnée à la RECETTE VISUELLE, non faite — 3e échec MCP Playwright.)
 # (2026-09-04 : archi D11-D16 actées — D12 amendée (scoping par profil), D15 wipe, D16 ledger signé)
 # (2026-09-04 : revue lot 2 epic-5 → 5-5, 5-6 patchées ; validation visuelle restant à faire)
 # (2026-08-04 : code review lot 1 epic-5 → 5-3, 5-4 done (26 patchs, 3 décisions, 5 defer))
@@ -115,10 +117,10 @@ development_status:
   6-4-debt-projection-et-impact-ui: review
   # Revue du 2026-09-04 (première revue de l'epic) → CHANGEMENTS REQUIS.
   # 6-1..6-4 restent en review : leur clôture est conditionnée à 6-5..6-8 ci-dessous.
-  6-5-ledger-evenements-signes: ready-for-dev
-  6-6-corriger-biais-dividende: ready-for-dev
-  6-7-surete-donnees-dette: ready-for-dev
-  6-8-couverture-nfr18-et-specs: ready-for-dev
+  6-5-ledger-evenements-signes: review
+  6-6-corriger-biais-dividende: review
+  6-7-surete-donnees-dette: review
+  6-8-couverture-nfr18-et-specs: review
   epic-6-retrospective: optional
 
   # Epic 7 — Forecast inverse
