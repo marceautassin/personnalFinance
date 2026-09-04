@@ -51,18 +51,6 @@ beforeAll(async () => {
       amount_cents INTEGER NOT NULL,
       category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
       is_manual INTEGER NOT NULL DEFAULT 0,
-      is_debt_repayment INTEGER NOT NULL DEFAULT 0,
-      debt_id INTEGER,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE fixed_charges (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      frequency TEXT NOT NULL,
-      start_date TEXT NOT NULL,
-      end_date TEXT,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
     CREATE TABLE dismissed_suggestions (
@@ -95,7 +83,6 @@ afterAll(() => {
 
 beforeEach(() => {
   dbMod.db.delete(schema.transactions).run()
-  dbMod.db.delete(schema.fixedCharges).run()
   dbMod.db.delete(schema.dismissedSuggestions).run()
 })
 
@@ -142,21 +129,6 @@ describe('charge-suggester', () => {
     const suggestions = await service.suggestRecurringCharges(dbMod.db)
     expect(suggestions).toHaveLength(1)
     expect(suggestions[0]!.averageAmountCents).toBe(-1732) // round(-5197/3)
-  })
-
-  it('excludes a label already declared in fixed_charges (AC#5)', async () => {
-    tx('2026-01-15', 'NETFLIX 12.99', -1299)
-    tx('2026-02-15', 'NETFLIX 12.99', -1299)
-    tx('2026-03-15', 'NETFLIX 12.99', -1299)
-    dbMod.db.insert(schema.fixedCharges).values({
-      label: 'Netflix abo 12,99',
-      amountCents: -1299,
-      categoryCode: 'abonnements',
-      frequency: 'monthly',
-      startDate: '2026-01-01',
-    }).run()
-
-    expect(await service.suggestRecurringCharges(dbMod.db)).toHaveLength(0)
   })
 
   it('excludes a dismissed label (AC#4)', async () => {

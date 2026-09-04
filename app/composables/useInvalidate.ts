@@ -1,26 +1,21 @@
 /**
- * useInvalidate — invalidation transversale du cache `useFetch` (FR53, story 7.8).
+ * useInvalidate — invalidation transversale du cache `useFetch`.
  *
- * Le forecast et le dashboard sont des fonctions pures des modèles persistés (D9) : toute
- * mutation de modèle (charges, revenus, SAS, fiscalité, dettes, catégories, overrides,
- * transactions) ou ingestion invalide leurs `useFetch` → refetch, pas de cache dérivé.
+ * Les vues d'analyse sont des fonctions pures des transactions persistées (D19) : toute
+ * mutation — ingestion, reclassement, correction du référentiel — invalide leurs `useFetch`
+ * pour déclencher un refetch, plutôt que d'entretenir un cache dérivé.
+ *
+ * ⚠️ `refreshNuxtData` perd le contexte Nuxt lorsqu'il est appelé après un `await` depuis un
+ * gestionnaire d'événement : le refetch ne part alors jamais, silencieusement. Pour rafraîchir
+ * une ressource précise depuis un composable de mutation, préférer la méthode `refresh()` de
+ * l'instance `useFetch` capturée (D8, amendée le 2026-09-04).
  */
-
-/** Clés forecast : ensemble borné {6, 12, 24} (cf. `useForecast`). */
-const FORECAST_KEYS = ['forecast-6', 'forecast-12', 'forecast-24']
-
 export function useInvalidate() {
-  /** Refetch les projections forecast (recalcul réactif, FR53). */
-  async function invalidateForecast() {
-    await refreshNuxtData(FORECAST_KEYS)
-  }
-
   /**
-   * Refetch le dashboard. Ses clés sont dynamiques (`dashboard-${month}`) : on rafraîchit
-   * l'ensemble des données actives (borné à ce qui est monté). Le dashboard étant read-only,
-   * ce refresh ne concerne en pratique que la vue courante après une mutation ailleurs.
+   * Refetch les vues d'analyse. Leurs clés sont dynamiques (bornes de période et granularité) :
+   * on rafraîchit l'ensemble des données actives, borné à ce qui est monté.
    */
-  async function invalidateDashboard() {
+  async function invalidateAnalysis() {
     await refreshNuxtData()
   }
 
@@ -28,5 +23,5 @@ export function useInvalidate() {
     await refreshNuxtData('statements-list')
   }
 
-  return { invalidateForecast, invalidateDashboard, invalidateStatementsList }
+  return { invalidateAnalysis, invalidateStatementsList }
 }

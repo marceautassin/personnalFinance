@@ -28,12 +28,6 @@ test.describe('Réconciliation manuelle', () => {
     await page.goto('/import')
     await expect(page.getByRole('heading', { name: /Importer un relevé/i })).toBeVisible({ timeout: 10_000 })
 
-    const ack = page.getByRole('button', { name: /J'ai compris/i })
-    if (await ack.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await ack.click()
-      await expect(ack).toBeHidden()
-    }
-
     await page.locator('input[type=file]').setInputFiles(FIXTURE!)
     await expect(page.getByText(/Relevé ingéré/i)).toBeVisible({ timeout: 35_000 })
   }

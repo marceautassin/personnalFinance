@@ -25,44 +25,25 @@ export const LabelSchema = z.string().trim().min(1, 'Libellé requis').max(200, 
 /** Hash SHA-256 hex lowercase (canonique : `crypto.digest('hex')` produit du lowercase). */
 export const HashSha256Schema = z.string().regex(/^[a-f0-9]{64}$/, 'Hash SHA-256 attendu (lowercase hex)')
 
-/** Une transaction marquée `isDebtRepayment` doit référencer une dette (`debtId !== null`). */
-const debtRepaymentRefine = (
-  t: { isDebtRepayment: boolean, debtId: number | null },
-) => !t.isDebtRepayment || t.debtId !== null
+export const TransactionSchema = z.object({
+  id: z.number().int().positive(),
+  statementHash: HashSha256Schema,
+  transactionDate: DateIsoSchema,
+  label: LabelSchema,
+  amountCents: z.number().int(),
+  categoryCode: z.string().min(1),
+  isManual: z.boolean(),
+  createdAt: z.number().int(),
+})
 
-export const TransactionSchema = z
-  .object({
-    id: z.number().int().positive(),
-    statementHash: HashSha256Schema,
-    transactionDate: DateIsoSchema,
-    label: LabelSchema,
-    amountCents: z.number().int(),
-    categoryCode: z.string().min(1),
-    isManual: z.boolean(),
-    isDebtRepayment: z.boolean(),
-    debtId: z.number().int().positive().nullable(),
-    createdAt: z.number().int(),
-  })
-  .refine(debtRepaymentRefine, {
-    message: 'isDebtRepayment=true exige un debtId non-null',
-    path: ['debtId'],
-  })
-
-export const NewTransactionSchema = z
-  .object({
-    statementHash: HashSha256Schema,
-    transactionDate: DateIsoSchema,
-    label: LabelSchema,
-    amountCents: z.number().int(),
-    categoryCode: z.string().min(1),
-    isManual: z.boolean().default(false),
-    isDebtRepayment: z.boolean().default(false),
-    debtId: z.number().int().positive().nullable().default(null),
-  })
-  .refine(debtRepaymentRefine, {
-    message: 'isDebtRepayment=true exige un debtId non-null',
-    path: ['debtId'],
-  })
+export const NewTransactionSchema = z.object({
+  statementHash: HashSha256Schema,
+  transactionDate: DateIsoSchema,
+  label: LabelSchema,
+  amountCents: z.number().int(),
+  categoryCode: z.string().min(1),
+  isManual: z.boolean().default(false),
+})
 
 /**
  * Transaction en sortie de catégorisation LLM, avant association au statement (Story 2.6).
@@ -88,22 +69,10 @@ export const TransactionListQuerySchema = z.object({
 export const TransactionPatchSchema = z
   .object({
     categoryCode: z.string().trim().min(1).optional(),
-    isDebtRepayment: z.boolean().optional(),
-    debtId: z.number().int().positive().nullable().optional(),
   })
   .refine(
-    data =>
-      data.categoryCode !== undefined
-      || data.isDebtRepayment !== undefined
-      || data.debtId !== undefined,
+    data => data.categoryCode !== undefined,
     { message: 'Au moins un champ doit être fourni' },
-  )
-  // Un `debtId` ne peut être fourni que pour MARQUER (`isDebtRepayment: true`). Un `debtId`
-  // seul ou couplé à `isDebtRepayment: false` serait ambigu : le handler l'effacerait
-  // silencieusement (démarquage). On rejette à la frontière plutôt que d'ignorer l'intention.
-  .refine(
-    data => data.debtId == null || data.isDebtRepayment === true,
-    { message: 'Un debtId ne peut être fourni qu\'avec isDebtRepayment:true', path: ['debtId'] },
   )
 
 export type Transaction = z.infer<typeof TransactionSchema>

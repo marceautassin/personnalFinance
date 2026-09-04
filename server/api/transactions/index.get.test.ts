@@ -52,8 +52,6 @@ beforeAll(async () => {
       amount_cents INTEGER NOT NULL,
       category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
       is_manual INTEGER NOT NULL DEFAULT 0,
-      is_debt_repayment INTEGER NOT NULL DEFAULT 0,
-      debt_id INTEGER,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
     CREATE INDEX transactions_period_idx ON transactions(transaction_date);
@@ -128,8 +126,6 @@ describe('GET /api/transactions', () => {
       amountCents: -1000,
       categoryCode: 'courses',
       isManual: false,
-      isDebtRepayment: false,
-      debtId: null,
       statementHash: HASH_A,
     })
     expect(typeof result.transactions[0]!.id).toBe('number')

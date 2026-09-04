@@ -12,13 +12,7 @@ const items: NavItem[] = [
   { label: 'Dashboard', href: '/' },
   { label: 'Import', href: '/import' },
   { label: 'Transactions', href: `/transactions/${currentPeriod}` },
-  { label: 'Charges', href: '/charges' },
   { label: 'Catégories', href: '/categories' },
-  { label: 'Revenus', href: '/revenus' },
-  { label: 'SAS', href: '/sas' },
-  { label: 'Dettes', href: '/dettes' },
-  { label: 'Forecast', href: '/forecast' },
-  { label: 'Paramètres', href: '/parametres' },
 ]
 </script>
 

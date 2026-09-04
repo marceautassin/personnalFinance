@@ -20,7 +20,7 @@ export function useCategoryAdmin() {
   })
 
   const { mapMutationError } = useApiError()
-  const { invalidateForecast, invalidateDashboard } = useInvalidate()
+  const { invalidateAnalysis } = useInvalidate()
 
   /**
    * Refetch la liste, puis les vues qui affichent des libellés de catégorie.
@@ -32,13 +32,10 @@ export function useCategoryAdmin() {
    * et l'écran continuait d'afficher l'ancien libellé pendant que la base portait le nouveau.
    * Divergence silencieuse : l'utilisateur croyait son renommage abandonné alors qu'il était
    * enregistré. `fetchState.refresh()` s'appuie sur l'instance capturée et ne peut pas rater.
-   *
-   * `useTaxSettings` (story 5.5) utilisait déjà `fetchState.refresh()` — c'est ce composable-ci
-   * qui divergeait du pattern.
    */
   async function refreshList() {
     await fetchState.refresh()
-    await Promise.all([invalidateForecast(), invalidateDashboard()])
+    await invalidateAnalysis()
   }
 
   async function addCategory(input: NewCategoryInput): Promise<MutationOutcome> {

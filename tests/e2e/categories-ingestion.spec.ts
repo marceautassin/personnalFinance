@@ -34,8 +34,6 @@ test.describe('Catégorie utilisateur → taxonomie LLM DB-driven', () => {
     // Ingérer un relevé.
     await page.goto('/import')
     await expect(page.getByRole('heading', { name: /Importer un relevé/i })).toBeVisible({ timeout: 10_000 })
-    const ack = page.getByRole('button', { name: /J'ai compris/i })
-    if (await ack.isVisible({ timeout: 5_000 }).catch(() => false)) await ack.click()
     await page.locator('input[type=file]').setInputFiles(FIXTURE!)
     await expect(page.getByText(/Relevé ingéré/i)).toBeVisible({ timeout: 35_000 })
     await page.getByRole('link', { name: /Voir les transactions/i }).click()

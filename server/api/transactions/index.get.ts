@@ -18,8 +18,6 @@ export default defineEventHandler(async (event) => {
       amountCents: transactions.amountCents,
       categoryCode: transactions.categoryCode,
       isManual: transactions.isManual,
-      isDebtRepayment: transactions.isDebtRepayment,
-      debtId: transactions.debtId,
     })
     .from(transactions)
     .where(sql`${transactions.transactionDate} LIKE ${`${month}-%`}`)

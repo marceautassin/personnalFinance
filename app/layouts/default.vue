@@ -5,9 +5,6 @@
     <main class="layout__main">
       <slot />
     </main>
-    <footer class="layout__footer">
-      <AppDisclaimer />
-    </footer>
   </div>
 </template>
 
@@ -24,9 +21,4 @@
 }
 
 .layout__main { flex: 1; }
-.layout__footer {
-  margin-top: var(--space-12);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border);
-}
 </style>

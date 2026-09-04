@@ -22,14 +22,6 @@ test.describe('Ingestion d\'un relevé PDF', () => {
     // Attendre que la page soit interactive (h2 visible) avant de chercher le disclaimer.
     await expect(page.getByRole('heading', { name: /Importer un relevé/i })).toBeVisible({ timeout: 10_000 })
 
-    // Acquitter le disclaimer modal s'il s'affiche (première visite).
-    // Le disclaimer est rendu après hydratation ; on lui laisse 5s, sinon on suppose qu'il a déjà été acquitté.
-    const ack = page.getByRole('button', { name: /J'ai compris/i })
-    if (await ack.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await ack.click()
-      await expect(ack).toBeHidden()
-    }
-
     // Upload via input file (le drop natif est validé manuellement)
     await page.locator('input[type=file]').setInputFiles(FIXTURE!)
 

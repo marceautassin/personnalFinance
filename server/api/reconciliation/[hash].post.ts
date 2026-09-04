@@ -89,8 +89,6 @@ export default defineEventHandler(async (event) => {
         amountCents: tx.amountCents,
         categoryCode: tx.categoryCode,
         isManual: true,
-        isDebtRepayment: false,
-        debtId: null,
       }).run()
       return recomputeReconciliation(trx, statement.openingBalanceCents, statement.closingBalanceCents, hash)
     })
@@ -140,8 +138,6 @@ export default defineEventHandler(async (event) => {
       amountCents: current.gapCents,
       categoryCode: ACCEPT_GAP_CATEGORY,
       isManual: true,
-      isDebtRepayment: false,
-      debtId: null,
     }).run()
     trx.update(bankStatements)
       .set({ reliability: 'unreliable' })

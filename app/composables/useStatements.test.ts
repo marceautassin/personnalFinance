@@ -5,20 +5,18 @@ const mapErrorMock = vi.fn((err: unknown) => {
   const e = err as { statusMessage?: string, data?: { statusMessage?: string } }
   return `mapped:${e.data?.statusMessage ?? e.statusMessage ?? 'unknown'}`
 })
-const invalidateForecast = vi.fn()
-const invalidateDashboard = vi.fn()
+const invalidateAnalysis = vi.fn()
 
 vi.stubGlobal('$fetch', fetchMock)
 vi.stubGlobal('useApiError', () => ({ mapError: mapErrorMock }))
-vi.stubGlobal('useInvalidate', () => ({ invalidateForecast, invalidateDashboard }))
+vi.stubGlobal('useInvalidate', () => ({ invalidateAnalysis }))
 
 const { useStatements } = await import('./useStatements')
 
 beforeEach(() => {
   fetchMock.mockReset()
   mapErrorMock.mockClear()
-  invalidateForecast.mockClear()
-  invalidateDashboard.mockClear()
+  invalidateAnalysis.mockClear()
 })
 afterEach(() => vi.clearAllMocks())
 
@@ -41,8 +39,7 @@ describe('useStatements.uploadStatement', () => {
     expect(out.result).toEqual(result)
     expect(out.error).toBeUndefined()
     expect(out.overlap).toBeUndefined()
-    expect(invalidateForecast).toHaveBeenCalledTimes(1)
-    expect(invalidateDashboard).toHaveBeenCalledTimes(1)
+    expect(invalidateAnalysis).toHaveBeenCalledTimes(1)
 
     // POST multipart sans header Confirm-Replace par défaut
     const [url, opts] = fetchMock.mock.calls[0]!
@@ -85,7 +82,7 @@ describe('useStatements.uploadStatement', () => {
     expect(out.error).toBeUndefined()
     expect(out.result).toBeUndefined()
     expect(mapErrorMock).not.toHaveBeenCalled()
-    expect(invalidateForecast).not.toHaveBeenCalled()
+    expect(invalidateAnalysis).not.toHaveBeenCalled()
   })
 
   it('retombe sur error si 409 mais data est incomplète', async () => {
@@ -105,7 +102,7 @@ describe('useStatements.uploadStatement', () => {
     expect(out.error).toBe('mapped:pdf_already_ingested')
     expect(out.errorCode).toBe('pdf_already_ingested')
     expect(mapErrorMock).toHaveBeenCalledTimes(1)
-    expect(invalidateForecast).not.toHaveBeenCalled()
+    expect(invalidateAnalysis).not.toHaveBeenCalled()
   })
 
   it('retourne aborted=true quand le signal est avorté', async () => {

@@ -2,7 +2,7 @@ import { mkdirSync, existsSync } from 'node:fs'
 import { defineEventHandler } from 'h3'
 import { db } from '../db/client'
 import { sql } from 'drizzle-orm'
-import { categoryDefinitions, revenueModels, sasConfig, taxSettings } from '../db/schema'
+import { categoryDefinitions } from '../db/schema'
 import { DEFAULT_CATEGORIES } from '~~/shared/constants/default-categories'
 
 let isBootstrapped = false
@@ -10,6 +10,11 @@ let bootstrapError: Error | null = null
 
 /**
  * Repères de schéma vérifiés au démarrage, au-delà de la seule existence des tables.
+ *
+ * Mis à jour le 2026-09-04 : les repères portaient sur `debt_events` et la contrainte de
+ * cohérence des dettes, tous deux supprimés. Ils vérifient désormais l'INVERSE — qu'une base
+ * antérieure à la suppression, porteuse des tables du forecast, soit refusée au démarrage
+ * plutôt que de faire diverger le schéma déclaré et le schéma réel.
  *
  * Pourquoi (revue du 2026-09-04) : la sonde ne testait que `category_definitions`. Une base
  * antérieure au lot 6.5/6.7 passait donc le bootstrap sans bruit, puis échouait en 500
@@ -21,12 +26,12 @@ let bootstrapError: Error | null = null
  */
 const SCHEMA_MARKERS: { label: string, exists: () => boolean }[] = [
   {
-    label: 'table `debt_events` (story 6.5)',
-    exists: () => tableNames().includes('debt_events'),
+    label: 'table `transactions` sans colonnes de dette (suppression du 2026-09-04)',
+    exists: () => !tableSql('transactions').includes('debt_id'),
   },
   {
-    label: 'contrainte `transactions_debt_coherence_check` (story 6.7)',
-    exists: () => tableSql('transactions').includes('transactions_debt_coherence_check'),
+    label: 'tables du forecast retirées (`debts`, `fixed_charges`, `sas_config`)',
+    exists: () => !tableNames().some(n => ['debts', 'debt_events', 'fixed_charges', 'sas_config', 'tax_settings', 'revenue_models', 'monthly_overrides'].includes(n)),
   },
 ]
 
@@ -92,27 +97,6 @@ async function bootstrap(): Promise<void> {
       })),
     )
     .onConflictDoNothing({ target: categoryDefinitions.code })
-    .run()
-
-  // Singleton revenue_models (story 5.3) : seed idempotent de la ligne id=1 à zéro.
-  db
-    .insert(revenueModels)
-    .values({ id: 1 })
-    .onConflictDoNothing({ target: revenueModels.id })
-    .run()
-
-  // Singleton sas_config (story 5.4) : seed idempotent id=1 avec les défauts du schéma.
-  db
-    .insert(sasConfig)
-    .values({ id: 1 })
-    .onConflictDoNothing({ target: sasConfig.id })
-    .run()
-
-  // Singleton tax_settings (story 5.5) : seed idempotent id=1 (flat tax 30 % par défaut).
-  db
-    .insert(taxSettings)
-    .values({ id: 1 })
-    .onConflictDoNothing({ target: taxSettings.id })
     .run()
 
   console.warn(`[bootstrap] OK — base prête (${inserted.changes} catégorie(s) insérée(s))`)

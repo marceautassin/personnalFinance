@@ -6,15 +6,9 @@ vi.stubGlobal('refreshNuxtData', refreshMock)
 
 beforeEach(() => refreshMock.mockClear())
 
-describe('useInvalidate (FR53)', () => {
-  it('invalidateForecast rafraîchit les 3 clés forecast', async () => {
-    await useInvalidate().invalidateForecast()
-    expect(refreshMock).toHaveBeenCalledTimes(1)
-    expect(refreshMock).toHaveBeenCalledWith(['forecast-6', 'forecast-12', 'forecast-24'])
-  })
-
-  it('invalidateDashboard rafraîchit les données actives (sans clé — clés dashboard dynamiques)', async () => {
-    await useInvalidate().invalidateDashboard()
+describe('useInvalidate', () => {
+  it('invalidateAnalysis rafraîchit les données actives (clés d\'analyse dynamiques)', async () => {
+    await useInvalidate().invalidateAnalysis()
     expect(refreshMock).toHaveBeenCalledTimes(1)
     expect(refreshMock).toHaveBeenCalledWith()
   })

@@ -8,6 +8,13 @@
       "when": 1788477516967,
       "tag": "0000_charming_starbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788556844740,
+      "tag": "0001_smiling_bloodaxe",
+      "breakpoints": true
     }
   ]
 }

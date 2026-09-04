@@ -11,8 +11,6 @@ export interface TransactionListItem {
   amountCents: Cents
   categoryCode: string
   isManual: boolean
-  isDebtRepayment: boolean
-  debtId: number | null
 }
 
 export interface TransactionsResponse {
@@ -55,8 +53,7 @@ export function useTransactions(month: Ref<string>) {
     }
     await fetchState.refresh()
     if (afterRefresh) await afterRefresh()
-    invalidate.invalidateForecast()
-    invalidate.invalidateDashboard()
+    invalidate.invalidateAnalysis()
     return { ok: true }
   }
 
@@ -64,22 +61,8 @@ export function useTransactions(month: Ref<string>) {
     return patchTransaction(id, { categoryCode })
   }
 
-  /**
-   * Marque (`debtId` fourni) ou démarque (`isDebtRepayment: false`) une transaction comme
-   * remboursement de dette (Story 6.3, FR9/FR32). Le solde d'une dette dépend de ses
-   * remboursements : on invalide donc la liste `debts` et l'impact de la dette visée pour
-   * que les cartes/projections déjà en cache (page Dettes) reflètent le nouveau solde.
-   */
-  function mutateDebtRepayment(id: number, payload: { isDebtRepayment: boolean, debtId?: number | null }): Promise<MutationOutcome> {
-    return patchTransaction(id, payload, async () => {
-      await refreshNuxtData('debts')
-      if (payload.debtId != null) await refreshNuxtData(`debt-impact-${payload.debtId}`)
-    })
-  }
-
   return {
     ...fetchState,
     mutateCategory,
-    mutateDebtRepayment,
   }
 }

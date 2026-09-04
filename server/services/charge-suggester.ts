@@ -1,13 +1,13 @@
 /**
  * charge-suggester — détection HEURISTIQUE (zéro LLM, déterministe) de charges
- * récurrentes à partir de l'historique `transactions` (FR17-FR18, Story 5.2).
+ * récurrentes à partir de l'historique `transactions` (story 5.2, repositionné le 2026-09-04 — phase 2 du PRD réécrit).
  *
- * Boundaries (CLAUDE.md) : ce service LIT `transactions`, `fixed_charges`,
- * `dismissed_suggestions` via le `db` injecté et ne mute jamais. Aucun appel
+ * Boundaries (CLAUDE.md) : ce service LIT `transactions` et `dismissed_suggestions`
+ * via le `db` injecté et ne mute jamais. Aucun appel
  * `@anthropic-ai/sdk` (confiné à llm-categorizer.ts).
  */
 import { type Cents, cents } from '~~/shared/types/money'
-import { transactions, fixedCharges, dismissedSuggestions } from '~~/server/db/schema'
+import { transactions, dismissedSuggestions } from '~~/server/db/schema'
 import type { DB } from '~~/server/db/client'
 
 export interface Suggestion {
@@ -153,15 +153,15 @@ export async function suggestRecurringCharges(db: DB): Promise<Suggestion[]> {
 
   if (txns.length === 0) return []
 
-  // Exclusions : libellés déjà en fixed_charges (re-normalisés) + rejetés.
-  const existingCharges = await db.select({ label: fixedCharges.label }).from(fixedCharges)
+  // Exclusions : suggestions explicitement rejetées par l'utilisateur.
+  //
+  // L'exclusion par `fixed_charges` a disparu avec les charges déclaratives (2026-09-04) :
+  // il n'y a plus de charges saisies à la main dont il faudrait éviter le doublon. Le service
+  // devient une DÉTECTION de dépenses récurrentes, plus une aide à la saisie.
   const dismissed = await db
     .select({ normalizedLabel: dismissedSuggestions.normalizedLabel })
     .from(dismissedSuggestions)
-  const excluded = new Set<string>([
-    ...existingCharges.map(c => normalizeLabel(c.label)),
-    ...dismissed.map(d => d.normalizedLabel),
-  ])
+  const excluded = new Set<string>(dismissed.map(d => d.normalizedLabel))
 
   // Les 3 derniers mois ingérés (tous confondus) — heuristique "récurrence active".
   const allMonths = [...new Set(txns.map(t => monthKey(t.transactionDate)))].sort()

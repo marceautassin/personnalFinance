@@ -7,7 +7,6 @@ defineProps<{
 
 defineEmits<{
   categoryChange: [transactionId: number, code: string]
-  debtRepaymentChange: [transactionId: number, payload: { isDebtRepayment: boolean, debtId?: number | null }]
 }>()
 </script>
 
@@ -44,7 +43,6 @@ defineEmits<{
         :key="tx.id"
         :transaction="tx"
         @category-change="(id, code) => $emit('categoryChange', id, code)"
-        @debt-repayment-change="(id, payload) => $emit('debtRepaymentChange', id, payload)"
       />
     </tbody>
   </table>

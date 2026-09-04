@@ -48,27 +48,7 @@ beforeAll(async () => {
       amount_cents INTEGER NOT NULL,
       category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
       is_manual INTEGER NOT NULL DEFAULT 0,
-      is_debt_repayment INTEGER NOT NULL DEFAULT 0,
-      debt_id INTEGER,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE fixed_charges (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      frequency TEXT NOT NULL,
-      start_date TEXT NOT NULL,
-      end_date TEXT,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE monthly_overrides (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      month TEXT NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      amount_cents INTEGER NOT NULL,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-      UNIQUE(month, category_code)
     );
   `)
 
@@ -86,9 +66,7 @@ afterAll(() => {
 })
 
 beforeEach(() => {
-  dbMod.db.delete(schema.monthlyOverrides).run()
   dbMod.db.delete(schema.transactions).run()
-  dbMod.db.delete(schema.fixedCharges).run()
   dbMod.db.delete(schema.categoryDefinitions).run()
   dbMod.db.insert(schema.categoryDefinitions).values([
     { code: 'courses', label: 'Courses', isVariable: true },
@@ -116,16 +94,6 @@ function seedTransaction(code: string) {
   dbMod.db.insert(schema.transactions).values({
     statementHash: 'h', transactionDate: '2026-01-01', label: 'x', amountCents: -100, categoryCode: code,
   }).run()
-}
-
-function seedFixedCharge(code: string) {
-  dbMod.db.insert(schema.fixedCharges).values({
-    label: 'Abonnement', amountCents: -1000, categoryCode: code, frequency: 'monthly', startDate: '2026-01-01',
-  }).run()
-}
-
-function seedOverride(code: string, month = '2026-05') {
-  dbMod.db.insert(schema.monthlyOverrides).values({ month, categoryCode: code, amountCents: 30_000 }).run()
 }
 
 /** Statut HTTP posé par le handler via `setResponseStatus` (défaut 200 si non touché). */
@@ -194,31 +162,6 @@ describe('GET /api/categories', () => {
     const courses = list.find(c => c.code === 'courses')!
     expect(courses.referenceCount).toBe(2)
     expect(list.find(c => c.code === 'logement')!.referenceCount).toBe(0)
-  })
-
-  it('referenceCount includes monthly_overrides (Story 7.2)', async () => {
-    dbMod.db.insert(schema.monthlyOverrides).values({ month: '2026-05', categoryCode: 'courses', amountCents: 30_000 }).run()
-    const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
-    expect(list.find(c => c.code === 'courses')!.referenceCount).toBe(1)
-  })
-
-  // La branche `fixedCharges` du comptage n'était jamais exercée non nulle : une erreur de
-  // table sur ce copier-coller de trois blocs identiques passait au vert (revue 2026-08-04).
-  it('referenceCount includes fixed_charges', async () => {
-    seedFixedCharge('logement')
-    const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
-    expect(list.find(c => c.code === 'logement')!.referenceCount).toBe(1)
-  })
-
-  // L'ADDITION des trois sources n'était vérifiée par aucun cas : chaque test n'en peuplait
-  // qu'une seule, donc un total qui écraserait au lieu de sommer restait invisible.
-  it('referenceCount sums the three referencing tables at once', async () => {
-    seedTransaction('courses')
-    seedTransaction('courses')
-    seedFixedCharge('courses')
-    seedOverride('courses')
-    const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
-    expect(list.find(c => c.code === 'courses')!.referenceCount).toBe(4)
   })
 
   it('orders variables first then fixed, alpha inside each group', async () => {
@@ -325,18 +268,7 @@ describe('DELETE /api/categories/[code]', () => {
     ).rejects.toMatchObject({
       statusCode: 409,
       statusMessage: ApiErrorCode.CategoryInUse,
-      data: { transactionCount: 1, fixedChargeCount: 0, monthlyOverrideCount: 0 },
-    })
-  })
-
-  it('rejects deletion when the only reference is a monthly_override → 409 (Story 7.2)', async () => {
-    dbMod.db.insert(schema.monthlyOverrides).values({ month: '2026-05', categoryCode: 'courses', amountCents: 30_000 }).run()
-    await expect(
-      deleteHandler(makeEvent({ method: 'DELETE', code: 'courses' })),
-    ).rejects.toMatchObject({
-      statusCode: 409,
-      statusMessage: ApiErrorCode.CategoryInUse,
-      data: { transactionCount: 0, fixedChargeCount: 0, monthlyOverrideCount: 1 },
+      data: { transactionCount: 1 },
     })
   })
 

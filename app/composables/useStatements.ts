@@ -70,8 +70,7 @@ export function useStatements() {
         headers: opts.confirmReplace ? { 'X-Confirm-Replace': 'true' } : undefined,
         signal: opts.signal,
       })
-      invalidate.invalidateForecast()
-      invalidate.invalidateDashboard()
+      invalidate.invalidateAnalysis()
       return { result }
     }
     catch (err) {

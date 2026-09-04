@@ -1,9 +1,13 @@
 import { eq, sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions, fixedCharges, monthlyOverrides } from '~~/server/db/schema'
+import { transactions } from '~~/server/db/schema'
 
 /**
  * Source de vérité UNIQUE des tables qui référencent `category_definitions.code`.
+ *
+ * Au 2026-09-04, une seule table référence les catégories : `fixed_charges` et
+ * `monthly_overrides` ont disparu avec le forecast. La liste reste néanmoins le point unique
+ * d'extension — le référentiel à deux niveaux (D17) en ajoutera d'autres.
  *
  * Pourquoi (revue 2026-08-04) : la règle était écrite deux fois — dans `categories/index.get.ts`
  * (compteur affiché, qui désactive le bouton Supprimer) et dans `categories/[code].delete.ts`
@@ -13,8 +17,6 @@ import { transactions, fixedCharges, monthlyOverrides } from '~~/server/db/schem
  */
 export const CATEGORY_REFERENCING_TABLES = [
   { key: 'transactionCount', table: transactions },
-  { key: 'fixedChargeCount', table: fixedCharges },
-  { key: 'monthlyOverrideCount', table: monthlyOverrides },
 ] as const
 
 export type CategoryReferenceCounts = Record<

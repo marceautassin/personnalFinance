@@ -15,12 +15,13 @@ function hasE2ESpecs(): boolean {
 }
 
 /**
- * Port du serveur de dev sous test. Configurable, parce que `3000` est un port très disputé :
- * quand un autre projet l'occupe, `reuseExistingServer` réutilise SILENCIEUSEMENT ce serveur
+ * Port du serveur de dev sous test. Volontairement HORS de `3000` : quand un autre projet
+ * occupe ce port très disputé, `reuseExistingServer` réutilise SILENCIEUSEMENT ce serveur
  * étranger et toutes les specs échouent en « element(s) not found », sans que rien n'indique
- * que l'app testée n'a jamais démarré (constaté le 2026-09-04, port pris par un autre projet).
+ * que l'app testée n'a jamais démarré (constaté deux fois le 2026-09-04, port pris par l'API
+ * d'un autre projet qui répondait `Cannot GET /categories`). Surchargeable via `E2E_PORT`.
  */
-const PORT = Number(process.env.E2E_PORT ?? 3000)
+const PORT = Number(process.env.E2E_PORT ?? 3178)
 const BASE_URL = `http://localhost:${PORT}`
 
 /**
@@ -48,30 +49,14 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     trace: 'on-first-retry',
-    /**
-     * Disclaimer (G1) déjà acquitté. Il est rendu en `<dialog>.showModal()` APRÈS hydratation :
-     * tant qu'il est ouvert, il intercepte tous les clics de la page. Le flag vit en
-     * `localStorage`, donc il réapparaissait dans chaque contexte Playwright neuf.
-     *
-     * Six specs ne l'acquittaient pas (`debts`, `fixed-charges`, `forecast`, `parametres`,
-     * `revenues`, `sas`) et ne passaient que par chance de timing ; les six échouaient au
-     * 2026-09-04. Les six autres le faisaient à la main, chacune sa copie. Le pré-remplir ici
-     * supprime la course pour toutes les specs, y compris celles à venir.
-     *
-     * Une spec qui voudrait tester le disclaimer lui-même doit remettre l'état à zéro avec
-     * `test.use({ storageState: { cookies: [], origins: [] } })`.
-     */
-    storageState: {
-      cookies: [],
-      origins: [
-        {
-          origin: BASE_URL,
-          localStorage: [{ name: 'pf_disclaimer_seen_v1', value: '1' }],
-        },
-      ],
-    },
   },
-  // Chromium seul : cf. PRD §Browser Matrix, amendée le 2026-09-04.
+  /**
+   * Chromium seul, alors que la PRD réécrite place **Chromium ET Firefox** au support V1.
+   * Playwright ne fournit pas de binaire Firefox pour `ubuntu26.04-x64` et celui présent sur
+   * le poste est corrompu : la couverture automatisée Firefox est impossible ici. Le support
+   * reste un engagement produit ; le mode de vérification est à trancher (contrôle manuel,
+   * conteneur, ou autre machine).
+   */
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
