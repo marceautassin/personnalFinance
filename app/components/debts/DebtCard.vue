@@ -156,7 +156,14 @@ function onEvent(payload: NewDebtEvent) {
   line-height: 1.6;
 }
 .debt-card__detail { color: var(--color-text-muted); font-size: var(--font-size-sm); }
-.debt-card__actions { display: flex; gap: var(--space-2); }
+/*
+ * `flex-wrap` obligatoire : les 4 boutons ne tiennent pas dans la largeur d'une carte de la
+ * grille (296px au format desktop). Sans lui, le dernier — « Supprimer » — débordait de ~79px
+ * SOUS la carte voisine, qui interceptait le clic en son centre : le bouton était visuellement
+ * de travers et partiellement inutilisable. Découvert à la recette visuelle du 2026-09-04 ;
+ * aucun test ne pouvait le voir, l'E2E ciblant les boutons par leur nom accessible.
+ */
+.debt-card__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .debt-card__btn {
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--color-border);
