@@ -39,66 +39,71 @@ _Ce document est construit collaborativement étape par étape. Les sections son
 
 ## Project Context Analysis
 
+> **Réécrite le 2026-09-04**, après la réécriture du PRD et l'exécution de la suppression du périmètre mort. La version d'avril 2026 décrivait le forecast inverse et le dividende SAS ; elle est remplacée, non amendée. L'historique reste dans git.
+
 ### Requirements Overview
 
-**Functional Requirements (54 FRs en 11 domaines de capability) :**
+**39 FRs en 7 domaines de capability** (contre 54 en 11 domaines dans le PRD v1) :
 
-| Domaine | FRs | Implications archi |
+| Domaine | FRs | Implications architecturales |
 |---|---|---|
-| Ingestion & dédup PDF | FR1-5 | Pipeline async d'ingestion, hash store, file storage local |
-| Catégorisation LLM | FR6-10 | Service LLM isolé, schéma de sortie strict, recalcul réactif |
-| Réconciliation numérique | FR11-15 | Couche de vérification post-ingestion, état "fiabilité mois" |
-| Modèles persistants (charges, revenus, SAS, dettes) | FR16-34 | 4 entités + relations, CRUD simple, intégration au moteur de forecast |
-| Paramètres fiscalité | FR35-36 | Configuration paramétrable (clé-valeur ou table dédiée) |
-| Dashboard narratif | FR37-40 | Aggregation + algorithme de "top écarts" + génération de phrases |
-| Projection variables | FR41-45 | Fonction d'extrapolation par catégorie, store des overrides mois×catégorie |
-| Forecast inverse | FR46-53 | Cœur du calcul : pipeline déterministe, recalcul réactif sur tout changement |
-| Disclaimer | FR54 | Layer UI, état "première utilisation" |
+| Ingestion des relevés | FR1-FR9 | Boucle client, un appel par fichier, serveur sans état (D22) · dédup par hash · échec isolé |
+| Fiabilité et réconciliation | FR10-FR14 | Vérification obligatoire post-extraction, état « non fiable » propagé au niveau période (D23) |
+| Référentiel de catégories | FR15-FR19 | Deux tables, nature portée par le poste (D17) · FK `RESTRICT` |
+| Catégorisation et correction | FR20-FR24 | Service LLM isolé (D20) · `is_manual` comme mesure du taux de correction |
+| Analyse — répartition | FR25-FR30 | Moteur pur, arbre nature → rubrique → poste (D19) · exclusion des mouvements internes |
+| Analyse — évolution et indicateurs | FR31-FR34 | Série par granularité · `previousTotalCents` calculé dans le moteur (D24) · type `Ratio` |
+| Traçabilité | FR35-FR36 | Deux endpoints, jamais de précalcul des lignes (D19) |
 
-**Non-Functional Requirements — drivers architecturaux principaux :**
+Trois FRs (FR37-FR39 — synthèse narrative, dépenses récurrentes, comparaison de deux périodes) sont en phase Croissance et n'appellent aucune décision au MVP.
 
-- **Reliability/Data Integrity (NFR8-11)** ⇒ représentation monétaire en `integer cents` à travers toute la pile (DB → API → UI), pipeline de réconciliation obligatoire, base reconstructible depuis PDFs sources.
-- **Performance (NFR1-3)** ⇒ ingestion < 30s pour un PDF (synchrone OK pour mono-user), recalcul forecast < 1s (in-process, fonctions pures).
-- **Security (NFR4-7)** ⇒ `.env` pour secrets, gitignore strict, payload LLM contraint à date/libellé/montant, pas d'auth V1.
-- **Maintainability (NFR15-18)** ⇒ parser PDF isolé via interface, taux fiscaux paramétrables, KISS/SOLID/DRY, tests sur calculs financiers à 100%.
-- **Integration (NFR12-14)** ⇒ une seule dépendance externe (Claude API), structured outputs avec validation, dégradation gracieuse si API down.
+**23 NFRs — les cinq drivers architecturaux réels :**
+
+- **Justesse financière (NFR1-NFR4)** ⇒ `Cents` entiers de la base à l'écran, type `Ratio` distinct pour les taux, traçabilité de tout montant jusqu'à ses lignes, séparation stricte du résultat (hors mouvements internes) et du solde bancaire (tout compris). C'est le driver dominant : ce produit additionne, mais l'utilisateur décide sur le résultat.
+- **Fiabilité des données (NFR10-NFR13)** ⇒ réconciliation non contournable, état « non fiable » propagé, base reconstructible depuis les PDF, échec d'un relevé sans effet sur les autres.
+- **Confidentialité (NFR5-NFR9)** ⇒ stockage exclusivement local, payload LLM borné à date/libellé/montant, inférence en Europe, clé en variable d'environnement, pas d'auth.
+- **Intégration LLM (NFR14-NFR17)** ⇒ boundary à un seul fichier, validation de conformité côté application avec relance bornée, le LLM ne calcule rien, mode dégradé qui laisse l'analyse consultable.
+- **Maintenabilité (NFR21-NFR22)** ⇒ extraction PDF confinée, aucune constante métier structurante dans une fonction de calcul.
+
+**NFR23 — aucune cible de performance en V1.** Un point de vigilance seulement : le temps d'agrégation de l'historique complet à chaque changement de période, à mesurer lors de la première ingestion réelle.
 
 ### Scale & Complexity
 
-- **Échelle** : 1 utilisateur, 1 banque, ~12 PDFs/an, ~50-200 transactions/PDF. Volume trivialement absorbable par SQLite local.
-- **Complexité fonctionnelle** : moyenne — richesse dans le modèle métier français (SAS/IS/PFU/ARE), pas dans le volume ni la concurrence.
-- **Complexité technique** : moyenne — richesse dans la rigueur numérique (integer cents, réconciliation, tests calculs).
-- **Domaine technique principal** : full-stack web — frontend Nuxt SPA + backend Nitro embarqué.
-- **Composants architecturaux estimés** : ~7-9 modules logiques (Ingestion Pipeline · LLM Service · Reconciliation · Domain Models · Categorization · Variable Projection · Forecast Engine · API Layer · UI).
+- **Échelle** : 1 utilisateur, 1 compte bancaire, ~24 relevés sur 2 ans, ~2 400 transactions au total. Volume trivialement absorbable par SQLite local. Le second compte (Crédit Mutuel) est en Vision, pas au MVP.
+- **Complexité fonctionnelle** : faible à moyenne. Elle a **baissé** avec le pivot — la richesse résidait dans le modèle fiscal français (SAS, IS, PFU, ARE, exercice fiscal), qui a entièrement disparu. Ce qui reste est une agrégation sur une hiérarchie à deux niveaux.
+- **Complexité technique** : moyenne, et concentrée en deux endroits. La **rigueur numérique** (centimes entiers, ratios indéfinis, réconciliation) et la **qualité de la catégorisation LLM**, qui est désormais le produit lui-même et non plus un intrant du forecast.
+- **Domaine technique** : full-stack web — SPA Nuxt 4 + backend Nitro intégré, un seul processus.
+- **Composants logiques** : 6 modules (Ingestion · Extraction PDF · Catégorisation LLM · Réconciliation · Analyse · Référentiel), contre 9 dans le cadrage d'avril.
 
 ### Technical Constraints & Dependencies
 
 **Verrouillé par le PRD :**
-- Stack : Nuxt 3 SPA (`ssr: false`) + Nitro + SQLite + Drizzle + `unpdf` + Claude API + CSS vanilla (SFC scoped) + Reka UI ou hand-rolled + Vitest + Playwright
-- Plateforme : Chrome / Firefox desktop ≥ 1280 px
-- Persistance : SQLite locale, pas de cloud V1
-- Une seule intégration externe : Claude API
-- Validation runtime payloads : Zod ou Valibot
 
-**Dépendances explicites :**
-- `@anthropic-ai/sdk` (LLM)
-- `unpdf` (extraction PDF)
-- `drizzle-orm` + `better-sqlite3` (DB)
-- `pinia` (state UI)
-- `zod` ou `valibot` (validation)
-- `reka-ui` (optionnel, headless components)
+- Stack : Nuxt 4 SPA (`ssr: false`) + Nitro + SQLite + Drizzle + `better-sqlite3` + `unpdf` + Zod + CSS vanilla (SFC `<style scoped>`) + Vitest + Playwright + Yarn Classic
+- Fournisseur LLM : **Mistral**, modèle `zai-glm-5-2`, inférence Europe (D20)
+- Plateforme : Chromium et Firefox desktop. **Usage desktop exclusivement** — aucun écran n'est conçu pour le mobile
+- Persistance : SQLite locale, pas de cloud, pas d'auth
+- Graphiques : **SVG inline, sans bibliothèque tierce**
+
+**Dépendances externes réelles** — une seule intégration réseau, le fournisseur LLM :
+
+`@mistralai/mistralai` (à substituer à `@anthropic-ai/sdk` en story 13-5) · `unpdf` · `drizzle-orm` + `better-sqlite3` · `zod` · `pinia`.
+
+*Reka UI, envisagé en avril, n'a jamais été introduit : tous les composants sont écrits à la main. Le retirer de la liste des dépendances est un constat, pas une décision.*
+
+**Limite d'outillage connue** : Playwright ne fournit pas de binaire Firefox pour `ubuntu26.04-x64`. Firefox reste un engagement produit ; sa vérification est manuelle sur le poste actuel.
 
 ### Cross-Cutting Concerns
 
-1. **Représentation monétaire** — `integer cents` impose un choix de type partagé, helpers de conversion uniques, format de sérialisation API stable.
-2. **Réconciliation comme invariant** — toute mutation transactionnelle déclenche une vérification ; l'état "fiabilité du mois" se propage jusqu'au forecast.
-3. **Recalcul réactif du forecast** — chaque mutation de modèle déclenche un recalcul. Stratégie à choisir : invalidation/cache vs recalcul direct.
-4. **Coût LLM** — un seul appel par hash de PDF (idempotence par contenu). Cache implicite via dédup hash + persistance des résultats.
-5. **Domaine français** — IS, PFU/flat tax, ARE, exercice fiscal. Tous paramétrables, isolés dans un module "fiscal".
-6. **Surface d'erreur LLM** — sortie structurée avec validation stricte, fallback explicite, exposition utilisateur des transactions douteuses.
-7. **Détermination des "top écarts"** — algorithme déterministe et explicable, pas un LLM en boucle.
-8. **Tests numériques** — discipline transversale, infrastructure partagée (fixtures de PDFs, snapshots de calculs).
+1. **Représentation monétaire** — `Cents` de la colonne SQLite jusqu'au composant. Les montants sont **signés** : négatif pour les sorties, positif pour les entrées (`schema.ts`). Les taux relèvent du type `Ratio`, jamais de `Cents`.
+2. **Réconciliation comme invariant** — toute ingestion la déclenche, aucun chemin ne la contourne, et l'état « non fiable » remonte jusqu'à la réponse d'analyse au niveau période (D23).
+3. **Traçabilité (NFR2)** — contrainte transverse la plus structurante après la représentation monétaire. Tout montant affiché doit avoir un chemin vers ses lignes. Elle interdit tout agrégat précalculé et toute valeur produite par le LLM.
+4. **Recalcul à la demande** — aucun cache serveur, aucun agrégat persisté. Toute mutation invalide les `useFetch` concernés via l'instance capturée (D8 amendée).
+5. **Coût et surface d'erreur LLM** — un appel par relevé, idempotent par hash. La conformité de la réponse est vérifiée chez nous, la justesse des montants par la réconciliation.
+6. **Discipline de test** — les fonctions de calcul sont pures et testées sans base (NFR3). Les cas limites sont nommés par le PRD : période vide, recettes nulles, signe inattendu pour la nature (tranché en D28).
+7. **Accessibilité** — trois règles, chacune adossée à un bug réellement constaté : jamais de `disabled` porteur d'information, jamais de désactivation d'un élément focalisé, raison d'indisponibilité dans le nom accessible.
 
+*Les préoccupations « domaine français » et « détermination des top écarts » de la version d'avril disparaissent : la première avec la fiscalité SAS, la seconde avec le dashboard narratif que FR34 remplace par un classement déterministe des écarts entre périodes.*
 ## Starter Template Evaluation
 
 ### Primary Technology Domain
@@ -534,338 +539,120 @@ const { data, refresh } = useFetch('/api/forecast', { query: { horizon: 12 }, ke
 
 ## Project Structure & Boundaries
 
-### Complete Project Directory Structure
+> **Réécrite le 2026-09-04.** La version d'avril décrivait une arborescence projetée, incluant le forecast, la SAS et les dettes. Celle-ci décrit l'arborescence **réelle après suppression**, constatée par `git ls-files`, et distingue explicitement ce qui existe de ce que les epics 12 à 15 ajouteront.
+
+### Arborescence réelle (2026-09-04, après suppression)
 
 ```
 personnalFinance/
-├── README.md
-├── CLAUDE.md                          # Principes KISS/SOLID/DRY + sécu + workflow IA
-├── package.json
-├── yarn.lock
-├── tsconfig.json
-├── nuxt.config.ts
-├── drizzle.config.ts
-├── vitest.config.ts
-├── playwright.config.ts
-├── eslint.config.mjs
-├── .env.example                       # Template (commité)
-├── .env                               # Gitignored — clé Anthropic réelle
-├── .gitignore                         # _data/, .env, .output/, node_modules/, .nuxt/
+├── CLAUDE.md · README.md · package.json · yarn.lock · tsconfig.json
+├── nuxt.config.ts · drizzle.config.ts · vitest.config.ts · playwright.config.ts
+├── eslint.config.mjs · .env.example · .gitignore · .mcp.json
+├── public/                            favicon.ico · robots.txt
 │
-├── app/                               # FRONTEND Nuxt
+├── app/                               FRONTEND — SPA Nuxt, aucun accès direct au réseau
 │   ├── app.vue
-│   ├── error.vue
+│   ├── layouts/default.vue
+│   ├── assets/styles/                 reset.css · tokens.css · global.css
 │   ├── pages/
-│   │   ├── index.vue                  # Dashboard mois courant
-│   │   ├── import.vue                 # Drop PDF + statut
-│   │   ├── transactions/[period].vue
-│   │   ├── charges.vue
-│   │   ├── revenus.vue
-│   │   ├── sas.vue
-│   │   ├── dettes.vue
-│   │   ├── forecast.vue
-│   │   └── parametres.vue
+│   │   ├── index.vue                  Dashboard mensuel (remplacé par l'epic 15)
+│   │   ├── import.vue                 Dépôt de relevés
+│   │   ├── categories.vue             Référentiel (réécrit par l'epic 12)
+│   │   ├── transactions/[period].vue  Liste par période + éditeur de catégorie
+│   │   └── reconciliation/[hash].vue  Résolution d'un écart
 │   ├── components/
-│   │   ├── shared/
-│   │   │   ├── AppHeader.vue
-│   │   │   ├── AppNav.vue
-│   │   │   ├── AppDisclaimer.vue
-│   │   │   ├── MoneyInput.vue
-│   │   │   ├── MoneyDisplay.vue
-│   │   │   ├── DateInput.vue
-│   │   │   ├── ConfirmDialog.vue
-│   │   │   └── ReliabilityBadge.vue
-│   │   ├── dashboard/
-│   │   │   ├── MonthlyNarrative.vue
-│   │   │   ├── BalanceSummary.vue
-│   │   │   └── MonthSelector.vue
-│   │   ├── ingestion/
-│   │   │   ├── PdfDropZone.vue
-│   │   │   ├── IngestionProgress.vue
-│   │   │   └── PeriodOverlapDialog.vue
-│   │   ├── transactions/
-│   │   │   ├── TransactionList.vue
-│   │   │   ├── TransactionRow.vue
-│   │   │   ├── CategoryEditor.vue
-│   │   │   └── DebtRepaymentMarker.vue
-│   │   ├── reconciliation/
-│   │   │   ├── ReconciliationGap.vue
-│   │   │   └── AddManualTransaction.vue
-│   │   ├── debts/
-│   │   │   ├── DebtCard.vue
-│   │   │   ├── DebtForm.vue
-│   │   │   ├── DebtRepaymentMode.vue
-│   │   │   ├── DebtAdvanceForm.vue
-│   │   │   └── DebtImpactOnDividend.vue
-│   │   ├── charges/
-│   │   │   ├── FixedChargeList.vue
-│   │   │   ├── FixedChargeForm.vue
-│   │   │   └── SuggestedChargesPanel.vue
-│   │   ├── revenues/
-│   │   │   ├── ArePanel.vue
-│   │   │   ├── SasRentPanel.vue
-│   │   │   └── ReimbursementsPanel.vue
-│   │   ├── sas/
-│   │   │   ├── SasConfigForm.vue
-│   │   │   ├── DividendCapacityCard.vue
-│   │   │   └── FiscalYearForm.vue
-│   │   ├── forecast/
-│   │   │   ├── ForecastChart.vue
-│   │   │   ├── ForecastSourceLegend.vue
-│   │   │   ├── DividendTargetCard.vue
-│   │   │   ├── HorizonSelector.vue
-│   │   │   ├── AreCompatibilityWarning.vue
-│   │   │   ├── LeversPanel.vue
-│   │   │   └── VariableOverrideDialog.vue
-│   │   └── settings/
-│   │       └── TaxSettingsForm.vue
-│   ├── composables/
-│   │   ├── useCurrentMonthDashboard.ts
-│   │   ├── useTransactions.ts
-│   │   ├── useStatements.ts
-│   │   ├── useDebts.ts
-│   │   ├── useFixedCharges.ts
-│   │   ├── useRevenueModel.ts
-│   │   ├── useSasConfig.ts
-│   │   ├── useForecast.ts
-│   │   ├── useTaxSettings.ts
-│   │   └── useApiError.ts
-│   ├── stores/
-│   │   ├── ui.ts
-│   │   └── disclaimer.ts
-│   ├── assets/styles/
-│   │   ├── tokens.css
-│   │   ├── reset.css
-│   │   └── global.css
-│   └── plugins/
-│       └── disclaimer.client.ts
+│   │   ├── shared/                    AppHeader · AppNav · ConfirmDialog · ReliabilityBadge
+│   │   ├── ingestion/                 PdfDropZone · IngestionProgress · PeriodOverlapDialog
+│   │   ├── transactions/              TransactionList · TransactionRow · CategoryEditor
+│   │   ├── categories/                CategoryList · CategoryForm
+│   │   ├── reconciliation/            ReconciliationGap · AddManualTransaction
+│   │   └── dashboard/                 BalanceSummary · MonthlyNarrative · MonthSelector
+│   ├── composables/                   useApiError · useCategories · useCategoryAdmin
+│   │                                  useDashboard · useDirtyForm · useInvalidate
+│   │                                  useMutations · useReconciliation · useStatements
+│   │                                  useTransactions
+│   └── utils/                         api-mutate.ts · euros.ts
 │
-├── server/                            # BACKEND Nitro
+├── server/                            BACKEND Nitro
 │   ├── api/
-│   │   ├── statements/
-│   │   │   ├── index.post.ts
-│   │   │   ├── index.get.ts
-│   │   │   └── [hash].get.ts
-│   │   ├── transactions/
-│   │   │   ├── index.get.ts
-│   │   │   └── [id].patch.ts
-│   │   ├── reconciliation/
-│   │   │   └── [hash].post.ts
-│   │   ├── fixed-charges/
-│   │   │   ├── index.get.ts
-│   │   │   ├── index.post.ts
-│   │   │   ├── [id].put.ts
-│   │   │   ├── [id].delete.ts
-│   │   │   └── suggestions.get.ts
-│   │   ├── revenues.get.ts
-│   │   ├── revenues.put.ts
-│   │   ├── sas-config.get.ts
-│   │   ├── sas-config.put.ts
-│   │   ├── tax-settings.get.ts
-│   │   ├── tax-settings.put.ts
-│   │   ├── debts/
-│   │   │   ├── index.get.ts
-│   │   │   ├── index.post.ts
-│   │   │   ├── [id].put.ts
-│   │   │   ├── [id].delete.ts
-│   │   │   ├── [id]/advances.post.ts
-│   │   │   └── [id]/impact.get.ts
-│   │   ├── overrides/
-│   │   │   ├── index.get.ts
-│   │   │   ├── index.post.ts
-│   │   │   └── [id].delete.ts
-│   │   ├── dashboard.get.ts
-│   │   └── forecast.get.ts
-│   ├── services/
-│   │   ├── pdf-extractor.ts           # + .test.ts
-│   │   ├── llm-categorizer.ts         # + .test.ts
-│   │   ├── reconciler.ts              # + .test.ts
-│   │   ├── narrative-generator.ts     # + .test.ts
-│   │   ├── variable-projection.ts     # + .test.ts
-│   │   ├── forecast-engine.ts         # + .test.ts
-│   │   ├── dividend-calculator.ts     # + .test.ts (dividende NET requis, story 7.4)
-│   │   ├── debt-projection.ts         # + .test.ts
-│   │   └── charge-suggester.ts        # + .test.ts
+│   │   ├── statements/                index.post · index.get · [hash].get
+│   │   ├── transactions/              index.get · [id].patch
+│   │   ├── categories/                index.get · index.post · [code].patch · [code].delete
+│   │   ├── reconciliation/[hash].post
+│   │   └── dashboard.get.ts
+│   ├── services/                      pdf-extractor · llm-categorizer · reconciler
+│   │                                  statement-ingestion-orchestrator · charge-suggester
 │   ├── db/
-│   │   ├── client.ts
-│   │   ├── schema.ts
-│   │   ├── migrations/                # Généré par drizzle-kit generate
-│   │   └── seeds/
-│   │       └── default-categories.ts
-│   ├── utils/
-│   │   ├── errors.ts
-│   │   ├── validation.ts
-│   │   ├── hash.ts
-│   │   ├── period.ts
-│   │   └── file-storage.ts
-│   └── middleware/
-│       └── disclaimer-context.ts
+│   │   ├── client.ts · schema.ts      4 tables
+│   │   └── migrations/                0000_charming_starbolt · 0001_smiling_bloodaxe + meta/
+│   ├── middleware/0.bootstrap.ts      création de _data/, migrations, seed, assertSchemaUpToDate
+│   └── utils/                         errors · validation · hash · period · file-storage
+│                                      category-fk · category-labels · category-references
 │
-├── shared/                            # Auto-imports Nuxt 4
-│   ├── services/                      # Calculs PURS consommés serveur ET client
-│   │   └── dividend-capacity.ts       # + .test.ts (capacité dividendable, story 5.4)
-│   ├── schemas/
-│   │   ├── transaction.schema.ts
-│   │   ├── statement.schema.ts
-│   │   ├── fixed-charge.schema.ts
-│   │   ├── revenue-model.schema.ts
-│   │   ├── sas-config.schema.ts
-│   │   ├── tax-settings.schema.ts
-│   │   ├── debt.schema.ts
-│   │   ├── debt-advance.schema.ts
-│   │   ├── monthly-override.schema.ts
-│   │   └── api-errors.ts
-│   ├── types/
-│   │   ├── money.ts
-│   │   ├── period.ts
-│   │   ├── reliability.ts
-│   │   └── repayment-mode.ts
-│   └── constants/
-│       ├── fiscal-defaults.ts
-│       ├── default-categories.ts
-│       └── bank-statement-llm-prompt.ts
+├── shared/                            PARTAGÉ client ⇄ serveur
+│   ├── types/money.ts                 branded type `Cents` + helpers
+│   ├── schemas/                       category · statement · transaction
+│   │                                  reconciliation · ingestion-result · api-errors
+│   └── constants/                     default-categories · protected-categories
+│                                      bank-statement-llm-prompt
 │
 ├── tests/
-│   ├── fixtures/
-│   │   ├── pdfs/
-│   │   ├── snapshots/
-│   │   └── llm-responses/
-│   └── e2e/
-│       ├── ingestion.spec.ts
-│       ├── reconciliation.spec.ts
-│       ├── forecast-flow.spec.ts
-│       └── debt-lump-sum.spec.ts
+│   ├── e2e/                           global-setup + categories · categories-ingestion
+│   │                                  dashboard · ingestion · reconciliation
+│   └── fixtures/pdfs/                 (vide — .gitkeep)
 │
-└── _data/                             # RUNTIME — gitignored
-    ├── raw/                           # PDFs sources {sha256}.pdf
-    └── personnalfinance.db
+└── _data/                             GITIGNORÉ — raw/*.pdf, personnalfinance.db, e2e.db
 ```
 
-### Architectural Boundaries
+Les tests unitaires sont **co-localisés** (`*.test.ts` à côté du fichier testé), conformément à `CLAUDE.md`. Seuls les E2E vivent dans `tests/`.
 
-**API Boundaries :**
-- Toute frontière HTTP passe par un endpoint Nitro dans `server/api/`. Aucun appel direct backend côté client.
-- Schéma Zod côté `shared/schemas/` validé en entrée serveur (`readValidatedBody`).
-- Codes d'erreur stables centralisés dans `shared/schemas/api-errors.ts`.
+**Volumétrie constatée** : 23 fichiers de tests unitaires / 252 tests, 5 specs E2E, lint et typecheck verts.
 
-**Component Boundaries :**
-- Les composants Vue ne font jamais de fetch direct — toujours via un composable de `app/composables/`.
-- Les composables exposent état réactif + actions (`refresh`, `mutate`).
-- Les stores Pinia ne contiennent que de l'état UI. Pas de données serveur.
+### Ce que les epics 12 à 15 ajoutent
 
-**Service Boundaries (backend) :**
-- Tout service de `server/services/` est une fonction pure ou classe stateless, testable sans Nitro.
-- Les services métier reçoivent les données en argument et retournent un résultat. La DB est consommée dans `server/api/`.
-  - Exception : services qui ont intrinsèquement besoin de la DB (ex: `charge-suggester`) — client Drizzle injecté en paramètre.
-- `pdf-extractor.ts` est la seule porte d'entrée vers `unpdf`. `llm-categorizer.ts` est la seule porte d'entrée vers `@anthropic-ai/sdk`.
+Aucun nouveau répertoire de premier niveau. Les ajouts se logent dans la structure existante :
 
-**Data Boundaries :**
-- Tout accès SQLite passe par Drizzle (instance unique exportée par `server/db/client.ts`).
-- Pas de SQL brut hors migrations et benchs.
-- Les PDFs vivent uniquement dans `_data/raw/`, accédés via `server/utils/file-storage.ts`.
+| Epic | Fichiers créés | Fichiers réécrits |
+|---|---|---|
+| 12 | `shared/types/movement-nature.ts` · `shared/constants/default-referential.ts` · migration `0002` · `server/api/categories/groups.*` | `schema.ts` · `categories.vue` · `CategoryList.vue` · `CategoryForm.vue` · `category.schema.ts` |
+| 13 | — | `llm-categorizer.ts` · `bank-statement-llm-prompt.ts` · `CategoryEditor.vue` · `transactions/[id].patch.ts` |
+| 14 | `app/components/ingestion/IngestionQueue.vue` · `server/api/statements/[hash].delete.ts` | `import.vue` · `useStatements.ts` · `IngestionProgress.vue` |
+| 15 | `shared/types/ratio.ts` · `server/services/analysis-engine.ts` (+ test) · `server/api/analysis.get.ts` · `app/pages/analyse.vue` · composants de graphiques SVG · `useAnalysis.ts` | `index.vue` |
 
-### Requirements to Structure Mapping
+`default-categories.ts` et `dashboard.get.ts` disparaissent respectivement aux epics 12 et 15.
 
-| FR domaine | Endpoints | Services | Composants UI |
-|---|---|---|---|
-| Ingestion & dédup (FR1-5) | `statements/index.post.ts` | `pdf-extractor`, `utils/hash`, `utils/file-storage`, `utils/period` | `PdfDropZone`, `IngestionProgress`, `PeriodOverlapDialog` |
-| Catégorisation (FR6-10) | `statements/index.post.ts`, `transactions/[id].patch.ts` | `llm-categorizer` | `TransactionList`, `CategoryEditor`, `DebtRepaymentMarker` |
-| Réconciliation (FR11-15) | `reconciliation/[hash].post.ts` | `reconciler` | `ReconciliationGap`, `AddManualTransaction`, `ReliabilityBadge` |
-| Charges (FR16-18) | `fixed-charges/*` | `charge-suggester` | `FixedChargeList`, `FixedChargeForm`, `SuggestedChargesPanel` |
-| Revenus (FR19-22) | `revenues.{get,put}.ts` | — | `ArePanel`, `SasRentPanel`, `ReimbursementsPanel` |
-| SAS (FR23-28) | `sas-config.{get,put}.ts` | `shared/services/dividend-capacity` | `SasConfigForm`, `DividendCapacityCard`, `FiscalYearForm` |
-| Dettes (FR29-34) | `debts/*` | `debt-projection` | `DebtCard`, `DebtForm`, `DebtRepaymentMode`, `DebtAdvanceForm`, `DebtImpactOnDividend` |
-| Fiscalité (FR35-36) | `tax-settings.{get,put}.ts` | — | `TaxSettingsForm` |
-| Dashboard narratif (FR37-40) | `dashboard.get.ts` | `narrative-generator` | `MonthlyNarrative`, `BalanceSummary`, `MonthSelector` |
-| Projection variables (FR41-45) | `forecast.get.ts`, `overrides/*` | `variable-projection` | `ForecastSourceLegend`, `VariableOverrideDialog` |
-| Forecast inverse (FR46-53) | `forecast.get.ts` | `forecast-engine`, `dividend-calculator`, `debt-projection` | `ForecastChart`, `DividendTargetCard`, `HorizonSelector`, `AreCompatibilityWarning`, `LeversPanel` |
-| Disclaimer (FR54) | — | — | `AppDisclaimer` + plugin `disclaimer.client.ts` |
+### Frontières — ce qui n'a pas le droit de traverser
 
-### Cross-Cutting Concerns Mapping
+| Frontière | Règle | Vérifiable par |
+|---|---|---|
+| Extraction PDF | `unpdf` n'est importé que par `server/services/pdf-extractor.ts` | `grep -r "from 'unpdf'" --exclude=pdf-extractor.ts` |
+| Fournisseur LLM | Le SDK n'est importé que par `server/services/llm-categorizer.ts` | idem sur le nom du paquet |
+| Base de données | Accès uniquement via `server/db/client.ts` ; **aucun `*-engine.ts` ne l'importe** | `grep -l "db/client" server/services/*-engine.ts` doit être vide |
+| Réseau côté client | Aucun composant Vue ne fait `$fetch` / `useFetch` — toujours via un composable | `grep -rn "useFetch\|\$fetch" app/components/` |
+| Écriture en base | Drizzle uniquement, pas de SQL brut hors migrations | revue |
+| Langue | Code en anglais, libellés UI en français ; aucune énumération française en base | revue |
 
-| Concern | Localisation |
+Ces frontières ne sont pas décoratives : c'est celle du LLM, posée en story 2-4, qui rend la bascule de fournisseur (story 13-5) confinable à un seul fichier.
+
+### Points d'intégration
+
+- **Un seul appel réseau sortant** : le fournisseur LLM, depuis `llm-categorizer.ts`, avec un payload borné à `{date, libellé, montant}`.
+- **Système de fichiers** : `_data/raw/` en écriture à l'ingestion, en lecture à la ré-ingestion. Jamais supprimé, même quand un relevé l'est (D26).
+- **SQLite** : un fichier, un processus, pas de concurrence. La base de test E2E (`_data/e2e.db`) est reconstruite depuis les migrations à chaque exécution.
+
+### Correspondance exigences → structure
+
+| Exigence | Où elle vit |
 |---|---|
-| Représentation `Cents` (D1) | `shared/types/money.ts` |
-| Schémas Zod partagés (D7) | `shared/schemas/` |
-| Codes d'erreur API (D6) | `shared/schemas/api-errors.ts` + `server/utils/errors.ts` |
-| Logger / dev tools | Nitro intégré + Nuxt Devtools |
-| Constantes fiscales paramétrables (NFR17) | `shared/constants/fiscal-defaults.ts` + table `tax_settings` |
-| Tests numériques (NFR9, NFR18) | `*.test.ts` co-localisés + `tests/fixtures/snapshots/` |
-
-### Integration Points
-
-**Internal :**
-- Client → Backend : HTTPS via `useFetch`/`$fetch`, JSON, Zod-validé.
-- Backend → DB : Drizzle ORM via instance unique.
-- Backend → Filesystem : `server/utils/file-storage.ts` pour les PDFs.
-
-**External :**
-- Anthropic Claude API : appelé exclusivement depuis `server/services/llm-categorizer.ts`. Clé API en `.env`. Sortie validée par schéma Zod.
-
-**Data Flow d'une ingestion PDF :**
-```
-PdfDropZone (UI)
-  → POST /api/statements (multipart)
-  → server/utils/hash.ts (SHA-256)
-  → check dédup (table bank_statements)
-  → server/utils/file-storage.ts (sauvegarde _data/raw/{hash}.pdf)
-  → server/services/pdf-extractor.ts (unpdf → texte structuré)
-  → server/services/llm-categorizer.ts (Claude API → transactions)
-  → server/services/reconciler.ts (somme vs solde PDF)
-  → INSERT transactions + bank_statements (Drizzle)
-  → response { hash, transactions[], reconciliationStatus }
-  → client refetch /api/dashboard?month=... + /api/forecast
-```
-
-### File Organization Patterns
-
-- **Configs** : à la racine, un fichier par tool.
-- **Sources** : `app/` frontend, `server/` backend, `shared/` partagé. Pas de `src/`.
-- **Tests** : co-localisés (`*.test.ts`) pour les unitaires ; `tests/e2e/` pour Playwright ; `tests/fixtures/` pour les données.
-- **Assets** : CSS dans `app/assets/styles/`, pas d'images en V1.
-- **Runtime data** : `_data/` (gitignored), créé au démarrage si absent.
-
-### Development Workflow
-
-| Commande | Rôle |
-|---|---|
-| `yarn dev` | Nuxt + Nitro hot reload |
-| `yarn db:push` | Sync rapide du schéma (itération dev, pas de migration tracée) |
-| `yarn db:generate` | Génère un fichier SQL de migration depuis le diff de schéma |
-| `yarn apply-migration` | Applique les migrations pending sur la base |
-| `yarn db:studio` | Drizzle Studio (explorer la base) |
-| `yarn test` | Vitest watch |
-| `yarn test:run` | Vitest one-shot |
-| `yarn test:e2e` | Playwright E2E |
-| `yarn build` | Build prod |
-| `yarn start` | Lance le serveur prod local (`node .output/server/index.mjs`) |
-| `yarn lint` / `yarn lint:fix` | ESLint |
-| `yarn typecheck` | `nuxt typecheck` |
-
-`db:push` reste le défaut V1 pour l'itération rapide. `apply-migration` est dispo dès le départ pour figer un schéma versionné quand utile (avant un commit qui touche la base, ou en préparation de la bascule Growth).
-
-**`package.json` correspondant :**
-
-```json
-{
-  "scripts": {
-    "dev": "nuxt dev",
-    "build": "nuxt build",
-    "start": "node .output/server/index.mjs",
-    "db:push": "drizzle-kit push",
-    "db:generate": "drizzle-kit generate",
-    "apply-migration": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "test:e2e": "playwright test",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "typecheck": "nuxt typecheck"
-  }
-}
-```
-
+| NFR1 `Cents` | `shared/types/money.ts`, colonnes `*_cents` |
+| NFR2 traçabilité | `analysis.get.ts` + `transactions/index.get.ts` (epic 15) |
+| NFR3 tests des calculs | `analysis-engine.test.ts`, co-localisé (epic 15) |
+| NFR4 mouvements internes | `analysis-engine.ts` (epic 15), nature portée par `category_items` |
+| NFR10-NFR11 réconciliation | `reconciler.ts` + `statement-ingestion-orchestrator.ts` |
+| NFR14, NFR16-NFR17 LLM | `llm-categorizer.ts` |
+| NFR21 extraction PDF | `pdf-extractor.ts` |
+| NFR22 constantes | `shared/constants/`, jamais dans un service de calcul |
+| NFR18-NFR20 accessibilité | composants Vue, vérifié en E2E |
 ## Architecture Validation Results
 
 ### Coherence Validation ✅
@@ -1108,6 +895,74 @@ D4 prévoyait `drizzle-kit push` sans migrations versionnées jusqu'à la Phase 
 
 Motif : `drizzle-kit push` est interactif sur ce projet (drift permanent sur `transactions`), et une base antérieure au dernier schéma démarrait sans aucun signal avant d'échouer à l'usage. Les migrations sont désormais générées, commitées, et la base de test E2E (`_data/e2e.db`) est reconstruite à chaque exécution à partir d'elles — ce qui vérifie au passage qu'elles s'appliquent réellement.
 
+### D28 — Signe contredisant la nature : somme algébrique, sans exception
+
+Question remontée par John pendant l'écriture de la story 15-1. NFR3 impose de tester le cas
+« montant de signe inattendu pour la nature », mais aucune décision ne disait ce qu'il fallait
+en faire. Cas réels attendus : remboursement de courses par un ami sur un poste *Alimentation*,
+remboursement Sécu, avoir commerçant, annulation de prélèvement.
+
+**Rappel de la convention de stockage.** `transactions.amount_cents` est **signé** : négatif pour
+les sorties, positif pour les entrées. Un poste de nature `expense` porte donc normalement des
+montants négatifs. Un remboursement rangé sur ce poste est un montant positif.
+
+**Décision : le moteur somme algébriquement, en conservant le signe bancaire. Rien n'est ignoré,
+rien n'est rerouté, rien n'est refusé.** Un remboursement de 30 € sur *Alimentation* diminue la
+dépense d'*Alimentation* de 30 €.
+
+`totalCents` d'un nœud est donc **signé comme les lignes qui le composent** : négatif pour un
+nœud de dépense, positif pour un nœud de recette. L'orientation pour l'affichage est du ressort
+de l'UI, jamais du moteur.
+
+**Alternatives écartées, et pourquoi :**
+
+- **Ignorer la ligne** — elle disparaîtrait du total sans disparaître du relevé. La somme des
+  lignes de la descente ne vaudrait plus le montant du nœud : **NFR2 tombe**. C'est le pire des
+  quatre, parce qu'il produit un écart invisible.
+- **Router la ligne vers une nature déduite du signe** — contredit D17, qui porte la nature
+  exclusivement sur le poste. Un même poste apparaîtrait sous deux natures, ce que la forme de
+  l'arbre (`natures[] → groups[] → items[]`) ne sait pas représenter. Et un remboursement Sécu
+  gonflerait les recettes, donc le taux d'épargne : le chiffre deviendrait faux dans le sens
+  flatteur, le pire sens.
+- **Refuser l'incohérence à l'ingestion** — un remboursement est une donnée légitime. La refuser
+  bloquerait un relevé valide et contredirait NFR13.
+
+**Ce que la somme algébrique impose à l'UI**, et qui doit être spécifié plutôt qu'improvisé :
+
+Un poste — voire une rubrique — peut avoir un **net positif sur un nœud de dépense** quand les
+remboursements dépassent les dépenses de la période. Ce n'est pas une anomalie, c'est un fait.
+
+- Le tableau affiche la valeur telle quelle, avec son signe, sans plancher à zéro.
+- **La répartition proportionnelle exclut les nœuds à net inversé.** Une part d'un tout ne peut
+  pas être négative ; la base du graphique est la somme des seuls nets orientés dans le sens de
+  la nature. Les nœuds exclus restent visibles dans le tableau, avec une mention explicite.
+- Aucun `Math.abs` dans le moteur. La valeur absolue est une décision de rendu.
+
+*Corollaire pour NFR3 : le cas limite « signe inattendu » n'est plus un comportement à définir
+mais un test à écrire — la somme algébrique le traite par construction. Le test qui compte est
+celui du **nœud à net inversé** et de son exclusion de la base du graphique.*
+
+### D29 — Structure plate des artefacts, actée
+
+L'outil de suivi Vigie attend `planning-artifacts/<chantier>/` ↔ `implementation-artifacts/<chantier>/`.
+Ce projet est **plat depuis son origine** : les documents de planification à la racine de
+`planning-artifacts/`, les 39 fichiers de stories à la racine de `implementation-artifacts/`.
+
+**Décision : on reste plat.** Le dépôt est le chantier.
+
+Le motif de la convention Vigie est de distinguer plusieurs chantiers coexistant dans un même
+dépôt, et d'éviter qu'un nom divergent entre planification et implémentation ne produise un
+chantier fantôme d'un côté et un avancement sans titres de l'autre. **Ici les deux côtés sont
+plats, donc cohérents, et il n'y a qu'un seul chantier.** La règle globale prévoit explicitement
+ce cas : « chaque projet peut préciser dans son propre `CLAUDE.md` où vivent ces fichiers ».
+
+Ce qu'introduire un sous-dossier maintenant coûterait, sans rien acheter : déplacer 39 fichiers
+de stories livrées, casser les chemins cités dans les revues et les commits passés, et créer
+précisément la scission que la convention cherche à éviter — un `planning-artifacts/<chantier>/`
+neuf face à un `implementation-artifacts/` racine peuplé.
+
+À reconsidérer le jour où un second chantier apparaîtrait dans ce dépôt. Pas avant.
+
 ### Decision Impact Analysis — séquence d'implémentation
 
 Ordre imposé par le PRD (§ Séquencement du MVP), avec le jalon de décision :
@@ -1302,22 +1157,24 @@ Conséquence directe de NFR15 : la lecture du produit ne dépend jamais du fourn
 
 **Compatibilité des décisions.** D19 (fonction pure) et D24 (comparaison) se composent : le moteur reçoit deux jeux de lignes et rend deux arbres. D22 (boucle client) et D20 (un appel par relevé) sont alignés — un fichier, un appel, un destin. D18 (wipe) suit D17 (référentiel) dans la séquence, sans quoi la ré-ingestion n'aurait pas de cible.
 
+**D28 et NFR2 se renforcent.** La somme algébrique est la seule des quatre options qui garantit que la somme des lignes de la descente vaut le montant du nœud, au centime. La traçabilité n'est pas un contrôle a posteriori : elle est ce qui a écarté trois options sur quatre.
+
 **Une tension résolue.** D1 impose `Cents` sur toute valeur monétaire ; deux des quatre indicateurs sont des ratios. Le type `Ratio` lève l'ambiguïté — sans lui, un taux d'épargne de −1,90 s'afficherait « −0,02 € ».
 
 **Une tension apparente sur NFR22.** Le référentiel initial (13 rubriques, 41 postes) est une constante. NFR22 interdit les constantes métier **dans une fonction de calcul** ; un fichier de constantes consommé au seed ne viole rien.
 
 ### Couverture des exigences
 
-**39 FRs — tous couverts** après D22-D27. Les trois de phase 2 (FR37-39) n'appellent aucune décision au MVP.
+**39 FRs — tous couverts** après D22-D29. Les trois de phase 2 (FR37-39) n'appellent aucune décision au MVP.
 
-**23 NFRs — tous couverts.** FR22 et NFR14 nécessitent une reformulation au PRD (cf. D17 et D20).
+**23 NFRs — tous couverts.** FR22 et NFR14 ont été reformulés au PRD le 2026-09-04 (cf. D17 et D20) ; le cas limite « signe inattendu » de NFR3 est tranché par D28.
 
 **Bonne surprise sur FR24** (taux de correction manuelle) : la colonne `transactions.is_manual` existe déjà et signifie exactement « catégorie corrigée à la main ». Le taux se calcule par relevé sans ajout de schéma. Le correctif du 2026-09-04 — `isManual` posé uniquement si le patch touche la catégorie — l'a rendue fiable pour cet usage.
 
 ### Checklist de complétude
 
 **Analyse des exigences**
-- [ ] Contexte projet analysé en profondeur — *la section de ce document date d'avril et décrit le forecast*
+- [x] Contexte projet analysé en profondeur — *section réécrite le 2026-09-04 sur le PRD réel*
 - [x] Échelle et complexité évaluées
 - [x] Contraintes techniques identifiées
 - [x] Préoccupations transverses cartographiées
@@ -1335,20 +1192,27 @@ Conséquence directe de NFR15 : la lecture du produit ne dépend jamais du fourn
 - [x] Patterns de processus documentés
 
 **Structure du projet**
-- [ ] Arborescence complète définie — *reportée après la suppression du périmètre mort*
-- [ ] Frontières des composants établies — *idem*
-- [ ] Points d'intégration cartographiés — *idem*
-- [ ] Correspondance exigences → structure — *idem*
+- [x] Arborescence complète définie — *constatée par `git ls-files` après suppression, avec le tableau des ajouts par epic*
+- [x] Frontières des composants établies — *six frontières, chacune assortie de sa commande de vérification*
+- [x] Points d'intégration cartographiés — *un seul appel réseau sortant, plus le système de fichiers et SQLite*
+- [x] Correspondance exigences → structure — *table NFR → fichier*
 
 ### Statut de préparation
 
-**Statut global : NOT READY**
+**Statut global : READY** *(levé le 2026-09-04)*
 
-Le protocole impose ce statut dès qu'un élément d'analyse des exigences est décoché. **Les décisions sont complètes** — 27 décisions, patterns définis, chaque FR et NFR couvert. Ce qui manque est **descriptif** : deux sections décrivent encore l'ancien produit.
+Toutes les cases de la checklist sont cochées. 29 décisions, patterns définis, chaque FR et NFR couvert, arborescence décrite d'après le dépôt réel.
 
-**Niveau de confiance : élevé** sur les décisions. Ce qui reste est un travail de rédaction adossé à un fait — l'arborescence réelle après suppression — et non un arbitrage en suspens.
+**Ce qui a levé le statut :**
 
-**Chemin vers READY :** exécuter la suppression du périmètre mort, puis reprendre les étapes 2 (contexte) et 6 (structure) en décrivant ce qui existe.
+1. La suppression du périmètre mort a été **exécutée et validée** — 146 fichiers, −10 457 lignes, puis trois orphelins repérés en relisant l'arborescence (`monthly-override.schema.ts`, `rate-pct.ts` et son test) : du code sans aucun consommateur, survivant du périmètre SAS. Écrire la structure a servi à trouver ce que la suppression avait manqué.
+2. Les sections **contexte** et **structure** ont été réécrites sur le produit réel, pas amendées.
+3. **D28** tranche le dernier arbitrage ouvert — le signe contredisant la nature — qui rendait la story 15-1 non spécifiable.
+4. **D29** acte la structure plate des artefacts, qui bloquait la création du fichier de story 12-1.
+
+**Niveau de confiance : élevé.** Aucun arbitrage n'est en suspens pour le MVP.
+
+**Ce qui reste ouvert, et n'est pas bloquant :** la vérification Firefox (limite d'outillage, mode à trancher), la cible de performance sur l'agrégation (à mesurer après la première ingestion réelle), l'extraction paramétrée par banque (Vision).
 
 **Forces :** les boundaries posées en avril ont payé — le changement de fournisseur LLM tient dans un seul fichier. Le principe « fonction pure + couche d'accès » est reconduit après avoir fait ses preuves sur `reconciler.ts`. Chaque règle d'accessibilité est adossée à un bug réellement constaté, pas à une norme abstraite.
 
@@ -1357,8 +1221,10 @@ Le protocole impose ce statut dès qu'un élément d'analyse des exigences est d
 ### Passage à l'implémentation
 
 **Directives pour les agents :**
-- Suivre les décisions D1-D3, D5-D10 (reconduites) et D17-D27 (amendement du 2026-09-04). **D4, D11-D16 sont retirées.**
+- Suivre les décisions D1-D3, D5-D10 (reconduites) et D17-D29 (amendement du 2026-09-04). **D4, D11-D16 sont retirées.**
 - En cas de contradiction entre une section antérieure et un amendement daté du 2026-09-04, **l'amendement fait foi**.
 - Appliquer les patterns de la section `Implementation Patterns — amendement du 2026-09-04` sans exception.
 
-**Première priorité d'implémentation : la suppression du périmètre mort** (~8 830 lignes / 87 fichiers). Elle conditionne tout le reste et rend la structure descriptible.
+**La suppression du périmètre mort est faite** (146 fichiers, −10 457 lignes, commitée le 2026-09-04).
+
+**Première priorité d'implémentation : la story 12-1**, qui pose le référentiel à deux niveaux et vide les transactions. Elle ouvre la chaîne 12 → 13 → 14 → 15 décrite dans `epics.md`, dont le jalon de mesure du taux de correction (≤ 10 %, story 14-4) conditionne le démarrage de l'epic 15.
