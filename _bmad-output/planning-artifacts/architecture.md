@@ -827,6 +827,11 @@ Le multi-compte reste en **Vision** au PRD. Ces décisions seront à reprendre �
 
 ### D17 — Référentiel hiérarchique à deux tables
 
+> **Chiffre révisé le 2026-09-05.** D17 annonçait 41 postes, estimés avant lecture du tableur.
+> Le référentiel réel, dérivé de `Dépenses 2022.xlsx` et validé par l'utilisateur, en compte
+> **48**, toujours sur 13 rubriques. Le nombre n'était pas une décision : il décrivait une
+> intention de granularité, que l'Excel a précisée.
+
 Deux tables plutôt qu'un arbre auto-référencé :
 
 ```
@@ -845,13 +850,13 @@ Un même libellé de poste existe sous plusieurs rubriques via des codes distinc
 **Conséquences à porter au PRD :**
 
 - **FR22 à reformuler.** Sa rédaction actuelle — « modifier la nature d'une transaction **indépendamment de son poste** » — n'est pas satisfaisable si la nature est portée par le poste. La correction s'effectue en déplaçant la transaction vers un poste d'une autre nature.
-- **Référentiel initial : 13 rubriques / 41 postes.** La treizième rubrique est **Mouvements internes** (Virement épargne · Virement entre comptes · Retrait d'espèces). Sans elle, la troisième nature n'a aucune destination et le Journey 4 — reclasser un virement mal rangé — est impossible.
+- **Référentiel initial : 13 rubriques / 48 postes.** La treizième rubrique est **Mouvements internes** (Virement épargne · Virement entre comptes · Retrait d'espèces). Sans elle, la troisième nature n'a aucune destination et le Journey 4 — reclasser un virement mal rangé — est impossible.
 
 ### D18 — Migration par wipe et ré-ingestion
 
 Les 207 transactions existantes ne sont pas migrées. La base est recréée et les PDF sources conservés dans `_data/raw/` sont ré-ingérés sur le nouveau référentiel.
 
-Justifié par NFR12 (base reconstructible depuis les relevés). Mais surtout : **la ré-ingestion produit la première mesure du taux de correction sur le nouveau référentiel** et alimente le jalon de décision du MVP au lieu de le retarder. Une table de correspondance 19 → 41 postes aurait coûté du code jetable pour un résultat moins informatif.
+Justifié par NFR12 (base reconstructible depuis les relevés). Mais surtout : **la ré-ingestion produit la première mesure du taux de correction sur le nouveau référentiel** et alimente le jalon de décision du MVP au lieu de le retarder. Une table de correspondance 19 → 48 postes aurait coûté du code jetable pour un résultat moins informatif.
 
 ⚠️ **Fenêtre de validité.** Le coût de cette décision croît avec chaque relevé ingéré. À exécuter **avant** l'ingestion de l'historique complet.
 
@@ -968,7 +973,7 @@ neuf face à un `implementation-artifacts/` racine peuplé.
 Ordre imposé par le PRD (§ Séquencement du MVP), avec le jalon de décision :
 
 1. Suppression du périmètre mort (~8 830 lignes / 87 fichiers)
-2. **D17** — nouveau référentiel à deux tables, 13 rubriques / 41 postes
+2. **D17** — nouveau référentiel à deux tables, 13 rubriques / 48 postes
 3. **D18** — wipe et ré-ingestion
 4. **D20** — bascule du fournisseur LLM
 5. Ingestion des relevés d'historique → **MESURE DU TAUX DE CORRECTION** (seuil ≤ 10 %)
@@ -1161,7 +1166,7 @@ Conséquence directe de NFR15 : la lecture du produit ne dépend jamais du fourn
 
 **Une tension résolue.** D1 impose `Cents` sur toute valeur monétaire ; deux des quatre indicateurs sont des ratios. Le type `Ratio` lève l'ambiguïté — sans lui, un taux d'épargne de −1,90 s'afficherait « −0,02 € ».
 
-**Une tension apparente sur NFR22.** Le référentiel initial (13 rubriques, 41 postes) est une constante. NFR22 interdit les constantes métier **dans une fonction de calcul** ; un fichier de constantes consommé au seed ne viole rien.
+**Une tension apparente sur NFR22.** Le référentiel initial (13 rubriques, 48 postes) est une constante. NFR22 interdit les constantes métier **dans une fonction de calcul** ; un fichier de constantes consommé au seed ne viole rien.
 
 ### Couverture des exigences
 

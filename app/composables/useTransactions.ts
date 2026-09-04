@@ -9,7 +9,7 @@ export interface TransactionListItem {
   transactionDate: string
   label: string
   amountCents: Cents
-  categoryCode: string
+  categoryItemCode: string
   isManual: boolean
 }
 
@@ -57,8 +57,8 @@ export function useTransactions(month: Ref<string>) {
     return { ok: true }
   }
 
-  function mutateCategory(id: number, categoryCode: string): Promise<MutationOutcome> {
-    return patchTransaction(id, { categoryCode })
+  function mutateCategory(id: number, categoryItemCode: string): Promise<MutationOutcome> {
+    return patchTransaction(id, { categoryItemCode })
   }
 
   return {

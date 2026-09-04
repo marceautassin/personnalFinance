@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { H3Event } from 'h3'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 // Set DATABASE_URL avant tout import du module `db/client` (singleton).
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-tx-api-'))
@@ -27,38 +28,8 @@ beforeAll(async () => {
   // Accès à la connexion better-sqlite3 sous-jacente pour exécuter le DDL.
   // @ts-expect-error -- propriété interne drizzle
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE bank_statements (
-      hash_sha256 TEXT PRIMARY KEY,
-      period_start TEXT NOT NULL,
-      period_end TEXT NOT NULL,
-      opening_balance_cents INTEGER NOT NULL,
-      closing_balance_cents INTEGER NOT NULL,
-      reliability TEXT NOT NULL DEFAULT 'reliable',
-      ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      statement_hash TEXT NOT NULL REFERENCES bank_statements(hash_sha256) ON DELETE CASCADE,
-      transaction_date TEXT NOT NULL,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      is_manual INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE INDEX transactions_period_idx ON transactions(transaction_date);
-    CREATE INDEX transactions_statement_idx ON transactions(statement_hash);
-  `)
-
-  dbMod.db.insert(schema.categoryDefinitions).values({ code: 'courses', label: 'Courses' }).run()
+  sqlite.exec(TEST_SCHEMA_DDL)
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 
   handler = (await import('./index.get')).default as Handler
 })
@@ -101,7 +72,7 @@ type Row = {
   isDebtRepayment: boolean
   debtId: number | null
   statementHash: string
-  categoryCode: string
+  categoryItemCode: string
   id: number
 }
 type Resp = { transactions: Row[], reliability: 'reliable' | 'unreliable' | null }
@@ -110,10 +81,10 @@ describe('GET /api/transactions', () => {
   it('returns transactions of the requested month sorted by date asc', async () => {
     seedStatement()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'B', amountCents: -2000, categoryCode: 'courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: -1000, categoryCode: 'courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-25', label: 'C', amountCents: -3000, categoryCode: 'courses' },
-      { statementHash: HASH_A, transactionDate: '2026-05-01', label: 'OUT', amountCents: -500, categoryCode: 'courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'B', amountCents: -2000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: -1000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-25', label: 'C', amountCents: -3000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-05-01', label: 'OUT', amountCents: -500, categoryItemCode: 'alimentation-courses' },
     ]).run()
 
     const result = (await handler(eventWithQuery('month=2026-04'))) as Resp
@@ -124,7 +95,7 @@ describe('GET /api/transactions', () => {
       label: 'A',
       transactionDate: '2026-04-05',
       amountCents: -1000,
-      categoryCode: 'courses',
+      categoryItemCode: 'alimentation-courses',
       isManual: false,
       statementHash: HASH_A,
     })
@@ -136,7 +107,7 @@ describe('GET /api/transactions', () => {
     seedStatement()
     dbMod.db.update(schema.bankStatements).set({ reliability: 'unreliable' }).run()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-10', label: 'X', amountCents: -1000, categoryCode: 'courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-10', label: 'X', amountCents: -1000, categoryItemCode: 'alimentation-courses' },
     ]).run()
 
     const result = (await handler(eventWithQuery('month=2026-04'))) as Resp

@@ -149,7 +149,7 @@ Issues de l'amendement d'architecture du 2026-09-04. Chacune a un impact direct 
 
 - **AR1 (D17)** — Deux tables `category_groups(code, label, position)` et `category_items(code, group_code FK, label, nature, position)` ; `transactions.category_item_code` FK `ON DELETE RESTRICT`. Pas d'arbre auto-référencé, pas de colonne texte.
 - **AR2 (D17)** — `nature` portée **exclusivement par le poste**, énumération **en anglais** : `income | expense | internal_transfer` dans `shared/types/movement-nature.ts`. Libellés FR dans l'UI uniquement.
-- **AR3 (D17)** — Référentiel initial : **13 rubriques / 41 postes**, dont une rubrique **Mouvements internes** (Virement épargne · Virement entre comptes · Retrait d'espèces). Sans elle, la 3ᵉ nature n'a aucune destination et le Journey 4 est impossible.
+- **AR3 (D17)** — Référentiel initial : **13 rubriques / 48 postes**, dont une rubrique **Mouvements internes** (Virement épargne · Virement entre comptes · Retrait d'espèces). Sans elle, la 3ᵉ nature n'a aucune destination et le Journey 4 est impossible.
 - **AR4 (Patterns)** — Codes de poste au format `<rubrique>-<poste>`, **en français**, pour qu'un `ORDER BY code` groupe naturellement par rubrique.
 - **AR5 (D18)** — Migration par **wipe et ré-ingestion** depuis `_data/raw/`, pas de table de correspondance 19 → 41. Fenêtre de validité : **avant** l'ingestion de l'historique complet.
 - **AR6 (D21)** — Migrations Drizzle versionnées, commitées, avec `assertSchemaUpToDate()` au bootstrap. La base E2E est reconstruite depuis les migrations à chaque exécution.
@@ -315,7 +315,7 @@ afin que la structure de mon ancien tableur soit enfin représentable.
 
 **Given** une base vierge au premier démarrage
 **When** le bootstrap s'exécute
-**Then** 13 rubriques et 41 postes sont créés depuis un fichier de constantes, hors de toute fonction de calcul (NFR22)
+**Then** 13 rubriques et 48 postes sont créés depuis un fichier de constantes, hors de toute fonction de calcul (NFR22)
 **And** la rubrique « Mouvements internes » existe avec au moins Virement épargne, Virement entre comptes et Retrait d'espèces
 **And** les codes de poste suivent le format `<rubrique>-<poste>` en français, de sorte qu'un `ORDER BY code` groupe par rubrique
 
@@ -425,7 +425,7 @@ afin que chaque ligne tombe dans la bonne case du premier coup.
 
 **Acceptance Criteria:**
 
-**Given** un référentiel de 13 rubriques et 41 postes
+**Given** un référentiel de 13 rubriques et 48 postes
 **When** un relevé est catégorisé
 **Then** le prompt décrit la hiérarchie rubrique → poste et les trois natures
 **And** il est construit depuis la base, jamais figé dans le code : un poste créé par l'utilisateur est proposé au modèle dès l'ingestion suivante

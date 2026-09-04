@@ -1,227 +1,169 @@
 <script setup lang="ts">
-import type { CategoryListItem } from '~/composables/useCategories'
-import { isProtectedCategory } from '~~/shared/constants/protected-categories'
+import type { CategoryItemWithCount } from '~/composables/useCategories'
+import type { MovementNature } from '~~/shared/types/movement-nature'
+import { isProtectedItem } from '~~/shared/constants/protected-categories'
+import { useInlineRename } from '~/composables/useInlineRename'
 
 const props = defineProps<{
-  categories: CategoryListItem[]
+  items: CategoryItemWithCount[]
   savingCode?: string | null
 }>()
 const emit = defineEmits<{
   rename: [code: string, label: string]
-  remove: [category: CategoryListItem]
+  changeNature: [code: string, nature: MovementNature]
+  remove: [item: CategoryItemWithCount]
 }>()
 
-// Code en cours d'édition inline (null = aucun).
-const editingCode = ref<string | null>(null)
-const editLabel = ref('')
+const itemsRef = computed(() => props.items)
+const {
+  editingCode,
+  editLabel,
+  setEditInput,
+  setLabelButton,
+  startEdit,
+  cancelEdit,
+  commitEdit,
+  onEditBlur,
+} = useInlineRename(
+  itemsRef,
+  code => props.savingCode === code,
+  (code, label) => emit('rename', code, label),
+)
 
-/**
- * Un seul input d'édition existe à la fois (`v-if` sur la ligne éditée), mais il vit DANS un
- * `v-for` : un `ref` statique y serait collecté par Vue dans un tableau, et `.focus()` sur un
- * tableau ne fait rien silencieusement. D'où le ref de fonction (revue 2026-09-04).
- */
-const editInput = ref<HTMLInputElement | null>(null)
-function setEditInput(el: Element | null) {
-  editInput.value = el as HTMLInputElement | null
+const NATURE_LABELS: Record<MovementNature, string> = {
+  income: 'Recette',
+  expense: 'Dépense',
+  internal_transfer: 'Mouvement interne',
 }
-
-/**
- * Boutons-libellés par `code`, pour rendre le focus à la fin de l'édition. Le `v-if`/`v-else`
- * détruit le bouton qui portait le focus au moment d'ouvrir l'édition : sans restitution
- * explicite, le focus retomberait sur `document.body` et la navigation Tab repartirait du
- * début du document (revue 2026-09-04).
- */
-const labelButtons = new Map<string, HTMLButtonElement>()
-function setLabelButton(code: string, el: Element | null) {
-  if (el) labelButtons.set(code, el as HTMLButtonElement)
-  else labelButtons.delete(code)
-}
-
-/**
- * Code dont le bouton-libellé doit reprendre le focus dès qu'il est de nouveau rendu.
- *
- * Un simple `nextTick` ne suffit pas après une VALIDATION : le renommage déclenche un refetch
- * de la liste, et le re-rendu qui suit fait retomber le focus sur `<body>` — l'utilisateur au
- * clavier était éjecté en haut de page à chaque renommage (recette du 2026-09-04). On retient
- * donc l'intention et on la rejoue quand la liste change, plutôt que de deviner un délai.
- */
-const pendingFocusCode = ref<string | null>(null)
-
-async function focusLabelButton(code: string) {
-  pendingFocusCode.value = code
-  await nextTick()
-  applyPendingFocus()
-}
-
-/**
- * Pose le focus sans consommer l'intention : elle doit survivre au re-rendu provoqué par le
- * refetch, qui arrive APRÈS ce premier placement. La consommer ici — ce que faisait la
- * première version de ce correctif — rendait le rattrapage impossible.
- */
-function applyPendingFocus() {
-  const code = pendingFocusCode.value
-  if (!code) return
-  const btn = labelButtons.get(code)
-  if (btn?.isConnected) btn.focus()
-}
-
-// Le refetch remplace les lignes : on rejoue le focus, puis seulement là on l'oublie.
-watch(() => props.categories, async () => {
-  if (!pendingFocusCode.value) return
-  await nextTick()
-  applyPendingFocus()
-  pendingFocusCode.value = null
-})
-
-/**
- * Ouvre l'édition inline ET donne le focus au champ. Sans ce `focus()`, l'input apparaissait
- * non focalisé : au clavier le renommage était purement impossible (la frappe partait dans le
- * vide), à la souris il fallait un second clic. Le trou était masqué par l'E2E, dont le
- * `fill()` focalise lui-même l'élément (revue 2026-09-04).
- */
-async function startEdit(cat: CategoryListItem) {
-  // `aria-disabled` et non `disabled` sur le bouton-libellé : passer un élément FOCALISÉ en
-  // `disabled` le fait perdre le focus. Pendant la sauvegarde d'un renommage, `savingCode`
-  // désactivait ce bouton juste après qu'on lui ait rendu le focus — l'utilisateur au clavier
-  // était éjecté sur `<body>` à chaque validation (recette du 2026-09-04). On garde donc le
-  // bouton focalisable et on refuse l'action ici.
-  if (props.savingCode === cat.code) return
-  pendingFocusCode.value = null
-  editingCode.value = cat.code
-  editLabel.value = cat.label
-  await nextTick()
-  editInput.value?.focus()
-  editInput.value?.select()
-}
-
-/**
- * Ferme l'édition. `refocus` rend le focus au bouton-libellé : vrai quand l'utilisateur reste
- * sur la ligne (Escape, validation par Entrée), faux quand le focus part ailleurs de lui-même
- * (blur, clic sur « Supprimer ») — le lui reprendre casserait le déplacement en cours.
- */
-function cancelEdit(refocus = false) {
-  const code = editingCode.value
-  editingCode.value = null
-  editLabel.value = ''
-  if (!refocus) pendingFocusCode.value = null
-  if (refocus && code) focusLabelButton(code)
-}
-
-function commitEdit(cat: CategoryListItem, refocus = false) {
-  // Garde de ré-entrance : `Entrée` validait, puis le démontage de l'input déclenchait un
-  // `blur` qui rappelait `commitEdit` — deux `PATCH` pour une seule validation (revue
-  // 2026-08-04). L'état est remis à zéro AVANT l'emit pour que la garde soit effective.
-  if (editingCode.value !== cat.code) return
-  const next = editLabel.value.trim()
-  cancelEdit(refocus)
-  if (next.length > 0 && next !== cat.label) emit('rename', cat.code, next)
-}
-
-/**
- * Sortie du champ d'édition. Quitter vers « Supprimer » abandonne le renommage au lieu de le
- * persister : `@mousedown` couvrait le clic, mais pas l'activation clavier (Tab+Entrée), car
- * `blur` se déclenche avant que le bouton reçoive le focus. On lit donc la destination dans
- * `relatedTarget` (revue 2026-08-04).
- */
-function onEditBlur(cat: CategoryListItem, event: FocusEvent) {
-  const target = event.relatedTarget as HTMLElement | null
-  if (target?.dataset.cancelsEdit !== undefined) {
-    cancelEdit()
-    return
-  }
-  commitEdit(cat)
-}
+const NATURE_OPTIONS = Object.entries(NATURE_LABELS) as [MovementNature, string][]
 
 /**
  * `aria-disabled` plutôt que `disabled` (recette du 2026-09-04) — deux raisons :
  *
  * 1. Un bouton `disabled` sort du tab order. Or c'est LUI qui porte `data-cancels-edit`, le
- *    garde-fou qui abandonne un renommage quand on part sur « Supprimer ». Dès qu'une
- *    catégorie était référencée — le cas normal — le bouton devenait inatteignable au clavier
- *    et le garde-fou ne se déclenchait jamais.
+ *    garde-fou qui abandonne un renommage quand on part sur « Supprimer ». Dès qu'un poste
+ *    était référencé — le cas normal — le bouton devenait inatteignable au clavier et le
+ *    garde-fou ne se déclenchait jamais.
  * 2. Le `title` qui EXPLIQUE le blocage était lui aussi hors de portée du clavier. La raison
- *    est désormais dans l'`aria-label`, donc annoncée.
+ *    vit désormais dans l'`aria-label`, donc elle est annoncée (NFR20).
  *
  * Le clic reste inopérant : `onRemoveClick` refuse, et le style `--blocked` conserve
  * l'apparence grisée.
  */
-function isBlocked(cat: CategoryListItem): boolean {
-  return blockReason(cat) !== null
-}
-
-function onRemoveClick(cat: CategoryListItem) {
-  if (isBlocked(cat) || props.savingCode === cat.code) return
-  emit('remove', cat)
-}
-
-/** Raison textuelle du blocage de suppression, ou null si supprimable. */
-function blockReason(cat: CategoryListItem): string | null {
-  if (isProtectedCategory(cat.code)) return 'Catégorie système, ne peut pas être supprimée'
-  if (cat.referenceCount > 0) return `Utilisée par ${cat.referenceCount} référence(s) — supprime-les d'abord`
+function blockReason(item: CategoryItemWithCount): string | null {
+  if (isProtectedItem(item.code)) return 'Poste système, ne peut pas être supprimé'
+  if (item.transactionCount > 0) {
+    return `Utilisé par ${item.transactionCount} transaction(s) — reclasse-les d'abord`
+  }
   return null
+}
+
+function isBlocked(item: CategoryItemWithCount): boolean {
+  return blockReason(item) !== null
+}
+
+function onRemoveClick(item: CategoryItemWithCount) {
+  if (isBlocked(item) || props.savingCode === item.code) return
+  emit('remove', item)
+}
+
+/**
+ * Le `<select>` est en `:value` + `@change` et non en `v-model` : sur échec du PATCH, le
+ * navigateur garderait l'option choisie alors que la base porte encore l'ancienne nature —
+ * une divergence silencieuse entre l'écran et la donnée. On repositionne donc explicitement
+ * l'élément sur `item.nature` ; le refetch d'un succès écrasera de toute façon cette valeur.
+ */
+function onNatureChange(item: CategoryItemWithCount, event: Event) {
+  const select = event.target as HTMLSelectElement
+  const value = select.value
+  select.value = item.nature
+  if (value === item.nature) return
+  emit('changeNature', item.code, value as MovementNature)
 }
 </script>
 
 <template>
   <div class="cat-list">
-    <table class="cat-list__table">
+    <p
+      v-if="items.length === 0"
+      class="cat-list__empty"
+    >
+      Aucun poste dans cette rubrique.
+    </p>
+    <table
+      v-else
+      class="cat-list__table"
+    >
       <thead>
         <tr>
-          <th>Libellé</th>
-          <th>Type</th>
+          <th>Poste</th>
+          <th>Nature</th>
           <th class="cat-list__num">
-            Références
+            Transactions
           </th>
           <th />
         </tr>
       </thead>
       <tbody>
         <tr
-          v-for="cat in categories"
-          :key="cat.code"
-          :data-testid="`cat-row-${cat.code}`"
+          v-for="item in items"
+          :key="item.code"
+          :data-testid="`cat-row-${item.code}`"
         >
           <td>
             <input
-              v-if="editingCode === cat.code"
+              v-if="editingCode === item.code"
               :ref="el => setEditInput(el as Element | null)"
               v-model="editLabel"
               type="text"
               class="cat-list__edit"
               maxlength="50"
-              :aria-label="`Renommer ${cat.label}`"
-              @keyup.enter="commitEdit(cat, true)"
+              :aria-label="`Renommer ${item.label}`"
+              @keyup.enter="commitEdit(item, true)"
               @keyup.escape="cancelEdit(true)"
-              @blur="onEditBlur(cat, $event)"
+              @blur="onEditBlur(item, $event)"
             >
             <button
               v-else
-              :ref="el => setLabelButton(cat.code, el as Element | null)"
+              :ref="el => setLabelButton(item.code, el as Element | null)"
               type="button"
               class="cat-list__label"
-              :aria-disabled="savingCode === cat.code"
-              @click="startEdit(cat)"
+              :aria-disabled="savingCode === item.code"
+              @click="startEdit(item)"
             >
-              {{ cat.label }}
+              {{ item.label }}
             </button>
           </td>
           <td>
-            <span
-              class="cat-list__badge"
-              :class="cat.isVariable ? 'cat-list__badge--variable' : 'cat-list__badge--fixed'"
+            <!--
+              La nature est modifiable ici : c'est ce qui permet de corriger un poste entier
+              mal orienté sans reclasser ses transactions une à une. Elle est portée par le
+              poste (D17), donc toutes ses transactions suivent.
+            -->
+            <select
+              class="cat-list__nature"
+              :aria-label="`Nature de ${item.label}`"
+              :value="item.nature"
+              @change="onNatureChange(item, $event)"
             >
-              {{ cat.isVariable ? 'Variable' : 'Fixe' }}
-            </span>
+              <option
+                v-for="[value, label] in NATURE_OPTIONS"
+                :key="value"
+                :value="value"
+              >
+                {{ label }}
+              </option>
+            </select>
           </td>
           <td class="cat-list__num">
-            {{ cat.referenceCount }}
+            {{ item.transactionCount }}
           </td>
           <td class="cat-list__actions">
             <!--
               Un renommage entamé mais non validé ne doit pas être persisté silencieusement
               quand l'utilisateur part sur « Supprimer » (puis annule la confirmation).
               Deux chemins, parce qu'aucun ne couvre l'autre :
-                - souris : `mousedown` se déclenche AVANT le `blur` de l'input ;
+                - souris : `mousedown` se déclenche AVANT le `blur` du champ ;
                 - clavier : `blur` part en premier, donc `onEditBlur` reconnaît la destination
                   via `data-cancels-edit`.
             -->
@@ -229,12 +171,12 @@ function blockReason(cat: CategoryListItem): string | null {
               type="button"
               class="cat-list__del"
               data-cancels-edit
-              :class="{ 'cat-list__del--blocked': isBlocked(cat) }"
-              :aria-disabled="isBlocked(cat) || savingCode === cat.code"
-              :title="blockReason(cat) ?? 'Supprimer'"
-              :aria-label="blockReason(cat) ? `Supprimer ${cat.label} — ${blockReason(cat)}` : `Supprimer ${cat.label}`"
+              :class="{ 'cat-list__del--blocked': isBlocked(item) }"
+              :aria-disabled="isBlocked(item) || savingCode === item.code"
+              :title="blockReason(item) ?? 'Supprimer'"
+              :aria-label="blockReason(item) ? `Supprimer ${item.label} — ${blockReason(item)}` : `Supprimer ${item.label}`"
               @mousedown="cancelEdit()"
-              @click="onRemoveClick(cat)"
+              @click="onRemoveClick(item)"
             >
               Supprimer
             </button>
@@ -246,6 +188,16 @@ function blockReason(cat: CategoryListItem): string | null {
 </template>
 
 <style scoped>
+.cat-list__empty { color: var(--color-text-muted); margin: 0; padding: var(--space-2) 0; }
+.cat-list__nature {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-sm);
+}
 .cat-list__table {
   width: 100%;
   border-collapse: collapse;
@@ -281,15 +233,6 @@ function blockReason(cat: CategoryListItem): string | null {
   font: inherit;
   width: 100%;
 }
-.cat-list__badge {
-  display: inline-block;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs, 0.75rem);
-  line-height: 1.6;
-}
-.cat-list__badge--variable { background: var(--color-accent-soft, var(--color-neutral-100)); }
-.cat-list__badge--fixed { background: var(--color-neutral-100); color: var(--color-text-muted); }
 .cat-list__del {
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--color-border);

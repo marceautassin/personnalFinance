@@ -14,13 +14,12 @@ const FR_MESSAGES: Record<ApiErrorCodeValue, string> = {
   [ApiErrorCode.LlmExtractionFailed]: 'L\'analyse automatique du relevé a échoué. Réessaie ou ajoute les transactions manuellement.',
   [ApiErrorCode.LlmUnavailable]: 'Le service de catégorisation est indisponible. Réessaie dans quelques instants.',
   [ApiErrorCode.ReconciliationFailed]: 'Les transactions extraites ne correspondent pas au solde du relevé. Une vérification manuelle est nécessaire.',
-  [ApiErrorCode.CategoryInUse]: 'Catégorie encore utilisée — supprime les références d\'abord.',
-  [ApiErrorCode.CategoryProtected]: 'Catégorie système, ne peut pas être supprimée.',
-  [ApiErrorCode.CategoryLabelTaken]: 'Ce libellé est déjà utilisé par une autre catégorie.',
-  [ApiErrorCode.CategoriesNotSeeded]: 'Aucune catégorie en base : relance l\'application pour rejouer l\'initialisation.',
-  [ApiErrorCode.SingletonMissing]: 'Données de configuration absentes en base. Relance l\'application pour rejouer l\'initialisation.',
-  [ApiErrorCode.UnemploymentEndDateRequired]: 'Renseigne la date de fin de droits : sans elle, le montant d\'ARE serait ignoré par le forecast.',
-  [ApiErrorCode.UnemploymentEndDatePast]: 'La date de fin de droits est déjà passée : l\'ARE ne serait comptée sur aucun mois du forecast.',
+  [ApiErrorCode.CategoryInUse]: 'Poste encore utilisé par des transactions — reclasse-les d\'abord.',
+  [ApiErrorCode.CategoryProtected]: 'Élément système, il ne peut pas être supprimé.',
+  [ApiErrorCode.CategoryLabelTaken]: 'Ce libellé est déjà utilisé dans cette rubrique.',
+  [ApiErrorCode.CategoriesNotSeeded]: 'Référentiel absent en base : relance l\'application pour rejouer l\'initialisation.',
+  [ApiErrorCode.GroupNotEmpty]: 'Rubrique encore peuplée — supprime ou déplace ses postes d\'abord.',
+  [ApiErrorCode.GroupNotFound]: 'Rubrique introuvable.',
 }
 
 const FALLBACK_MESSAGE = 'Une erreur est survenue. Réessaie ou recharge la page.'
@@ -42,24 +41,23 @@ function plural(count: number, singular: string, pluralForm: string): string {
 }
 
 /**
- * Message détaillé du 409 `category_in_use` à partir des compteurs renvoyés par l'API
- * (story 5.6 AC#14 : « Catégorie utilisée par X transactions, Y charges fixes »). Le mapping
- * statique ne mentionnait ni les chiffres, ni les ajustements mensuels — l'utilisateur
- * cherchait des transactions inexistantes (revue 2026-08-04).
+ * Message détaillé du 409 `category_in_use` à partir du compteur renvoyé par l'API. Le mapping
+ * statique ne mentionnait aucun chiffre — l'utilisateur ne savait pas combien de transactions
+ * reclasser, ni si le blocage venait d'une ou de deux cents lignes (revue 2026-08-04).
  */
 function categoryInUseMessage(data: unknown): string | null {
   if (!data || typeof data !== 'object') return null
-  const d = data as Record<string, unknown>
-  const parts = [
-    [d.transactionCount, 'transaction', 'transactions'],
-    [d.fixedChargeCount, 'charge fixe', 'charges fixes'],
-    [d.monthlyOverrideCount, 'ajustement mensuel', 'ajustements mensuels'],
-  ] as const
-  const listed = parts
-    .filter(([n]) => typeof n === 'number' && n > 0)
-    .map(([n, s, p]) => plural(n as number, s, p))
-  if (listed.length === 0) return null
-  return `Catégorie utilisée par ${listed.join(', ')} — supprime les références d'abord.`
+  const count = (data as Record<string, unknown>).transactionCount
+  if (typeof count !== 'number' || count === 0) return null
+  return `Poste utilisé par ${plural(count, 'transaction', 'transactions')} — reclasse-les d'abord.`
+}
+
+/** Message détaillé du 409 `group_not_empty` : combien de postes bloquent la suppression. */
+function groupNotEmptyMessage(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null
+  const count = (data as Record<string, unknown>).itemCount
+  if (typeof count !== 'number' || count === 0) return null
+  return `Rubrique contenant ${plural(count, 'poste', 'postes')} — supprime-les ou déplace-les d'abord.`
 }
 
 /**
@@ -82,6 +80,10 @@ export function useApiError() {
 
     if (code === ApiErrorCode.CategoryInUse) {
       const detailed = categoryInUseMessage(e.data?.data)
+      if (detailed) return detailed
+    }
+    if (code === ApiErrorCode.GroupNotEmpty) {
+      const detailed = groupNotEmptyMessage(e.data?.data)
       if (detailed) return detailed
     }
 

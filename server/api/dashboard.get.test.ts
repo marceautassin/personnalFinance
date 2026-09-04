@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { H3Event } from 'h3'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-dashboard-api-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
@@ -25,46 +26,8 @@ beforeAll(async () => {
 
   // @ts-expect-error -- accès interne drizzle pour DDL de test
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE bank_statements (
-      hash_sha256 TEXT PRIMARY KEY,
-      period_start TEXT NOT NULL,
-      period_end TEXT NOT NULL,
-      opening_balance_cents INTEGER NOT NULL,
-      closing_balance_cents INTEGER NOT NULL,
-      reliability TEXT NOT NULL DEFAULT 'reliable',
-      ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      statement_hash TEXT NOT NULL REFERENCES bank_statements(hash_sha256) ON DELETE CASCADE,
-      transaction_date TEXT NOT NULL,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      is_manual INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE INDEX transactions_period_idx ON transactions(transaction_date);
-    CREATE INDEX transactions_statement_idx ON transactions(statement_hash);
-  `)
-
-  dbMod.db.insert(schema.categoryDefinitions).values([
-    { code: 'courses', label: 'Courses', isVariable: true },
-    { code: 'restaurants', label: 'Restaurants', isVariable: true },
-    { code: 'transports', label: 'Transports', isVariable: true },
-    { code: 'loisirs', label: 'Loisirs', isVariable: true },
-    { code: 'shopping', label: 'Shopping', isVariable: true },
-    { code: 'salaire', label: 'Salaire', isVariable: false },
-    { code: 'logement', label: 'Logement', isVariable: false },
-  ]).run()
+  sqlite.exec(TEST_SCHEMA_DDL)
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 
   handler = (await import('./dashboard.get')).default as Handler
 })
@@ -108,7 +71,7 @@ interface Resp {
   balanceCents: number
   totals: { incomeCents: number, expenseCents: number, byCategory: Record<string, number> }
   deltasVsPriorMonths: Array<{
-    categoryCode: string
+    categoryItemCode: string
     label: string
     currentCents: number
     priorAvgCents: number
@@ -132,24 +95,24 @@ describe('GET /api/dashboard', () => {
 
     // Février : courses -200 €, restaurants -100 €, transports -50 €, salaire +3000 €
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: H_FEB, transactionDate: '2026-02-10', label: 'Carrefour', amountCents: -20_000, categoryCode: 'courses' },
-      { statementHash: H_FEB, transactionDate: '2026-02-15', label: 'Resto', amountCents: -10_000, categoryCode: 'restaurants' },
-      { statementHash: H_FEB, transactionDate: '2026-02-20', label: 'Métro', amountCents: -5_000, categoryCode: 'transports' },
-      { statementHash: H_FEB, transactionDate: '2026-02-28', label: 'Paye', amountCents: 300_000, categoryCode: 'salaire' },
+      { statementHash: H_FEB, transactionDate: '2026-02-10', label: 'Carrefour', amountCents: -20_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: H_FEB, transactionDate: '2026-02-15', label: 'Resto', amountCents: -10_000, categoryItemCode: 'alimentation-restaurant' },
+      { statementHash: H_FEB, transactionDate: '2026-02-20', label: 'Métro', amountCents: -5_000, categoryItemCode: 'transport-carburant' },
+      { statementHash: H_FEB, transactionDate: '2026-02-28', label: 'Paye', amountCents: 300_000, categoryItemCode: 'revenus-salaire' },
     ]).run()
     // Mars : courses -200 €, restaurants -100 €, transports -50 €, salaire +3000 €
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: H_MAR, transactionDate: '2026-03-10', label: 'Carrefour', amountCents: -20_000, categoryCode: 'courses' },
-      { statementHash: H_MAR, transactionDate: '2026-03-15', label: 'Resto', amountCents: -10_000, categoryCode: 'restaurants' },
-      { statementHash: H_MAR, transactionDate: '2026-03-20', label: 'Métro', amountCents: -5_000, categoryCode: 'transports' },
-      { statementHash: H_MAR, transactionDate: '2026-03-31', label: 'Paye', amountCents: 300_000, categoryCode: 'salaire' },
+      { statementHash: H_MAR, transactionDate: '2026-03-10', label: 'Carrefour', amountCents: -20_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: H_MAR, transactionDate: '2026-03-15', label: 'Resto', amountCents: -10_000, categoryItemCode: 'alimentation-restaurant' },
+      { statementHash: H_MAR, transactionDate: '2026-03-20', label: 'Métro', amountCents: -5_000, categoryItemCode: 'transport-carburant' },
+      { statementHash: H_MAR, transactionDate: '2026-03-31', label: 'Paye', amountCents: 300_000, categoryItemCode: 'revenus-salaire' },
     ]).run()
     // Avril : courses -480 € (hausse marquée), restaurants -250 € (hausse), transports -50 € (idem), salaire +3000 €
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: H_APR, transactionDate: '2026-04-05', label: 'Carrefour', amountCents: -48_000, categoryCode: 'courses' },
-      { statementHash: H_APR, transactionDate: '2026-04-10', label: 'Resto', amountCents: -25_000, categoryCode: 'restaurants' },
-      { statementHash: H_APR, transactionDate: '2026-04-15', label: 'Métro', amountCents: -5_000, categoryCode: 'transports' },
-      { statementHash: H_APR, transactionDate: '2026-04-30', label: 'Paye', amountCents: 300_000, categoryCode: 'salaire' },
+      { statementHash: H_APR, transactionDate: '2026-04-05', label: 'Carrefour', amountCents: -48_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: H_APR, transactionDate: '2026-04-10', label: 'Resto', amountCents: -25_000, categoryItemCode: 'alimentation-restaurant' },
+      { statementHash: H_APR, transactionDate: '2026-04-15', label: 'Métro', amountCents: -5_000, categoryItemCode: 'transport-carburant' },
+      { statementHash: H_APR, transactionDate: '2026-04-30', label: 'Paye', amountCents: 300_000, categoryItemCode: 'revenus-salaire' },
     ]).run()
 
     const r = (await handler(eventWithQuery('month=2026-04'))) as Resp
@@ -158,18 +121,18 @@ describe('GET /api/dashboard', () => {
     expect(r.balanceCents).toBe(500_000)
     expect(r.totals.incomeCents).toBe(300_000)
     expect(r.totals.expenseCents).toBe(-78_000) // -480 - 250 - 50
-    expect(r.totals.byCategory.courses).toBe(-48_000)
-    expect(r.totals.byCategory.restaurants).toBe(-25_000)
-    expect(r.totals.byCategory.salaire).toBe(300_000)
+    expect(r.totals.byCategory['alimentation-courses']).toBe(-48_000)
+    expect(r.totals.byCategory['alimentation-restaurant']).toBe(-25_000)
+    expect(r.totals.byCategory['revenus-salaire']).toBe(300_000)
 
     // Deltas attendus : courses +28 000c (62%) prime, restaurants +15 000c (150%), transports +0 → exclu (< seuil).
     expect(r.deltasVsPriorMonths.length).toBeGreaterThanOrEqual(2)
-    const codes = r.deltasVsPriorMonths.map(d => d.categoryCode)
-    expect(codes).toContain('courses')
-    expect(codes).toContain('restaurants')
-    expect(codes).not.toContain('transports') // diff = 0 → exclu
+    const codes = r.deltasVsPriorMonths.map(d => d.categoryItemCode)
+    expect(codes).toContain('alimentation-courses')
+    expect(codes).toContain('alimentation-restaurant')
+    expect(codes).not.toContain('transport-carburant') // diff = 0 → exclu
     // Top par |diff| → courses (-28 000) avant restaurants (-15 000)
-    expect(r.deltasVsPriorMonths[0]!.categoryCode).toBe('courses')
+    expect(r.deltasVsPriorMonths[0]!.categoryItemCode).toBe('alimentation-courses')
     expect(r.deltasVsPriorMonths[0]!.diffCents).toBe(-28_000)
     expect(r.deltasVsPriorMonths[0]!.priorAvgCents).toBe(-20_000)
     expect(r.deltasVsPriorMonths[0]!.pct).toBeCloseTo(1.4, 1)
@@ -209,17 +172,17 @@ describe('GET /api/dashboard', () => {
     seedStatement({ hash: H_APR, periodStart: '2026-04-01', periodEnd: '2026-04-30', closing: 0 })
     // Mars : aucune transaction. Avril : une dépense voyages... pardon, une dépense `loisirs` (priorAvg = 0).
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: H_APR, transactionDate: '2026-04-15', label: 'Cinéma', amountCents: -35_000, categoryCode: 'loisirs' },
+      { statementHash: H_APR, transactionDate: '2026-04-15', label: 'Cinéma', amountCents: -35_000, categoryItemCode: 'loisirs-sport' },
     ]).run()
 
     const r = (await handler(eventWithQuery('month=2026-04'))) as Resp
     expect(r.deltasVsPriorMonths).toHaveLength(1)
     const d = r.deltasVsPriorMonths[0]!
-    expect(d.categoryCode).toBe('loisirs')
+    expect(d.categoryItemCode).toBe('loisirs-sport')
     expect(d.priorAvgCents).toBe(0)
     expect(d.pct).toBeNull()
     expect(r.phrases[0]).toMatch(/nouvelle dépense/i)
-    expect(r.phrases[0]).toContain('Loisirs')
+    expect(r.phrases[0]).toContain('Sport')
   })
 
   // Cas (e) — deltas tous sous le seuil → array vide.
@@ -228,8 +191,8 @@ describe('GET /api/dashboard', () => {
     seedStatement({ hash: H_APR, periodStart: '2026-04-01', periodEnd: '2026-04-30', closing: 0 })
     // Diff de 5 € (500 cents) sur courses → sous le seuil 10 €.
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: H_MAR, transactionDate: '2026-03-10', label: 'A', amountCents: -10_000, categoryCode: 'courses' },
-      { statementHash: H_APR, transactionDate: '2026-04-10', label: 'A', amountCents: -10_500, categoryCode: 'courses' },
+      { statementHash: H_MAR, transactionDate: '2026-03-10', label: 'A', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: H_APR, transactionDate: '2026-04-10', label: 'A', amountCents: -10_500, categoryItemCode: 'alimentation-courses' },
     ]).run()
 
     const r = (await handler(eventWithQuery('month=2026-04'))) as Resp
@@ -252,12 +215,12 @@ describe('GET /api/dashboard', () => {
     seedStatement({ hash: H_APR, periodStart: '2026-04-01', periodEnd: '2026-04-30', closing: 0 })
     // Crée 2 deltas significatifs sur courses + restaurants pour avril.
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: H_FEB, transactionDate: '2026-02-10', label: 'A', amountCents: -10_000, categoryCode: 'courses' },
-      { statementHash: H_FEB, transactionDate: '2026-02-12', label: 'B', amountCents: -10_000, categoryCode: 'restaurants' },
-      { statementHash: H_MAR, transactionDate: '2026-03-10', label: 'A', amountCents: -10_000, categoryCode: 'courses' },
-      { statementHash: H_MAR, transactionDate: '2026-03-12', label: 'B', amountCents: -10_000, categoryCode: 'restaurants' },
-      { statementHash: H_APR, transactionDate: '2026-04-10', label: 'A', amountCents: -50_000, categoryCode: 'courses' },
-      { statementHash: H_APR, transactionDate: '2026-04-12', label: 'B', amountCents: -30_000, categoryCode: 'restaurants' },
+      { statementHash: H_FEB, transactionDate: '2026-02-10', label: 'A', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: H_FEB, transactionDate: '2026-02-12', label: 'B', amountCents: -10_000, categoryItemCode: 'alimentation-restaurant' },
+      { statementHash: H_MAR, transactionDate: '2026-03-10', label: 'A', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: H_MAR, transactionDate: '2026-03-12', label: 'B', amountCents: -10_000, categoryItemCode: 'alimentation-restaurant' },
+      { statementHash: H_APR, transactionDate: '2026-04-10', label: 'A', amountCents: -50_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: H_APR, transactionDate: '2026-04-12', label: 'B', amountCents: -30_000, categoryItemCode: 'alimentation-restaurant' },
     ]).run()
 
     const r = (await handler(eventWithQuery('month=2026-04'))) as Resp
@@ -275,14 +238,14 @@ describe('GET /api/dashboard', () => {
     // Février (non-vide) : courses -300 € + restaurants -100 €. Mars (non-vide) : restaurants -100 €
     // seulement (PAS de courses). Avril : courses -100 €.
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: H_FEB, transactionDate: '2026-02-10', label: 'A', amountCents: -30_000, categoryCode: 'courses' },
-      { statementHash: H_FEB, transactionDate: '2026-02-12', label: 'B', amountCents: -10_000, categoryCode: 'restaurants' },
-      { statementHash: H_MAR, transactionDate: '2026-03-12', label: 'B', amountCents: -10_000, categoryCode: 'restaurants' },
-      { statementHash: H_APR, transactionDate: '2026-04-10', label: 'A', amountCents: -10_000, categoryCode: 'courses' },
+      { statementHash: H_FEB, transactionDate: '2026-02-10', label: 'A', amountCents: -30_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: H_FEB, transactionDate: '2026-02-12', label: 'B', amountCents: -10_000, categoryItemCode: 'alimentation-restaurant' },
+      { statementHash: H_MAR, transactionDate: '2026-03-12', label: 'B', amountCents: -10_000, categoryItemCode: 'alimentation-restaurant' },
+      { statementHash: H_APR, transactionDate: '2026-04-10', label: 'A', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
     ]).run()
 
     const r = (await handler(eventWithQuery('month=2026-04'))) as Resp
-    const courses = r.deltasVsPriorMonths.find(x => x.categoryCode === 'courses')!
+    const courses = r.deltasVsPriorMonths.find(x => x.categoryItemCode === 'alimentation-courses')!
     // courses n'existe qu'en février → priorAvg = -300 € (÷1), PAS -150 € (÷2 mois non-vides).
     expect(courses.priorAvgCents).toBe(-30_000)
     expect(courses.diffCents).toBe(20_000) // -10_000 - (-30_000)
@@ -293,13 +256,13 @@ describe('GET /api/dashboard', () => {
     seedStatement({ hash: H_MAR, periodStart: '2026-03-01', periodEnd: '2026-03-31', closing: 0 })
     seedStatement({ hash: H_APR, periodStart: '2026-04-01', periodEnd: '2026-04-30', closing: 0 })
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: H_MAR, transactionDate: '2026-03-10', label: 'A', amountCents: -10_000, categoryCode: 'courses' },
-      { statementHash: H_APR, transactionDate: '2026-04-10', label: 'A', amountCents: -50_000, categoryCode: 'courses' },
+      { statementHash: H_MAR, transactionDate: '2026-03-10', label: 'A', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: H_APR, transactionDate: '2026-04-10', label: 'A', amountCents: -50_000, categoryItemCode: 'alimentation-courses' },
     ]).run()
 
     const r = (await handler(eventWithQuery('month=2026-04'))) as Resp
     expect(r.deltasVsPriorMonths.length).toBeGreaterThanOrEqual(1)
-    const d = r.deltasVsPriorMonths.find(x => x.categoryCode === 'courses')!
+    const d = r.deltasVsPriorMonths.find(x => x.categoryItemCode === 'alimentation-courses')!
     // Seul mars a des données → priorAvg = -10_000 (moyenne sur 1 seul mois actif).
     expect(d.priorAvgCents).toBe(-10_000)
     expect(d.diffCents).toBe(-40_000) // -50_000 - (-10_000)

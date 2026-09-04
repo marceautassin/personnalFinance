@@ -18,8 +18,8 @@ import {
   BANK_STATEMENT_SYSTEM_PROMPT,
   BANK_STATEMENT_PROMPT_VERSION,
   buildBankStatementUserMessage,
+  type LlmCategoryItem,
 } from '~~/shared/constants/bank-statement-llm-prompt'
-import type { DefaultCategory } from '~~/shared/constants/default-categories'
 
 /**
  * Erreurs domaine spécifiques à ce service.
@@ -63,7 +63,7 @@ export function _resetClientForTesting(): void {
 }
 
 function buildOutputSchema(
-  availableCategories: ReadonlyArray<DefaultCategory>,
+  availableCategories: ReadonlyArray<LlmCategoryItem>,
 ): Anthropic.Messages.Tool.InputSchema {
   return {
     type: 'object',
@@ -88,13 +88,13 @@ function buildOutputSchema(
               type: 'integer',
               description: 'Montant en centimes signé (négatif pour sorties)',
             },
-            categoryCode: {
+            categoryItemCode: {
               type: 'string',
-              description: 'Code de catégorie strict — DOIT être l\'une des valeurs listées',
+              description: 'Code de poste strict — DOIT être l\'une des valeurs listées',
               enum: availableCategories.map(c => c.code),
             },
           },
-          required: ['transactionDate', 'label', 'amountCents', 'categoryCode'],
+          required: ['transactionDate', 'label', 'amountCents', 'categoryItemCode'],
           additionalProperties: false,
         },
       },
@@ -112,14 +112,14 @@ const ResponseSchema = z.object({
  * Catégorise les transactions d'un relevé via Claude API.
  *
  * @param rawText  Texte brut extrait du PDF (Story 2.2)
- * @param availableCategories Catégories autorisées (depuis category_definitions, Story 1.4)
+ * @param availableCategories Postes autorisés (depuis `category_items`, D17)
  * @returns Liste de transactions structurées et validées
  * @throws LlmUnavailableError si l'API est indisponible (réseau / 5xx / timeout / 429 / auth)
  * @throws LlmExtractionError si la réponse est invalide, tronquée, ou contient une catégorie inconnue
  */
 export async function categorizeStatement(
   rawText: string,
-  availableCategories: ReadonlyArray<DefaultCategory>,
+  availableCategories: ReadonlyArray<LlmCategoryItem>,
 ): Promise<ExtractedTransaction[]> {
   if (!rawText || rawText.trim().length === 0) {
     throw new LlmExtractionError('rawText is empty')
@@ -197,9 +197,9 @@ export async function categorizeStatement(
 
   const validCodes = new Set(availableCategories.map(c => c.code))
   for (const tx of validated.data.transactions) {
-    if (!validCodes.has(tx.categoryCode)) {
+    if (!validCodes.has(tx.categoryItemCode)) {
       throw new LlmExtractionError(
-        `Claude returned unknown categoryCode '${tx.categoryCode}' for transaction '${tx.label}'`,
+        `LLM returned unknown categoryItemCode '${tx.categoryItemCode}' for transaction '${tx.label}'`,
       )
     }
   }

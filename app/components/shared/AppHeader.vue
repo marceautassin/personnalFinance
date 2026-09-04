@@ -4,7 +4,7 @@
       personnalFinance
     </h1>
     <p class="header__tagline">
-      Pilotage financier personnel
+      Analyse de dépenses personnelles
     </p>
   </header>
 </template>

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { H3Event } from 'h3'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-categories-api-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
@@ -16,9 +17,12 @@ type Handler = (event: H3Event) => Promise<unknown>
 let dbMod: DbModule
 let schema: SchemaModule
 let getHandler: Handler
-let postHandler: Handler
-let patchHandler: Handler
-let deleteHandler: Handler
+let groupPost: Handler
+let groupPatch: Handler
+let groupDelete: Handler
+let itemPost: Handler
+let itemPatch: Handler
+let itemDelete: Handler
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sqlite: any
 
@@ -28,34 +32,15 @@ beforeAll(async () => {
 
   // @ts-expect-error -- accès interne drizzle pour DDL de test
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE bank_statements (
-      hash_sha256 TEXT PRIMARY KEY,
-      period_start TEXT, period_end TEXT
-    );
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      statement_hash TEXT NOT NULL,
-      transaction_date TEXT NOT NULL,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      is_manual INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-  `)
+  sqlite.exec(TEST_SCHEMA_DDL)
 
   getHandler = (await import('./index.get')).default as Handler
-  postHandler = (await import('./index.post')).default as Handler
-  patchHandler = (await import('./[code].patch')).default as Handler
-  deleteHandler = (await import('./[code].delete')).default as Handler
+  groupPost = (await import('./groups/index.post')).default as Handler
+  groupPatch = (await import('./groups/[code].patch')).default as Handler
+  groupDelete = (await import('./groups/[code].delete')).default as Handler
+  itemPost = (await import('./items/index.post')).default as Handler
+  itemPatch = (await import('./items/[code].patch')).default as Handler
+  itemDelete = (await import('./items/[code].delete')).default as Handler
 })
 
 afterAll(() => {
@@ -67,12 +52,10 @@ afterAll(() => {
 
 beforeEach(() => {
   dbMod.db.delete(schema.transactions).run()
-  dbMod.db.delete(schema.categoryDefinitions).run()
-  dbMod.db.insert(schema.categoryDefinitions).values([
-    { code: 'courses', label: 'Courses', isVariable: true },
-    { code: 'divers', label: 'Divers', isVariable: true },
-    { code: 'logement', label: 'Logement', isVariable: false },
-  ]).run()
+  dbMod.db.delete(schema.bankStatements).run()
+  dbMod.db.delete(schema.categoryItems).run()
+  dbMod.db.delete(schema.categoryGroups).run()
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 })
 
 function makeEvent(opts: { method: string, body?: unknown, code?: string }): H3Event {
@@ -88,11 +71,17 @@ function makeEvent(opts: { method: string, body?: unknown, code?: string }): H3E
   } as unknown as H3Event
 }
 
-interface Cat { code: string, label: string, isVariable: boolean, referenceCount: number }
+interface Item { code: string, groupCode: string, label: string, nature: string, transactionCount: number }
+interface Group { code: string, label: string, position: number, items: Item[] }
 
-function seedTransaction(code: string) {
+function seedTransaction(itemCode: string) {
+  dbMod.db.insert(schema.bankStatements).values({
+    hashSha256: 'h', periodStart: '2026-01-01', periodEnd: '2026-01-31',
+    openingBalanceCents: 0, closingBalanceCents: -100,
+  }).onConflictDoNothing().run()
   dbMod.db.insert(schema.transactions).values({
-    statementHash: 'h', transactionDate: '2026-01-01', label: 'x', amountCents: -100, categoryCode: code,
+    statementHash: 'h', transactionDate: '2026-01-01', label: 'x',
+    amountCents: -100, categoryItemCode: itemCode,
   }).run()
 }
 
@@ -101,170 +90,279 @@ function statusOf(event: H3Event): number {
   return (event as unknown as { node: { res: { statusCode: number } } }).node.res.statusCode
 }
 
-describe('POST /api/categories', () => {
-  it('slugifies the label into a code, referenceCount 0', async () => {
-    const created = (await postHandler(makeEvent({ method: 'POST', body: { label: 'Carburant', isVariable: true } }))) as Cat
-    expect(created.code).toBe('carburant')
-    expect(created.label).toBe('Carburant')
-    expect(created.isVariable).toBe(true)
-    expect(created.referenceCount).toBe(0)
-  })
+async function expectError(promise: Promise<unknown>, code: string, status: number) {
+  await expect(promise).rejects.toMatchObject({ statusCode: status, statusMessage: code })
+}
 
-  // Deux libellés DISTINCTS qui slugifient vers le même code : c'est la seule collision de
-  // code encore atteignable depuis que le libellé est unique (décision de revue 2026-09-03).
-  // Reposter le même libellé, comme le faisait ce test avant, est désormais un 409.
-  it('suffixes -2 on code collision between two distinct labels', async () => {
-    const first = (await postHandler(makeEvent({ method: 'POST', body: { label: 'Café & Co', isVariable: true } }))) as Cat
-    expect(first.code).toBe('cafe-co')
-    const second = (await postHandler(makeEvent({ method: 'POST', body: { label: 'Cafe Co', isVariable: true } }))) as Cat
-    expect(second.code).toBe('cafe-co-2')
-    expect(second.label).toBe('Cafe Co')
-  })
-
-  it('rejects a duplicate label → 409 (case- and accent-insensitive)', async () => {
-    await postHandler(makeEvent({ method: 'POST', body: { label: 'Carburant', isVariable: true } }))
-    await expect(
-      postHandler(makeEvent({ method: 'POST', body: { label: '  cARbûrant ', isVariable: true } })),
-    ).rejects.toMatchObject({ statusCode: 409, statusMessage: ApiErrorCode.CategoryLabelTaken })
-  })
-
-  it('strips accents and special chars (Café & Co → cafe-co)', async () => {
-    const created = (await postHandler(makeEvent({ method: 'POST', body: { label: 'Café & Co', isVariable: true } }))) as Cat
-    expect(created.code).toBe('cafe-co')
-  })
-
-  it('rejects a label that slugifies to empty (!!!) → 422', async () => {
-    await expect(
-      postHandler(makeEvent({ method: 'POST', body: { label: '!!!', isVariable: true } })),
-    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
-  })
-
-  it('rejects unknown field (code provided) → 422 (strict)', async () => {
-    await expect(
-      postHandler(makeEvent({ method: 'POST', body: { label: 'X', isVariable: true, code: 'x' } })),
-    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
-  })
-
-  // Le contrat HTTP lui-même n'était asserté nulle part : seul le corps l'était (revue
-  // 2026-08-04). Un handler qui oublierait `setResponseStatus` passait au vert.
-  it('responds 201 Created', async () => {
-    const event = makeEvent({ method: 'POST', body: { label: 'Carburant', isVariable: true } })
-    await postHandler(event)
-    expect(statusOf(event)).toBe(201)
-  })
-})
+const tree = () => getHandler(makeEvent({ method: 'GET' })) as Promise<Group[]>
 
 describe('GET /api/categories', () => {
-  it('returns categories with correct referenceCount', async () => {
-    seedTransaction('courses')
-    seedTransaction('courses')
-    const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
-    const courses = list.find(c => c.code === 'courses')!
-    expect(courses.referenceCount).toBe(2)
-    expect(list.find(c => c.code === 'logement')!.referenceCount).toBe(0)
+  it('renvoie les rubriques avec leurs postes et le compteur de transactions', async () => {
+    seedTransaction('alimentation-courses')
+    const groups = await tree()
+
+    const alimentation = groups.find(g => g.code === 'alimentation')!
+    expect(alimentation.label).toBe('Alimentation')
+    expect(alimentation.items.map(i => i.code)).toEqual([
+      'alimentation-courses',
+      'alimentation-restaurant',
+    ])
+    expect(alimentation.items[0]!.transactionCount).toBe(1)
+    expect(alimentation.items[1]!.transactionCount).toBe(0)
   })
 
-  it('orders variables first then fixed, alpha inside each group', async () => {
-    // Fixture insérée DANS LE DÉSORDRE (≠ sortie attendue) pour exercer réellement le tri,
-    // avec 2 catégories par groupe pour vérifier l'ordre alpha intra-groupe.
-    dbMod.db.delete(schema.categoryDefinitions).run()
-    dbMod.db.insert(schema.categoryDefinitions).values([
-      { code: 'logement', label: 'Logement', isVariable: false },
-      { code: 'shopping', label: 'Shopping', isVariable: true },
-      { code: 'abonnements', label: 'Abonnements', isVariable: false },
-      { code: 'courses', label: 'Courses', isVariable: true },
-    ]).run()
-
-    const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
-    expect(list.map(c => c.code)).toEqual(['courses', 'shopping', 'abonnements', 'logement'])
+  it('porte la nature sur le poste, pas sur la rubrique', async () => {
+    const groups = await tree()
+    const natures = groups.flatMap(g => g.items.map(i => i.nature))
+    expect(new Set(natures)).toEqual(new Set(['expense', 'income', 'internal_transfer']))
+    expect(groups[0]).not.toHaveProperty('nature')
   })
 
-  it('sorts accented / lowercase labels with locale collation, not binary', async () => {
-    dbMod.db.delete(schema.categoryDefinitions).run()
-    dbMod.db.insert(schema.categoryDefinitions).values([
-      { code: 'zoo', label: 'Zoo', isVariable: true },
-      { code: 'ecole', label: 'École', isVariable: true },
-      { code: 'abonnement', label: 'abonnement', isVariable: true },
-    ]).run()
-
-    const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
-    // Collation binaire donnerait [Zoo, abonnement, École] (É=U+00C9 après 'z'); attendu alpha fr.
-    expect(list.map(c => c.code)).toEqual(['abonnement', 'ecole', 'zoo'])
-  })
-
-  it('returns an empty array when no categories exist', async () => {
-    dbMod.db.delete(schema.categoryDefinitions).run()
-    const list = (await getHandler(makeEvent({ method: 'GET' }))) as Cat[]
-    expect(list).toEqual([])
+  it('trie rubriques et postes par position', async () => {
+    const groups = await tree()
+    expect(groups.map(g => g.code)).toEqual([
+      'alimentation', 'transport', 'loisirs', 'abonnements', 'style', 'revenus', 'internes', 'divers',
+    ])
   })
 })
 
-describe('PATCH /api/categories/[code]', () => {
-  it('renames the label only', async () => {
-    const updated = (await patchHandler(makeEvent({ method: 'PATCH', code: 'courses', body: { label: 'Bouffe' } }))) as Cat
-    expect(updated.label).toBe('Bouffe')
-    expect(updated.code).toBe('courses')
-    expect(updated.isVariable).toBe(true)
+describe('POST /api/categories/groups', () => {
+  it('slugifie le libellé en code et crée la rubrique vide en dernière position', async () => {
+    const event = makeEvent({ method: 'POST', body: { label: 'Animaux' } })
+    const created = (await groupPost(event)) as Group
+    expect(created.code).toBe('animaux')
+    expect(created.items).toEqual([])
+    expect(created.position).toBe(8)
+    expect(statusOf(event)).toBe(201)
   })
 
-  it('rejects patch with code or isVariable → 422 (strict)', async () => {
-    await expect(
-      patchHandler(makeEvent({ method: 'PATCH', code: 'courses', body: { label: 'X', isVariable: false } })),
-    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
+  /**
+   * Le code de rubrique préfixe celui de ses postes : le laisser occuper les 32 caractères
+   * d'un code rendait la rubrique STÉRILE — toute création de poste y échouait en 422, et le
+   * code étant immuable, c'était sans retour (revue du 2026-09-05).
+   */
+  it('borne le code de rubrique pour laisser la place aux codes de poste', async () => {
+    const created = (await groupPost(makeEvent({
+      method: 'POST',
+      body: { label: 'Abonnements et prelevements divers' },
+    }))) as Group
+    expect(created.code.length).toBeLessThanOrEqual(16)
+
+    const item = (await itemPost(makeEvent({
+      method: 'POST',
+      body: { groupCode: created.code, label: 'Telephonie mobile', nature: 'expense' },
+    }))) as Item
+    expect(item.code.length).toBeLessThanOrEqual(32)
+    expect(item.code.startsWith(`${created.code}-`)).toBe(true)
+    expect(item.code.replace(`${created.code}-`, '').length).toBeGreaterThan(4)
   })
 
-  // Le 409 `category_label_taken` n'était couvert que sur le POST. Surtout, l'auto-exclusion
-  // `excludeCode` ne l'était pas : un `excludeCode` oublié ferait échouer tout rename
-  // idempotent et passerait au vert (revue 2026-09-04).
-  it('rejects a rename toward a label already taken → 409', async () => {
-    await expect(
-      patchHandler(makeEvent({ method: 'PATCH', code: 'courses', body: { label: 'Logement' } })),
-    ).rejects.toMatchObject({ statusCode: 409, statusMessage: ApiErrorCode.CategoryLabelTaken })
+  it('refuse un libellé déjà pris, à la casse et aux accents près', async () => {
+    await expectError(
+      groupPost(makeEvent({ method: 'POST', body: { label: '  aLIMENTATION ' } })),
+      ApiErrorCode.CategoryLabelTaken,
+      409,
+    )
   })
 
-  it('allows renaming a category to its own label (idempotent)', async () => {
-    const updated = (await patchHandler(makeEvent({ method: 'PATCH', code: 'courses', body: { label: 'Courses' } }))) as Cat
-    expect(updated.label).toBe('Courses')
-  })
-
-  it('allows a case-only rename of a category (self-exclusion)', async () => {
-    const updated = (await patchHandler(makeEvent({ method: 'PATCH', code: 'courses', body: { label: 'COURSES' } }))) as Cat
-    expect(updated.label).toBe('COURSES')
-  })
-
-  // Seul `isVariable` était testé : l'immuabilité du `code` — celle qui protège les FK
-  // transactions/charges/overrides — n'était assertée nulle part (revue 2026-08-04).
-  it('rejects patch trying to change the code → 422 (strict)', async () => {
-    await expect(
-      patchHandler(makeEvent({ method: 'PATCH', code: 'courses', body: { label: 'X', code: 'autre' } })),
-    ).rejects.toMatchObject({ statusCode: 422, statusMessage: ApiErrorCode.ValidationFailed })
-    const rows = dbMod.db.select().from(schema.categoryDefinitions).all()
-    expect(rows.find(r => r.code === 'courses')).toBeDefined()
-    expect(rows.find(r => r.code === 'autre')).toBeUndefined()
-  })
-
-  it('returns 404 for unknown category', async () => {
-    await expect(
-      patchHandler(makeEvent({ method: 'PATCH', code: 'nope', body: { label: 'X' } })),
-    ).rejects.toMatchObject({ statusCode: 404 })
+  it('refuse un libellé qui ne produit aucun code', async () => {
+    await expectError(
+      groupPost(makeEvent({ method: 'POST', body: { label: '!!!' } })),
+      ApiErrorCode.ValidationFailed,
+      422,
+    )
   })
 })
 
-describe('DELETE /api/categories/[code]', () => {
-  it('deletes an unreferenced category → 204 with no body', async () => {
-    const event = makeEvent({ method: 'DELETE', code: 'logement' })
-    const result = await deleteHandler(event)
-    const rows = dbMod.db.select().from(schema.categoryDefinitions).all()
-    expect(rows.find(r => r.code === 'logement')).toBeUndefined()
-    // Le 204 n'était pas asserté malgré le nom du test (revue 2026-08-04).
+describe('PATCH /api/categories/groups/[code]', () => {
+  it('renomme sans toucher au code ni aux postes rattachés', async () => {
+    await groupPatch(makeEvent({ method: 'PATCH', code: 'alimentation', body: { label: 'Nourriture' } }))
+    const groups = await tree()
+    const g = groups.find(x => x.code === 'alimentation')!
+    expect(g.label).toBe('Nourriture')
+    expect(g.items).toHaveLength(2)
+  })
+
+  it('reste idempotent quand on renomme vers son propre libellé', async () => {
+    await expect(
+      groupPatch(makeEvent({ method: 'PATCH', code: 'alimentation', body: { label: 'Alimentation' } })),
+    ).resolves.toMatchObject({ label: 'Alimentation' })
+  })
+
+  it('404 sur une rubrique inconnue', async () => {
+    await expectError(
+      groupPatch(makeEvent({ method: 'PATCH', code: 'inconnue', body: { label: 'X' } })),
+      ApiErrorCode.GroupNotFound,
+      404,
+    )
+  })
+})
+
+describe('DELETE /api/categories/groups/[code]', () => {
+  it('supprime une rubrique vide', async () => {
+    await groupPost(makeEvent({ method: 'POST', body: { label: 'Animaux' } }))
+    const event = makeEvent({ method: 'DELETE', code: 'animaux' })
+    await groupDelete(event)
     expect(statusOf(event)).toBe(204)
-    expect(result).toBeNull()
+    expect((await tree()).map(g => g.code)).not.toContain('animaux')
   })
 
-  it('rejects deletion of a referenced category → 409 category_in_use + counts', async () => {
-    seedTransaction('courses')
+  it('refuse une rubrique peuplée, en indiquant le nombre de postes', async () => {
     await expect(
-      deleteHandler(makeEvent({ method: 'DELETE', code: 'courses' })),
+      groupDelete(makeEvent({ method: 'DELETE', code: 'alimentation' })),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: ApiErrorCode.GroupNotEmpty,
+      data: { itemCount: 2 },
+    })
+  })
+
+  it('refuse une rubrique système même vide', async () => {
+    dbMod.db.delete(schema.categoryItems).run()
+    await expectError(
+      groupDelete(makeEvent({ method: 'DELETE', code: 'internes' })),
+      ApiErrorCode.CategoryProtected,
+      409,
+    )
+  })
+})
+
+describe('POST /api/categories/items', () => {
+  it('préfixe le code par la rubrique et démarre à 0 transaction', async () => {
+    const event = makeEvent({
+      method: 'POST',
+      body: { groupCode: 'alimentation', label: 'Boulangerie', nature: 'expense' },
+    })
+    const created = (await itemPost(event)) as Item
+    expect(created.code).toBe('alimentation-boulangerie')
+    expect(created.transactionCount).toBe(0)
+    expect(statusOf(event)).toBe(201)
+  })
+
+  it('accepte le MÊME libellé sous une autre rubrique (FR19)', async () => {
+    const created = (await itemPost(makeEvent({
+      method: 'POST',
+      body: { groupCode: 'divers', label: 'Restaurant', nature: 'expense' },
+    }))) as Item
+    expect(created.code).toBe('divers-restaurant')
+
+    const groups = await tree()
+    const labels = groups.flatMap(g => g.items.filter(i => i.label === 'Restaurant').map(i => i.code))
+    expect(labels).toEqual(['alimentation-restaurant', 'divers-restaurant'])
+  })
+
+  it('refuse un doublon de libellé DANS la même rubrique', async () => {
+    await expectError(
+      itemPost(makeEvent({
+        method: 'POST',
+        body: { groupCode: 'alimentation', label: 'restaurant', nature: 'expense' },
+      })),
+      ApiErrorCode.CategoryLabelTaken,
+      409,
+    )
+  })
+
+  it('404 sur une rubrique inconnue', async () => {
+    await expectError(
+      itemPost(makeEvent({
+        method: 'POST',
+        body: { groupCode: 'fantome', label: 'X', nature: 'expense' },
+      })),
+      ApiErrorCode.GroupNotFound,
+      404,
+    )
+  })
+
+  it('exige une nature (FR17)', async () => {
+    await expectError(
+      itemPost(makeEvent({ method: 'POST', body: { groupCode: 'alimentation', label: 'X' } })),
+      ApiErrorCode.ValidationFailed,
+      422,
+    )
+  })
+
+  it('rejette une nature hors énumération', async () => {
+    await expectError(
+      itemPost(makeEvent({
+        method: 'POST',
+        body: { groupCode: 'alimentation', label: 'X', nature: 'depense' },
+      })),
+      ApiErrorCode.ValidationFailed,
+      422,
+    )
+  })
+
+  it('borne le code complet à 32 caractères, suffixe de collision compris', async () => {
+    const group = (await groupPost(makeEvent({
+      method: 'POST', body: { label: 'Frais professionnels' },
+    }))) as Group
+    const body = {
+      groupCode: group.code,
+      label: 'Telephonie mobile et internet',
+      nature: 'expense',
+    }
+    const first = (await itemPost(makeEvent({ method: 'POST', body }))) as Item
+    expect(first.code.length).toBeLessThanOrEqual(32)
+
+    // Second poste au même libellé sous une AUTRE rubrique, puis collision réelle dans
+    // celle-ci via un libellé qui slugifie pareil : le suffixe doit tenir dans la borne.
+    const second = (await itemPost(makeEvent({
+      method: 'POST',
+      body: { ...body, label: 'Telephonie mobile et internet !' },
+    }))) as Item
+    expect(second.code.length).toBeLessThanOrEqual(32)
+    expect(second.code).not.toBe(first.code)
+    expect(second.code.startsWith(`${group.code}-`)).toBe(true)
+  })
+})
+
+describe('PATCH /api/categories/items/[code]', () => {
+  it('change la nature du poste, ce qui reclasse toutes ses transactions d\'un coup', async () => {
+    seedTransaction('alimentation-courses')
+    const updated = (await itemPatch(makeEvent({
+      method: 'PATCH', code: 'alimentation-courses', body: { nature: 'internal_transfer' },
+    }))) as Item
+    expect(updated.nature).toBe('internal_transfer')
+    expect(updated.transactionCount).toBe(1)
+  })
+
+  it('renomme sans changer la nature', async () => {
+    const updated = (await itemPatch(makeEvent({
+      method: 'PATCH', code: 'alimentation-courses', body: { label: 'Supermarché' },
+    }))) as Item
+    expect(updated).toMatchObject({ label: 'Supermarché', nature: 'expense' })
+  })
+
+  it('refuse un patch vide', async () => {
+    await expectError(
+      itemPatch(makeEvent({ method: 'PATCH', code: 'alimentation-courses', body: {} })),
+      ApiErrorCode.ValidationFailed,
+      422,
+    )
+  })
+
+  it('refuse un libellé déjà pris dans la même rubrique', async () => {
+    await expectError(
+      itemPatch(makeEvent({
+        method: 'PATCH', code: 'alimentation-courses', body: { label: 'Restaurant' },
+      })),
+      ApiErrorCode.CategoryLabelTaken,
+      409,
+    )
+  })
+})
+
+describe('DELETE /api/categories/items/[code]', () => {
+  it('supprime un poste non référencé', async () => {
+    const event = makeEvent({ method: 'DELETE', code: 'alimentation-restaurant' })
+    await itemDelete(event)
+    expect(statusOf(event)).toBe(204)
+  })
+
+  it('refuse un poste référencé, en indiquant le nombre de transactions', async () => {
+    seedTransaction('alimentation-courses')
+    await expect(
+      itemDelete(makeEvent({ method: 'DELETE', code: 'alimentation-courses' })),
     ).rejects.toMatchObject({
       statusCode: 409,
       statusMessage: ApiErrorCode.CategoryInUse,
@@ -272,19 +370,19 @@ describe('DELETE /api/categories/[code]', () => {
     })
   })
 
-  it('rejects deletion of the protected divers category → 409 category_protected', async () => {
-    await expect(
-      deleteHandler(makeEvent({ method: 'DELETE', code: 'divers' })),
-    ).rejects.toMatchObject({
-      statusCode: 409,
-      statusMessage: ApiErrorCode.CategoryProtected,
-      data: { code: 'divers', reason: 'used_as_fallback' },
-    })
+  it('refuse le poste de repli, même sans transaction', async () => {
+    await expectError(
+      itemDelete(makeEvent({ method: 'DELETE', code: 'divers-non-categorise' })),
+      ApiErrorCode.CategoryProtected,
+      409,
+    )
   })
 
-  it('returns 404 for unknown category', async () => {
-    await expect(
-      deleteHandler(makeEvent({ method: 'DELETE', code: 'nope' })),
-    ).rejects.toMatchObject({ statusCode: 404 })
+  it('la FK ON DELETE RESTRICT bloque aussi une suppression directe en base', () => {
+    seedTransaction('alimentation-courses')
+    sqlite.exec('PRAGMA foreign_keys = ON')
+    expect(() =>
+      sqlite.exec('DELETE FROM category_items WHERE code = \'alimentation-courses\''),
+    ).toThrow(/FOREIGN KEY/i)
   })
 })

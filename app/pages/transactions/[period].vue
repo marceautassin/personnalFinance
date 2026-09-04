@@ -30,9 +30,9 @@ function navigate(delta: number) {
   router.push(`/transactions/${newPeriod}`)
 }
 
-async function onCategoryChange(transactionId: number, categoryCode: string) {
+async function onCategoryChange(transactionId: number, categoryItemCode: string) {
   mutationError.value = null
-  const outcome = await mutateCategory(transactionId, categoryCode)
+  const outcome = await mutateCategory(transactionId, categoryItemCode)
   if (outcome.error) mutationError.value = outcome.error
 }
 </script>

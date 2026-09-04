@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { transactions } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
-import { assertCategoryExists } from '~~/server/utils/category-fk'
+import { assertCategoryItemExists } from '~~/server/utils/category-fk'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { TransactionPatchSchema } from '~~/shared/schemas/transaction.schema'
@@ -26,13 +26,13 @@ export default defineEventHandler(async (event) => {
     throw notFound(ApiErrorCode.NotFound, { resource: 'transaction', id })
   }
 
-  if (patch.categoryCode !== undefined) await assertCategoryExists(patch.categoryCode)
+  if (patch.categoryItemCode !== undefined) await assertCategoryItemExists(patch.categoryItemCode)
   const update: Partial<typeof transactions.$inferInsert> = {}
   // `isManual` signifie « catégorie saisie ou CORRIGÉE à la main ». Rattacher une transaction à
   // une dette n'est pas une correction de catégorisation : le flag n'est plus posé que lorsque
   // le patch touche effectivement la catégorie (story 6.8, revue du 2026-09-04).
-  if (patch.categoryCode !== undefined) {
-    update.categoryCode = patch.categoryCode
+  if (patch.categoryItemCode !== undefined) {
+    update.categoryItemCode = patch.categoryItemCode
     update.isManual = true
   }
 
@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
       transactionDate: transactions.transactionDate,
       label: transactions.label,
       amountCents: transactions.amountCents,
-      categoryCode: transactions.categoryCode,
+      categoryItemCode: transactions.categoryItemCode,
       isManual: transactions.isManual,
     })
     .from(transactions)

@@ -20,16 +20,15 @@ export const ApiErrorCode = {
   // Domaine — Réconciliation
   ReconciliationFailed: 'reconciliation_failed',
 
-  // Domaine — Catégories
+  // Domaine — Référentiel (rubriques et postes)
   CategoryInUse: 'category_in_use',
   CategoryProtected: 'category_protected',
   CategoryLabelTaken: 'category_label_taken',
   CategoriesNotSeeded: 'categories_not_seeded',
-
-  // Domaine — Modèles financiers (singletons)
-  SingletonMissing: 'singleton_missing',
-  UnemploymentEndDateRequired: 'unemployment_end_date_required',
-  UnemploymentEndDatePast: 'unemployment_end_date_past',
+  /** Rubrique encore peuplée : la supprimer orphelinerait ses postes (FR18). */
+  GroupNotEmpty: 'group_not_empty',
+  /** `groupCode` inconnu à la création d'un poste. */
+  GroupNotFound: 'group_not_found',
 } as const
 
 export type ApiErrorCodeValue = (typeof ApiErrorCode)[keyof typeof ApiErrorCode]

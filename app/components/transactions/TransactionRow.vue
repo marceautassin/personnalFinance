@@ -44,7 +44,7 @@ const isNegative = computed(() => props.transaction.amountCents < 0)
     </td>
     <td class="tx-row__cat">
       <CategoryEditor
-        :current-code="transaction.categoryCode"
+        :current-code="transaction.categoryItemCode"
         :transaction-id="transaction.id"
         @change="(id, code) => $emit('categoryChange', id, code)"
       />

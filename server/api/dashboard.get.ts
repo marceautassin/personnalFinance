@@ -17,14 +17,14 @@
 import { defineEventHandler } from 'h3'
 import { sql, asc, and, lte, gte, desc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions, bankStatements, categoryDefinitions, type ReliabilityValue } from '~~/server/db/schema'
+import { transactions, bankStatements, categoryItems, type ReliabilityValue } from '~~/server/db/schema'
 import { validateQuery } from '~~/server/utils/validation'
 import { previousMonth, monthEnd } from '~~/server/utils/period'
 import { TransactionListQuerySchema } from '~~/shared/schemas/transaction.schema'
 import { type Cents, cents, formatEuros } from '~~/shared/types/money'
 
 export interface DashboardDelta {
-  categoryCode: string
+  categoryItemCode: string
   label: string
   currentCents: Cents
   priorAvgCents: Cents
@@ -95,9 +95,9 @@ export default defineEventHandler(async (event): Promise<DashboardResponse> => {
 
   // 5) Charger les libellés des catégories pour annoter les deltas.
   const categoryDefRows = await db
-    .select({ code: categoryDefinitions.code, label: categoryDefinitions.label })
-    .from(categoryDefinitions)
-    .orderBy(asc(categoryDefinitions.code))
+    .select({ code: categoryItems.code, label: categoryItems.label })
+    .from(categoryItems)
+    .orderBy(asc(categoryItems.code))
   const labelByCode = Object.fromEntries(categoryDefRows.map(r => [r.code, r.label]))
 
   // 6) Calculer les deltas (helper privé — sera déplacé en `narrative-generator.ts` story 4.2).
@@ -134,28 +134,28 @@ export default defineEventHandler(async (event): Promise<DashboardResponse> => {
 })
 
 /**
- * Agrège les transactions du mois par categoryCode (somme signée).
+ * Agrège les transactions du mois par categoryItemCode (somme signée).
  */
 async function aggregateByCategory(month: string): Promise<Record<string, Cents>> {
   const rows = await db
     .select({
-      categoryCode: transactions.categoryCode,
+      categoryItemCode: transactions.categoryItemCode,
       sum: sql<number>`SUM(${transactions.amountCents})`,
     })
     .from(transactions)
     .where(sql`${transactions.transactionDate} LIKE ${`${month}-%`}`)
-    .groupBy(transactions.categoryCode)
+    .groupBy(transactions.categoryItemCode)
 
   const out: Record<string, Cents> = {}
   for (const r of rows) {
-    out[r.categoryCode] = cents(r.sum)
+    out[r.categoryItemCode] = cents(r.sum)
   }
   return out
 }
 
 /**
  * Sélectionne au plus TOP_DELTAS_LIMIT catégories avec un écart significatif vs la moyenne
- * des mois précédents. Tri par |diffCents| desc, tie-break alphabétique sur categoryCode.
+ * des mois précédents. Tri par |diffCents| desc, tie-break alphabétique sur categoryItemCode.
  *
  * Éligibilité : |diffCents| >= 10 € ET (priorAvg = 0 OU |pct| >= 20%).
  */
@@ -185,7 +185,7 @@ function selectTopDeltas(
     if (pct !== null && Math.abs(pct) < DELTA_MIN_PCT) continue
 
     candidates.push({
-      categoryCode: code,
+      categoryItemCode: code,
       label: labelByCode[code] ?? code,
       currentCents,
       priorAvgCents,
@@ -195,7 +195,7 @@ function selectTopDeltas(
   }
 
   candidates.sort((a, b) =>
-    Math.abs(b.diffCents) - Math.abs(a.diffCents) || a.categoryCode.localeCompare(b.categoryCode),
+    Math.abs(b.diffCents) - Math.abs(a.diffCents) || a.categoryItemCode.localeCompare(b.categoryItemCode),
   )
   return candidates.slice(0, TOP_DELTAS_LIMIT)
 }

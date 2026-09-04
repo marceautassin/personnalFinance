@@ -66,7 +66,17 @@ export default defineConfig({
       // Le serveur sous test lit la base DÉDIÉE, pas `_data/personnalfinance.db`.
       env: { DATABASE_URL: E2E_DATABASE_URL },
       url: BASE_URL,
-      reuseExistingServer: !process.env.CI,
+      /**
+       * JAMAIS de réutilisation, même en local.
+       *
+       * `!process.env.CI` réutilisait silencieusement un `yarn dev` déjà lancé — donc un
+       * serveur pointant sur la base de TRAVAIL — pendant que `prepareE2eDatabase()` recréait
+       * `_data/e2e.db` pour rien. Les specs, qui créent et suppriment des postes, écrivaient
+       * dans les vraies données : exactement le défaut que la base dédiée devait supprimer
+       * (revue du 2026-09-05). Le coût est un démarrage de serveur par exécution ; le bénéfice
+       * est qu'aucune exécution ne peut plus toucher les données de l'utilisateur.
+       */
+      reuseExistingServer: false,
       stdout: 'ignore',
       stderr: 'pipe',
     },

@@ -23,7 +23,7 @@
  */
 import { eq, and, lte, gte } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { bankStatements, transactions, categoryDefinitions } from '~~/server/db/schema'
+import { bankStatements, transactions, categoryItems } from '~~/server/db/schema'
 import { extractStatement } from '~~/server/services/pdf-extractor'
 import {
   categorizeStatement,
@@ -89,19 +89,18 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
 
   // 4. Catégorisation LLM (avant résolution période, pour permettre fallback G3)
   // Story 5.6 : la taxonomie est lue depuis la DB (catégories utilisateur incluses), plus
-  // depuis DEFAULT_CATEGORIES (réservé au seed bootstrap).
+  // depuis DEFAULT_REFERENTIAL (réservé au seed bootstrap).
   //
   // `ORDER BY code` : sans tri, l'ordre des catégories dans le prompt dépend du rowid, donc
   // de l'historique de création/suppression — la catégorisation n'était pas reproductible
   // d'une base à l'autre (revue 2026-08-04).
   const availableCategories = (await db
     .select({
-      code: categoryDefinitions.code,
-      label: categoryDefinitions.label,
-      isVariable: categoryDefinitions.isVariable,
+      code: categoryItems.code,
+      label: categoryItems.label,
     })
-    .from(categoryDefinitions)
-    .orderBy(categoryDefinitions.code))
+    .from(categoryItems)
+    .orderBy(categoryItems.code))
     // Les libellés sont du texte libre saisi par l'utilisateur et sont concaténés dans le
     // message envoyé au LLM : on neutralise sauts de ligne et caractères de contrôle, qui
     // pourraient disloquer la structure du prompt.
@@ -113,11 +112,11 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
       return { ...c, label: label.length > 0 ? label : c.code }
     })
 
-  // `DEFAULT_CATEGORIES` garantissait une liste non vide ; la lecture DB, non. Sans garde,
+  // `DEFAULT_REFERENTIAL` garantit une liste non vide ; la lecture DB, non. Sans garde,
   // une base non initialisée partait avec une taxonomie vide et remontait un
   // `llm_extraction_failed` (« réessaie »), alors que le retry est vain.
   if (availableCategories.length === 0) {
-    throw domainError(ApiErrorCode.CategoriesNotSeeded, { table: 'category_definitions' }, 500)
+    throw domainError(ApiErrorCode.CategoriesNotSeeded, { table: 'category_items' }, 500)
   }
 
   let extracted: Awaited<ReturnType<typeof categorizeStatement>>
@@ -133,7 +132,7 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
     }
     throw err
   }
-  const uncategorizedCount = extracted.filter(t => !t.categoryCode).length
+  const uncategorizedCount = extracted.filter(t => !t.categoryItemCode).length
   step('llm-categorized', {
     transactionCount: extracted.length,
     categorizedCount: extracted.length - uncategorizedCount,
@@ -232,7 +231,7 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
           transactionDate: t.transactionDate,
           label: t.label,
           amountCents: t.amountCents,
-          categoryCode: t.categoryCode,
+          categoryItemCode: t.categoryItemCode,
         }))).run()
       }
     })

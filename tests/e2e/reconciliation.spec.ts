@@ -79,7 +79,7 @@ test.describe('Réconciliation manuelle', () => {
           transactionDate: periodStart,
           label: 'Transaction manquante (E2E)',
           amountCents: gapCents,
-          categoryCode: 'divers',
+          categoryItemCode: 'divers',
         },
       },
     })

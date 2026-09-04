@@ -5,13 +5,22 @@ import type { AddManualTransactionInput } from '~~/shared/schemas/reconciliation
 const props = defineProps<{ submitting?: boolean }>()
 const emit = defineEmits<{ submit: [tx: AddManualTransactionInput], cancel: [] }>()
 
-const { data: categories, pending: categoriesPending } = useCategories()
+/**
+ * Le sélecteur propose des POSTES groupés par rubrique, jamais des rubriques.
+ *
+ * `useCategories()` renvoie l'arbre depuis D17 ; itérer dessus directement posait un code de
+ * RUBRIQUE dans `categoryItemCode`, que le pré-check de FK rejetait en 422 « données
+ * invalides » — le formulaire était inutilisable, et ça typecheckait parce que rubrique et
+ * poste partagent `code` et `label` (revue du 2026-09-05).
+ */
+const { data: groups, pending: categoriesPending } = useCategories()
+const groupsWithItems = computed(() => groups.value.filter(g => g.items.length > 0))
 
 const transactionDate = ref('')
 const label = ref('')
 const amountInput = ref('')
 const direction = ref<'expense' | 'income'>('expense')
-const categoryCode = ref('')
+const categoryItemCode = ref('')
 const error = ref<string | null>(null)
 // Garde locale synchrone : la prop `submitting` venant du parent ne se propage qu'au tick suivant,
 // double-Enter peut sinon déclencher 2 emits avant que `:disabled` ne s'applique.
@@ -44,7 +53,7 @@ function onSubmit() {
     error.value = 'Montant invalide (nombre positif, max 2 décimales).'
     return
   }
-  if (categoryCode.value.length === 0) {
+  if (categoryItemCode.value.length === 0) {
     error.value = 'Catégorie requise.'
     return
   }
@@ -56,7 +65,7 @@ function onSubmit() {
     transactionDate: transactionDate.value,
     label: label.value.trim(),
     amountCents,
-    categoryCode: categoryCode.value,
+    categoryItemCode: categoryItemCode.value,
   })
   // Le parent réinitialise `submitting` à false ; on suit son cycle via watch sur la prop.
 }
@@ -122,7 +131,7 @@ watch(() => props.submitting, (val) => {
       <label class="add-tx__field add-tx__field--grow">
         <span>Catégorie</span>
         <select
-          v-model="categoryCode"
+          v-model="categoryItemCode"
           required
         >
           <option
@@ -131,13 +140,23 @@ watch(() => props.submitting, (val) => {
           >
             {{ categoriesPending ? 'Chargement…' : 'Choisir…' }}
           </option>
-          <option
-            v-for="cat in categories"
-            :key="cat.code"
-            :value="cat.code"
+          <!--
+            `<optgroup>` plutôt qu'un libellé aplati : « Restaurant » existe sous Alimentation
+            ET sous Voyages (FR19), et le libellé seul ne les distingue pas.
+          -->
+          <optgroup
+            v-for="group in groupsWithItems"
+            :key="group.code"
+            :label="group.label"
           >
-            {{ cat.label }}
-          </option>
+            <option
+              v-for="item in group.items"
+              :key="item.code"
+              :value="item.code"
+            >
+              {{ item.label }}
+            </option>
+          </optgroup>
         </select>
       </label>
     </div>

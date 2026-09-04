@@ -1,37 +1,74 @@
 import { z } from 'zod'
+import { MOVEMENT_NATURES } from '../types/movement-nature'
 
-/** Code catégorie : identifiant stable kebab-case ASCII (immuable après création). */
+/** Code : identifiant stable kebab-case ASCII (immuable après création). */
 export const CategoryCodeSchema = z
   .string()
   .regex(/^[a-z0-9-]+$/, 'kebab-case lowercase ASCII')
   .min(1)
   .max(32)
 
-/** Libellé d'affichage catégorie (modifiable via rename). */
+/** Libellé d'affichage (modifiable via rename). */
 export const CategoryLabelSchema = z.string().trim().min(1).max(50)
 
-/** Catégorie en lecture (référentiel). */
-export const CategorySchema = z.object({
+/** Nature d'un poste — portée par le poste et par lui seul (D17). */
+export const MovementNatureSchema = z.enum(MOVEMENT_NATURES)
+
+/** Rubrique — niveau 1 du référentiel. */
+export const CategoryGroupSchema = z.object({
   code: CategoryCodeSchema,
   label: CategoryLabelSchema,
-  isVariable: z.boolean(),
+  position: z.number().int().min(0),
 })
 
-/** Catégorie en lecture étendue avec compteur de références (transactions/charges/overrides). */
-export const CategoryWithCountSchema = CategorySchema.extend({
-  referenceCount: z.number().int().min(0),
+/** Poste — niveau 2. `groupCode` est immuable : il compose le `code` (AR4). */
+export const CategoryItemSchema = z.object({
+  code: CategoryCodeSchema,
+  groupCode: CategoryCodeSchema,
+  label: CategoryLabelSchema,
+  nature: MovementNatureSchema,
+  position: z.number().int().min(0),
 })
 
 /**
- * Entrée de création : `label` + `isVariable`. Le `code` est généré côté serveur par
- * slugification (identifiant stable, non fourni par le client). `.strict()` rejette `code`.
- * Le `.refine` rejette un libellé qui slugifie en code vide (ex: `'!!!'`) → 422 canonique
- * (forme `flatten()`) via `validateBody`, plutôt qu'une erreur construite à la main côté endpoint.
+ * Poste enrichi du nombre de transactions qui le référencent. > 0 bloque la suppression
+ * (FR18) — la FK `ON DELETE RESTRICT` le garantit côté base, ce compteur le rend lisible.
  */
-export const NewCategoryInputSchema = z
+export const CategoryItemWithCountSchema = CategoryItemSchema.extend({
+  transactionCount: z.number().int().min(0),
+})
+
+/** Rubrique avec ses postes — forme du référentiel renvoyée par `GET /api/categories`. */
+export const CategoryGroupWithItemsSchema = CategoryGroupSchema.extend({
+  items: z.array(CategoryItemWithCountSchema),
+})
+
+/**
+ * Création d'une rubrique. Le `code` est généré côté serveur par slugification.
+ * `.strict()` rejette `code`.
+ */
+export const NewCategoryGroupInputSchema = z
+  .object({ label: CategoryLabelSchema })
+  .strict()
+  .refine(data => slugifyCategoryLabel(data.label).length > 0, {
+    message: 'Le libellé ne produit aucun code valide (caractères alphanumériques requis).',
+    path: ['label'],
+  })
+
+/** Renommage d'une rubrique. Le `code` est immuable (il compose celui des postes). */
+export const CategoryGroupPatchSchema = z
+  .object({ label: CategoryLabelSchema })
+  .strict()
+
+/**
+ * Création d'un poste sous une rubrique existante. La `nature` est OBLIGATOIRE : un poste
+ * sans nature n'a pas de place dans l'arbre d'analyse (FR17).
+ */
+export const NewCategoryItemInputSchema = z
   .object({
+    groupCode: CategoryCodeSchema,
     label: CategoryLabelSchema,
-    isVariable: z.boolean(),
+    nature: MovementNatureSchema,
   })
   .strict()
   .refine(data => slugifyCategoryLabel(data.label).length > 0, {
@@ -40,17 +77,28 @@ export const NewCategoryInputSchema = z
   })
 
 /**
- * Patch : `label` uniquement. `code` et `isVariable` sont immuables (FK + sémantique de
- * projection). `.strict()` rejette toute autre clé → 422.
+ * Patch d'un poste : libellé et/ou nature. La nature est MUTABLE — c'est ainsi que
+ * l'utilisateur corrige un poste mal classé sans déplacer ses transactions une à une.
+ * `groupCode` et `code` restent immuables. `.strict()` rejette le reste.
  */
-export const CategoryPatchSchema = z
-  .object({ label: CategoryLabelSchema })
+export const CategoryItemPatchSchema = z
+  .object({
+    label: CategoryLabelSchema.optional(),
+    nature: MovementNatureSchema.optional(),
+  })
   .strict()
+  .refine(d => d.label !== undefined || d.nature !== undefined, {
+    message: 'Au moins un champ à modifier.',
+  })
 
-export type Category = z.infer<typeof CategorySchema>
-export type CategoryWithCount = z.infer<typeof CategoryWithCountSchema>
-export type NewCategoryInput = z.infer<typeof NewCategoryInputSchema>
-export type CategoryPatch = z.infer<typeof CategoryPatchSchema>
+export type CategoryGroup = z.infer<typeof CategoryGroupSchema>
+export type CategoryItem = z.infer<typeof CategoryItemSchema>
+export type CategoryItemWithCount = z.infer<typeof CategoryItemWithCountSchema>
+export type CategoryGroupWithItems = z.infer<typeof CategoryGroupWithItemsSchema>
+export type NewCategoryGroupInput = z.infer<typeof NewCategoryGroupInputSchema>
+export type CategoryGroupPatch = z.infer<typeof CategoryGroupPatchSchema>
+export type NewCategoryItemInput = z.infer<typeof NewCategoryItemInputSchema>
+export type CategoryItemPatch = z.infer<typeof CategoryItemPatchSchema>
 
 /** Longueur maximale d'un `code`, alignée sur `CategoryCodeSchema.max(32)`. */
 export const CATEGORY_CODE_MAX_LENGTH = 32
@@ -67,6 +115,29 @@ const NON_DECOMPOSABLE_LATIN: Record<string, string> = {
 /** Translittère les latins non décomposables, caractère par caractère. */
 function transliterateLatin(input: string): string {
   return Array.from(input, ch => NON_DECOMPOSABLE_LATIN[ch] ?? ch).join('')
+}
+
+/**
+ * Longueur maximale d'un code de RUBRIQUE.
+ *
+ * Une rubrique n'est pas libre d'occuper les 32 caractères : son code préfixe celui de chacun
+ * de ses postes (`<rubrique>-<poste>`, AR4). Une rubrique au code de 32 caractères laissait un
+ * budget de zéro et rendait toute création de poste impossible, en 422 « données invalides »
+ * sans jamais dire pourquoi — et le code étant immuable, la rubrique restait stérile à vie
+ * (revue du 2026-09-05).
+ *
+ * 16 laisse au moins 15 caractères au poste, de quoi porter un libellé lisible.
+ */
+export const GROUP_CODE_MAX_LENGTH = 16
+
+/**
+ * Budget de slug disponible pour un poste sous une rubrique donnée : le code complet est
+ * `<rubrique>-<poste>` et reste borné à 32 caractères (AR4). Sans ce calcul, un poste créé
+ * sous une rubrique au code long produisait un code tronqué par `CategoryCodeSchema` — donc
+ * un 422 incompréhensible pour l'utilisateur.
+ */
+export function itemSlugBudget(groupCode: string): number {
+  return Math.max(0, CATEGORY_CODE_MAX_LENGTH - groupCode.length - 1)
 }
 
 /**

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { MovementNature } from '~~/shared/types/movement-nature'
+
 const props = defineProps<{
   currentCode: string
   transactionId: number
@@ -6,14 +8,31 @@ const props = defineProps<{
 
 const emit = defineEmits<{ change: [transactionId: number, code: string] }>()
 
-const { data: categories, pending } = useCategories()
+const { data: groups, pending } = useCategories()
 
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 
-const currentLabel = computed(() => {
-  return categories.value.find(c => c.code === props.currentCode)?.label ?? props.currentCode
-})
+const flatItems = computed(() => flattenReferential(groups.value))
+
+/**
+ * Le libellé seul ne désigne pas un poste : « Restaurant » existe sous Alimentation ET sous
+ * Voyages (FR19). Le déclencheur porte donc la rubrique, sinon deux transactions rangées
+ * dans des postes différents s'affichent à l'identique.
+ */
+const current = computed(() => flatItems.value.find(i => i.code === props.currentCode))
+const currentLabel = computed(() =>
+  current.value ? `${current.value.groupLabel} · ${current.value.label}` : props.currentCode,
+)
+
+const NATURE_LABELS: Record<MovementNature, string> = {
+  income: 'Recette',
+  expense: 'Dépense',
+  internal_transfer: 'Mouvement interne',
+}
+
+/** Rubriques non vides seulement : une rubrique sans poste n'offre rien à choisir. */
+const groupsWithItems = computed(() => groups.value.filter(g => g.items.length > 0))
 
 function toggle() {
   open.value = !open.value
@@ -67,42 +86,58 @@ onBeforeUnmount(() => {
       v-if="open"
       class="cat-editor__menu"
       role="listbox"
-      :aria-label="`Choisir une catégorie pour la transaction ${transactionId}`"
+      :aria-label="`Choisir un poste pour la transaction ${transactionId}`"
     >
       <p
-        v-if="pending && categories.length === 0"
+        v-if="pending && groups.length === 0"
         class="cat-editor__empty"
       >
         Chargement…
       </p>
       <p
-        v-else-if="categories.length === 0"
+        v-else-if="groupsWithItems.length === 0"
         class="cat-editor__empty"
       >
-        Aucune catégorie disponible.
+        Aucun poste disponible.
       </p>
       <ul
         v-else
         class="cat-editor__list"
       >
         <li
-          v-for="cat in categories"
-          :key="cat.code"
+          v-for="group in groupsWithItems"
+          :key="group.code"
         >
-          <button
-            type="button"
-            role="option"
-            class="cat-editor__option"
-            :class="{ 'cat-editor__option--selected': cat.code === currentCode }"
-            :aria-selected="cat.code === currentCode"
-            @click="onSelect(cat.code)"
+          <p
+            :id="`cat-group-${group.code}`"
+            class="cat-editor__group"
           >
-            <span>{{ cat.label }}</span>
-            <small
-              v-if="!cat.isVariable"
-              class="cat-editor__badge"
-            >fixe</small>
-          </button>
+            {{ group.label }}
+          </p>
+          <ul
+            class="cat-editor__list"
+            :aria-labelledby="`cat-group-${group.code}`"
+          >
+            <li
+              v-for="item in group.items"
+              :key="item.code"
+            >
+              <button
+                type="button"
+                role="option"
+                class="cat-editor__option"
+                :class="{ 'cat-editor__option--selected': item.code === currentCode }"
+                :aria-selected="item.code === currentCode"
+                @click="onSelect(item.code)"
+              >
+                <span>{{ item.label }}</span>
+                <small
+                  v-if="item.nature !== 'expense'"
+                  class="cat-editor__badge"
+                >{{ NATURE_LABELS[item.nature] }}</small>
+              </button>
+            </li>
+          </ul>
         </li>
       </ul>
     </div>
@@ -130,7 +165,7 @@ onBeforeUnmount(() => {
   top: calc(100% + 4px);
   left: 0;
   z-index: 10;
-  min-width: 180px;
+  min-width: 240px;
   max-height: 280px;
   overflow-y: auto;
   padding: var(--space-1) 0;
@@ -159,4 +194,13 @@ onBeforeUnmount(() => {
 .cat-editor__option--selected { font-weight: 600; background: var(--color-neutral-100); }
 .cat-editor__badge { color: var(--color-text-muted); font-size: var(--font-size-xs); }
 .cat-editor__empty { padding: var(--space-2) var(--space-3); color: var(--color-text-muted); }
+.cat-editor__group {
+  margin: var(--space-2) 0 var(--space-1);
+  padding: 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 </style>

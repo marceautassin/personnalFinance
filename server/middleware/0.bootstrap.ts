@@ -2,8 +2,8 @@ import { mkdirSync, existsSync } from 'node:fs'
 import { defineEventHandler } from 'h3'
 import { db } from '../db/client'
 import { sql } from 'drizzle-orm'
-import { categoryDefinitions } from '../db/schema'
-import { DEFAULT_CATEGORIES } from '~~/shared/constants/default-categories'
+import { categoryGroups, categoryItems } from '../db/schema'
+import { DEFAULT_REFERENTIAL } from '~~/shared/constants/default-referential'
 
 let isBootstrapped = false
 let bootstrapError: Error | null = null
@@ -14,7 +14,8 @@ let bootstrapError: Error | null = null
  * Mis à jour le 2026-09-04 : les repères portaient sur `debt_events` et la contrainte de
  * cohérence des dettes, tous deux supprimés. Ils vérifient désormais l'INVERSE — qu'une base
  * antérieure à la suppression, porteuse des tables du forecast, soit refusée au démarrage
- * plutôt que de faire diverger le schéma déclaré et le schéma réel.
+ * plutôt que de faire diverger le schéma déclaré et le schéma réel — plus la PRÉSENCE du
+ * référentiel à deux niveaux, qui remplace `category_definitions` (D17).
  *
  * Pourquoi (revue du 2026-09-04) : la sonde ne testait que `category_definitions`. Une base
  * antérieure au lot 6.5/6.7 passait donc le bootstrap sans bruit, puis échouait en 500
@@ -25,6 +26,21 @@ let bootstrapError: Error | null = null
  * Chaque entrée est un couple (description, requête qui doit trouver quelque chose).
  */
 const SCHEMA_MARKERS: { label: string, exists: () => boolean }[] = [
+  {
+    label: 'référentiel à deux niveaux (`category_groups`, `category_items`) — D17',
+    exists: () => {
+      const names = tableNames()
+      return names.includes('category_groups') && names.includes('category_items')
+    },
+  },
+  {
+    label: 'table `category_definitions` retirée au profit du référentiel à deux niveaux',
+    exists: () => !tableNames().includes('category_definitions'),
+  },
+  {
+    label: 'colonne `transactions.category_item_code` (remplace `category_code`)',
+    exists: () => tableSql('transactions').includes('category_item_code'),
+  },
   {
     label: 'table `transactions` sans colonnes de dette (suppression du 2026-09-04)',
     exists: () => !tableSql('transactions').includes('debt_id'),
@@ -53,7 +69,7 @@ export function assertSchemaUpToDate(): void {
   if (missing.length > 0) {
     throw new Error(
       `Schéma de base périmé — manque : ${missing.join(', ')}. `
-      + 'Lance `yarn db:push` (ou applique les migrations de `server/db/migrations/`) puis relance le serveur.',
+      + 'Lance `yarn apply-migration` puis relance le serveur.',
     )
   }
 }
@@ -68,7 +84,7 @@ async function bootstrap(): Promise<void> {
 
   let tableExists = true
   try {
-    db.select().from(categoryDefinitions).limit(1).all()
+    db.select().from(categoryGroups).limit(1).all()
   }
   catch (err) {
     if (err instanceof Error && /no such table/i.test(err.message)) {
@@ -81,25 +97,51 @@ async function bootstrap(): Promise<void> {
 
   if (!tableExists) {
     throw new Error(
-      'Base de données non initialisée. Lance `yarn db:push` (ou `yarn apply-migration` si tu utilises les migrations) puis relance le serveur.',
+      'Base de données non initialisée. Lance `yarn apply-migration` puis relance le serveur.',
     )
   }
 
   assertSchemaUpToDate()
 
-  const inserted = db
-    .insert(categoryDefinitions)
-    .values(
-      DEFAULT_CATEGORIES.map(c => ({
-        code: c.code,
-        label: c.label,
-        isVariable: c.isVariable,
-      })),
-    )
-    .onConflictDoNothing({ target: categoryDefinitions.code })
+  // Seed du référentiel initial (D17, AR3) — UNIQUEMENT sur une base vierge.
+  //
+  // Le rejouer à chaque démarrage, même en `onConflictDoNothing`, ressuscitait au redémarrage
+  // suivant tout poste ou rubrique par défaut que l'utilisateur venait de supprimer : une
+  // rubrique vidée puis supprimée revenait avec ses postes, en contradiction directe avec
+  // FR16 et FR18 (revue du 2026-09-05). Le référentiel appartient à l'utilisateur dès le
+  // premier démarrage ; on ne le lui réimpose pas.
+  const alreadySeeded = db
+    .select({ cnt: sql<number>`count(*)` })
+    .from(categoryGroups)
+    .get()
+  if (Number(alreadySeeded?.cnt ?? 0) > 0) {
+    console.warn('[bootstrap] OK — base prête (référentiel déjà présent, seed ignoré)')
+    return
+  }
+
+  // Les rubriques d'abord — les postes portent une FK vers elles.
+  const groupsInserted = db
+    .insert(categoryGroups)
+    .values(DEFAULT_REFERENTIAL.map((g, i) => ({ code: g.code, label: g.label, position: i })))
     .run()
 
-  console.warn(`[bootstrap] OK — base prête (${inserted.changes} catégorie(s) insérée(s))`)
+  const itemRows = DEFAULT_REFERENTIAL.flatMap(g =>
+    g.items.map((item, i) => ({
+      code: item.code,
+      groupCode: g.code,
+      label: item.label,
+      nature: item.nature,
+      position: i,
+    })),
+  )
+  const itemsInserted = db
+    .insert(categoryItems)
+    .values(itemRows)
+    .run()
+
+  console.warn(
+    `[bootstrap] OK — base prête (${groupsInserted.changes} rubrique(s), ${itemsInserted.changes} poste(s) insérés)`,
+  )
 }
 
 export default defineEventHandler(async () => {

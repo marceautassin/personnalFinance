@@ -16,7 +16,8 @@
 import { defineEventHandler, getRouterParam } from 'h3'
 import { eq, asc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { bankStatements, transactions, categoryDefinitions } from '~~/server/db/schema'
+import { bankStatements, transactions, categoryItems } from '~~/server/db/schema'
+import { FALLBACK_ITEM_CODE } from '~~/shared/constants/default-referential'
 import { reconcile } from '~~/server/services/reconciler'
 import { validateBody } from '~~/server/utils/validation'
 import { domainError, notFound } from '~~/server/utils/errors'
@@ -25,7 +26,11 @@ import { ReconciliationActionSchema } from '~~/shared/schemas/reconciliation.sch
 import { HashSha256Schema } from '~~/shared/schemas/transaction.schema'
 import { cents } from '~~/shared/types/money'
 
-const ACCEPT_GAP_CATEGORY = 'divers'
+/**
+ * Poste de repli d'un écart accepté. Défini une seule fois, dans le référentiel : un
+ * littéral local ici divergerait silencieusement du poste protégé le jour où il changerait.
+ */
+const ACCEPT_GAP_CATEGORY = FALLBACK_ITEM_CODE
 const ACCEPT_GAP_LABEL = 'Écart accepté (réconciliation)'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -65,16 +70,16 @@ export default defineEventHandler(async (event) => {
       )
     }
 
-    // FK pre-check sur categoryCode (cf. pattern transactions/[id].patch.ts:28-41)
+    // FK pre-check sur categoryItemCode (cf. pattern transactions/[id].patch.ts:28-41)
     const cat = await db
-      .select({ code: categoryDefinitions.code })
-      .from(categoryDefinitions)
-      .where(eq(categoryDefinitions.code, tx.categoryCode))
+      .select({ code: categoryItems.code })
+      .from(categoryItems)
+      .where(eq(categoryItems.code, tx.categoryItemCode))
       .limit(1)
     if (cat.length === 0) {
       throw domainError(
         ApiErrorCode.ValidationFailed,
-        { reason: 'unknown categoryCode', value: tx.categoryCode },
+        { reason: 'unknown categoryItemCode', value: tx.categoryItemCode },
         422,
       )
     }
@@ -87,7 +92,7 @@ export default defineEventHandler(async (event) => {
         transactionDate: tx.transactionDate,
         label: tx.label,
         amountCents: tx.amountCents,
-        categoryCode: tx.categoryCode,
+        categoryItemCode: tx.categoryItemCode,
         isManual: true,
       }).run()
       return recomputeReconciliation(trx, statement.openingBalanceCents, statement.closingBalanceCents, hash)
@@ -112,9 +117,9 @@ export default defineEventHandler(async (event) => {
 
   // Vérifier que la catégorie 'divers' existe (seedée par bootstrap, défense en profondeur)
   const cat = await db
-    .select({ code: categoryDefinitions.code })
-    .from(categoryDefinitions)
-    .where(eq(categoryDefinitions.code, ACCEPT_GAP_CATEGORY))
+    .select({ code: categoryItems.code })
+    .from(categoryItems)
+    .where(eq(categoryItems.code, ACCEPT_GAP_CATEGORY))
     .limit(1)
   if (cat.length === 0) {
     throw domainError(
@@ -136,7 +141,7 @@ export default defineEventHandler(async (event) => {
       transactionDate: statement.periodEnd,
       label: ACCEPT_GAP_LABEL,
       amountCents: current.gapCents,
-      categoryCode: ACCEPT_GAP_CATEGORY,
+      categoryItemCode: ACCEPT_GAP_CATEGORY,
       isManual: true,
     }).run()
     trx.update(bankStatements)

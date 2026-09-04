@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { TEST_SCHEMA_DDL } from '~~/tests/fixtures/test-schema'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-bootstrap-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
@@ -18,25 +19,7 @@ beforeAll(async () => {
 
   // @ts-expect-error -- accès interne drizzle pour DDL de test
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      statement_hash TEXT NOT NULL,
-      transaction_date TEXT NOT NULL,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL,
-      is_manual INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-  `)
+  sqlite.exec(TEST_SCHEMA_DDL)
 })
 
 afterAll(() => {
@@ -51,7 +34,8 @@ describe('assertSchemaUpToDate — refus d\'un schéma périmé', () => {
    * La sonde vérifiait la PRÉSENCE des tables de dette. Depuis la suppression du périmètre
    * forecast (2026-09-04), elle vérifie l'INVERSE : une base antérieure, porteuse de ces
    * tables, doit être refusée au démarrage plutôt que de laisser diverger le schéma déclaré
-   * et le schéma réel.
+   * et le schéma réel. Depuis D17 elle vérifie AUSSI la présence du référentiel à deux
+   * niveaux — le sens le plus utile, puisque c'est celui qui casse à l'usage.
    */
   it('accepte un schéma à jour', async () => {
     const mod = await import('./0.bootstrap')
@@ -76,7 +60,7 @@ describe('assertSchemaUpToDate — refus d\'un schéma périmé', () => {
         transaction_date TEXT NOT NULL,
         label TEXT NOT NULL,
         amount_cents INTEGER NOT NULL,
-        category_code TEXT NOT NULL,
+        category_item_code TEXT NOT NULL,
         is_manual INTEGER NOT NULL DEFAULT 0,
         debt_id INTEGER,
         created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
@@ -85,6 +69,27 @@ describe('assertSchemaUpToDate — refus d\'un schéma périmé', () => {
     expect(() => mod.assertSchemaUpToDate()).toThrow(/schéma de base périmé/i)
     sqlite.exec('DROP TABLE transactions')
     sqlite.exec('ALTER TABLE transactions_backup RENAME TO transactions')
+    expect(() => mod.assertSchemaUpToDate()).not.toThrow()
+  })
+
+  /**
+   * Le sens qui compte au quotidien : une base d'avant D17 démarrait sans bruit, puis
+   * échouait à l'usage sur `no such table: category_items`. Un schéma périmé doit se voir au
+   * démarrage.
+   */
+  it('refuse une base restée sur le référentiel plat', async () => {
+    const mod = await import('./0.bootstrap')
+    sqlite.exec('ALTER TABLE category_items RENAME TO category_definitions')
+    expect(() => mod.assertSchemaUpToDate()).toThrow(/référentiel à deux niveaux/i)
+    sqlite.exec('ALTER TABLE category_definitions RENAME TO category_items')
+    expect(() => mod.assertSchemaUpToDate()).not.toThrow()
+  })
+
+  it('refuse une table transactions restée sur `category_code`', async () => {
+    const mod = await import('./0.bootstrap')
+    sqlite.exec('ALTER TABLE transactions RENAME COLUMN category_item_code TO category_code')
+    expect(() => mod.assertSchemaUpToDate()).toThrow(/category_item_code/)
+    sqlite.exec('ALTER TABLE transactions RENAME COLUMN category_code TO category_item_code')
     expect(() => mod.assertSchemaUpToDate()).not.toThrow()
   })
 })

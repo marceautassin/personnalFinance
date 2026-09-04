@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-charge-suggester-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
@@ -26,45 +27,9 @@ beforeAll(async () => {
 
   // @ts-expect-error -- accès interne drizzle pour DDL de test
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE bank_statements (
-      hash_sha256 TEXT PRIMARY KEY,
-      period_start TEXT NOT NULL,
-      period_end TEXT NOT NULL,
-      opening_balance_cents INTEGER NOT NULL,
-      closing_balance_cents INTEGER NOT NULL,
-      reliability TEXT NOT NULL DEFAULT 'reliable',
-      ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      statement_hash TEXT NOT NULL REFERENCES bank_statements(hash_sha256) ON DELETE CASCADE,
-      transaction_date TEXT NOT NULL,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      is_manual INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE dismissed_suggestions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      normalized_label TEXT NOT NULL UNIQUE,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-  `)
+  sqlite.exec(TEST_SCHEMA_DDL)
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 
-  dbMod.db.insert(schema.categoryDefinitions).values([
-    { code: 'abonnements', label: 'Abonnements' },
-    { code: 'loisirs', label: 'Loisirs', isVariable: true },
-    { code: 'divers', label: 'Divers', isVariable: true },
-  ]).run()
   dbMod.db.insert(schema.bankStatements).values({
     hashSha256: HASH,
     periodStart: '2026-01-01',
@@ -86,13 +51,13 @@ beforeEach(() => {
   dbMod.db.delete(schema.dismissedSuggestions).run()
 })
 
-function tx(date: string, label: string, amountCents: number, categoryCode = 'abonnements') {
+function tx(date: string, label: string, amountCents: number, categoryItemCode = 'abonnements-streaming') {
   dbMod.db.insert(schema.transactions).values({
     statementHash: HASH,
     transactionDate: date,
     label,
     amountCents,
-    categoryCode,
+    categoryItemCode,
   }).run()
 }
 
@@ -109,7 +74,7 @@ describe('charge-suggester', () => {
     expect(s.suggestedFrequency).toBe('monthly')
     expect(s.averageAmountCents).toBe(-1299)
     expect(s.occurrences).toBe(3)
-    expect(s.categoryCode).toBe('abonnements')
+    expect(s.categoryItemCode).toBe('abonnements-streaming')
     expect(s.transactionIds).toHaveLength(3)
   })
 
@@ -141,19 +106,19 @@ describe('charge-suggester', () => {
   })
 
   it('takes the modal category among matched transactions (AC#3)', async () => {
-    tx('2026-01-15', 'SPOTIFY 9.99', -999, 'abonnements')
-    tx('2026-02-15', 'SPOTIFY 9.99', -999, 'abonnements')
-    tx('2026-03-15', 'SPOTIFY 9.99', -999, 'loisirs')
+    tx('2026-01-15', 'SPOTIFY 9.99', -999, 'abonnements-streaming')
+    tx('2026-02-15', 'SPOTIFY 9.99', -999, 'abonnements-streaming')
+    tx('2026-03-15', 'SPOTIFY 9.99', -999, 'loisirs-sport')
 
     const suggestions = await service.suggestRecurringCharges(dbMod.db)
     expect(suggestions).toHaveLength(1)
-    expect(suggestions[0]!.categoryCode).toBe('abonnements')
+    expect(suggestions[0]!.categoryItemCode).toBe('abonnements-streaming')
   })
 
   it('sorts by occurrences desc then |amount| desc (AC#6)', async () => {
     // spotify : 4 mois ; loyer : 3 mois mais montant plus gros
     for (const m of ['01', '02', '03', '04']) tx(`2026-${m}-10`, 'SPOTIFY 9.99', -999)
-    for (const m of ['02', '03', '04']) tx(`2026-${m}-05`, 'LOYER appart', -90000, 'abonnements')
+    for (const m of ['02', '03', '04']) tx(`2026-${m}-05`, 'LOYER appart', -90000, 'abonnements-streaming')
 
     const suggestions = await service.suggestRecurringCharges(dbMod.db)
     expect(suggestions.map(s => s.normalizedLabel)).toEqual(['spotify', 'loyer appart'])

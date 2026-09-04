@@ -16,7 +16,7 @@ export interface Suggestion {
   averageAmountCents: Cents
   occurrences: number
   suggestedFrequency: 'monthly' | 'quarterly' | 'annual'
-  categoryCode: string
+  categoryItemCode: string
   transactionIds: number[]
   /** `YYYY-MM-01` du mois de la 1ère occurrence — sert de `start_date` à l'acceptation (AC#8). */
   startDate: string
@@ -27,7 +27,7 @@ interface TxLite {
   transactionDate: string
   label: string
   amountCents: number
-  categoryCode: string
+  categoryItemCode: string
 }
 
 /**
@@ -147,7 +147,7 @@ export async function suggestRecurringCharges(db: DB): Promise<Suggestion[]> {
       transactionDate: transactions.transactionDate,
       label: transactions.label,
       amountCents: transactions.amountCents,
-      categoryCode: transactions.categoryCode,
+      categoryItemCode: transactions.categoryItemCode,
     })
     .from(transactions)) as TxLite[]
 
@@ -214,7 +214,7 @@ export async function suggestRecurringCharges(db: DB): Promise<Suggestion[]> {
       averageAmountCents,
       occurrences: distinctMonthIdx.length,
       suggestedFrequency: inferFrequency(distinctMonthIdx),
-      categoryCode: modeWithAlphaTiebreak(group.map(t => t.categoryCode)),
+      categoryItemCode: modeWithAlphaTiebreak(group.map(t => t.categoryItemCode)),
       transactionIds: group.map(t => t.id).sort((a, b) => a - b),
       startDate: monthIndexToStartDate(distinctMonthIdx[0]!),
     })

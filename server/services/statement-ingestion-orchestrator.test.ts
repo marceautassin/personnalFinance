@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { sha256 } from '~~/server/utils/hash'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 // Setup tmpdirs AVANT tout import du singleton db/client (qui ouvre la DB à l'import).
 const tmpRoot = mkdtempSync(join(tmpdir(), 'pf-ingest-'))
@@ -58,44 +59,8 @@ beforeAll(async () => {
 
   // @ts-expect-error -- propriété interne drizzle (better-sqlite3)
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE bank_statements (
-      hash_sha256 TEXT PRIMARY KEY,
-      period_start TEXT NOT NULL,
-      period_end TEXT NOT NULL,
-      opening_balance_cents INTEGER NOT NULL,
-      closing_balance_cents INTEGER NOT NULL,
-      reliability TEXT NOT NULL DEFAULT 'reliable',
-      ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      statement_hash TEXT NOT NULL REFERENCES bank_statements(hash_sha256) ON DELETE CASCADE,
-      transaction_date TEXT NOT NULL,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      is_manual INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE INDEX transactions_period_idx ON transactions(transaction_date);
-    CREATE INDEX transactions_statement_idx ON transactions(statement_hash);
-  `)
-
-  for (const c of [
-    { code: 'courses', label: 'Courses' },
-    { code: 'restaurants', label: 'Restaurants' },
-    { code: 'are', label: 'ARE (chômage)' },
-  ]) {
-    dbMod.db.insert(schema.categoryDefinitions).values(c).run()
-  }
+  sqlite.exec(TEST_SCHEMA_DDL)
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 
   orch = await import('./statement-ingestion-orchestrator')
 })
@@ -146,7 +111,7 @@ function mockCategorize(txs: Array<{
   transactionDate: string
   label: string
   amountCents: number
-  categoryCode: string
+  categoryItemCode: string
 }>) {
   vi.mocked(llmMod.categorizeStatement).mockResolvedValue(txs)
 }
@@ -155,8 +120,8 @@ describe('ingestStatement (orchestrator)', () => {
   it('happy path: insère statement + transactions et retourne les méta', async () => {
     mockExtract({ openingBalanceCents: 100_000, closingBalanceCents: 50_000 })
     mockCategorize([
-      { transactionDate: '2026-04-05', label: 'Courses Carrefour', amountCents: -30_000, categoryCode: 'courses' },
-      { transactionDate: '2026-04-15', label: 'Resto Pizza', amountCents: -20_000, categoryCode: 'restaurants' },
+      { transactionDate: '2026-04-05', label: 'Courses Carrefour', amountCents: -30_000, categoryItemCode: 'alimentation-courses' },
+      { transactionDate: '2026-04-15', label: 'Resto Pizza', amountCents: -20_000, categoryItemCode: 'alimentation-restaurant' },
     ])
 
     const buf = pdf('happy-path-pdf')
@@ -178,24 +143,27 @@ describe('ingestStatement (orchestrator)', () => {
     expect(existsSync(pdfPathFor(buf))).toBe(true)
   })
 
-  it('passe au LLM les catégories lues en base, pas DEFAULT_CATEGORIES (story 5.6)', async () => {
+  it('passe au LLM les postes lus en base, pas le référentiel constant', async () => {
     mockExtract()
     mockCategorize([
-      { transactionDate: '2026-04-05', label: 'Op', amountCents: -10_000, categoryCode: 'courses' },
+      { transactionDate: '2026-04-05', label: 'Op', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
     ])
 
     await orch.ingestStatement({ pdfBuffer: pdf('cats-from-db'), confirmReplace: false })
 
     const passed = vi.mocked(llmMod.categorizeStatement).mock.calls[0]![1] as ReadonlyArray<{ code: string }>
-    // Exactement les 3 catégories seedées en base — un sous-ensemble strict de DEFAULT_CATEGORIES
-    // (18 entrées) — ce qui prouve la lecture DB et non le fallback constant.
-    expect(passed.map(c => c.code).sort()).toEqual(['are', 'courses', 'restaurants'])
+    // Exactement les postes seedés en base — un sous-ensemble strict de DEFAULT_REFERENTIAL
+    // (48 postes) — ce qui prouve la lecture DB et non le repli sur la constante. Un poste
+    // créé par l'utilisateur doit être proposé au modèle dès l'ingestion suivante.
+    const seeded = dbMod.db.select({ code: schema.categoryItems.code }).from(schema.categoryItems).all()
+    expect(passed.map(c => c.code).sort()).toEqual(seeded.map(r => r.code).sort())
+    expect(passed.length).toBeLessThan(48)
   })
 
   it('dédup : 2e POST avec même PDF → pdf_already_ingested', async () => {
     mockExtract()
     mockCategorize([
-      { transactionDate: '2026-04-05', label: 'Op', amountCents: -50_000, categoryCode: 'courses' },
+      { transactionDate: '2026-04-05', label: 'Op', amountCents: -50_000, categoryItemCode: 'alimentation-courses' },
     ])
 
     const buf = pdf('dedup-same-pdf')
@@ -212,13 +180,13 @@ describe('ingestStatement (orchestrator)', () => {
   it('chevauchement sans header → period_overlap (409)', async () => {
     mockExtract({ periodStart: '2026-04-01', periodEnd: '2026-04-30' })
     mockCategorize([
-      { transactionDate: '2026-04-10', label: 'A', amountCents: -50_000, categoryCode: 'courses' },
+      { transactionDate: '2026-04-10', label: 'A', amountCents: -50_000, categoryItemCode: 'alimentation-courses' },
     ])
     await orch.ingestStatement({ pdfBuffer: pdf('first-april'), confirmReplace: false })
 
     mockExtract({ periodStart: '2026-04-15', periodEnd: '2026-05-15' })
     mockCategorize([
-      { transactionDate: '2026-04-20', label: 'B', amountCents: -30_000, categoryCode: 'courses' },
+      { transactionDate: '2026-04-20', label: 'B', amountCents: -30_000, categoryItemCode: 'alimentation-courses' },
     ])
 
     await expect(
@@ -234,14 +202,14 @@ describe('ingestStatement (orchestrator)', () => {
   it('chevauchement avec confirmReplace=true → ancien supprimé (CASCADE), nouveau inséré', async () => {
     mockExtract({ periodStart: '2026-04-01', periodEnd: '2026-04-30' })
     mockCategorize([
-      { transactionDate: '2026-04-10', label: 'Old', amountCents: -50_000, categoryCode: 'courses' },
+      { transactionDate: '2026-04-10', label: 'Old', amountCents: -50_000, categoryItemCode: 'alimentation-courses' },
     ])
     const firstBuf = pdf('first-april-replace')
     const first = await orch.ingestStatement({ pdfBuffer: firstBuf, confirmReplace: false })
 
     mockExtract({ periodStart: '2026-04-01', periodEnd: '2026-04-30' })
     mockCategorize([
-      { transactionDate: '2026-04-12', label: 'New', amountCents: -40_000, categoryCode: 'courses' },
+      { transactionDate: '2026-04-12', label: 'New', amountCents: -40_000, categoryItemCode: 'alimentation-courses' },
     ])
     const secondBuf = pdf('second-april-replace')
     const second = await orch.ingestStatement({ pdfBuffer: secondBuf, confirmReplace: true })
@@ -306,8 +274,8 @@ describe('ingestStatement (orchestrator)', () => {
   it('fallback période G3 : déduit periodStart/End des dates min/max si extracteur null', async () => {
     mockExtract({ periodStart: null, periodEnd: null })
     mockCategorize([
-      { transactionDate: '2026-03-05', label: 'A', amountCents: -10_000, categoryCode: 'courses' },
-      { transactionDate: '2026-03-25', label: 'B', amountCents: -40_000, categoryCode: 'courses' },
+      { transactionDate: '2026-03-05', label: 'A', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
+      { transactionDate: '2026-03-25', label: 'B', amountCents: -40_000, categoryItemCode: 'alimentation-courses' },
     ])
 
     const result = await orch.ingestStatement({ pdfBuffer: pdf('no-period'), confirmReplace: false })
@@ -329,7 +297,7 @@ describe('ingestStatement (orchestrator)', () => {
   it('réconciliation déséquilibrée : isBalanced=false avec gap retourné', async () => {
     mockExtract({ openingBalanceCents: 100_000, closingBalanceCents: 50_000 })
     mockCategorize([
-      { transactionDate: '2026-04-10', label: 'X', amountCents: -40_000, categoryCode: 'courses' },
+      { transactionDate: '2026-04-10', label: 'X', amountCents: -40_000, categoryItemCode: 'alimentation-courses' },
     ])
     const result = await orch.ingestStatement({ pdfBuffer: pdf('imbalanced'), confirmReplace: false })
     expect(result.isBalanced).toBe(false)
@@ -340,7 +308,7 @@ describe('ingestStatement (orchestrator)', () => {
   it('rollback FS : si la tx DB échoue (FK violation), le PDF est supprimé', async () => {
     mockExtract()
     mockCategorize([
-      { transactionDate: '2026-04-10', label: 'X', amountCents: -50_000, categoryCode: 'nonexistent_cat' },
+      { transactionDate: '2026-04-10', label: 'X', amountCents: -50_000, categoryItemCode: 'nonexistent_cat' },
     ])
 
     const buf = pdf('fs-rollback-case')

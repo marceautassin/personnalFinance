@@ -3,7 +3,7 @@ import type { Cents } from '~~/shared/types/money'
 import type { ReliabilityValue } from '~~/server/db/schema'
 
 export interface DashboardDelta {
-  categoryCode: string
+  categoryItemCode: string
   label: string
   currentCents: Cents
   priorAvgCents: Cents

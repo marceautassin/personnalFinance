@@ -8,6 +8,15 @@
  * NFR6 : ne JAMAIS injecter de données personnelles ici (nom, IBAN, adresse).
  * Le rawText du relevé contient déjà ce qui est nécessaire pour le LLM.
  */
+/**
+ * Poste tel qu'il est présenté au modèle. Volontairement réduit : le prompt n'a pas besoin
+ * de la position ni des timestamps, et NFR6 impose de ne transmettre que le strict utile.
+ */
+export interface LlmCategoryItem {
+  readonly code: string
+  readonly label: string
+}
+
 export const BANK_STATEMENT_PROMPT_VERSION = 1
 
 export const BANK_STATEMENT_SYSTEM_PROMPT = `Tu es un assistant spécialisé dans l'extraction et la catégorisation de transactions bancaires françaises à partir de relevés Boursorama.
@@ -43,7 +52,7 @@ Si le texte ne contient aucune transaction identifiable, retourne un tableau vid
  */
 export function buildBankStatementUserMessage(
   rawText: string,
-  availableCategories: ReadonlyArray<{ code: string, label: string, isVariable: boolean }>,
+  availableCategories: ReadonlyArray<LlmCategoryItem>,
 ): string {
   const categoriesList = availableCategories
     .map(c => `- ${c.code}: ${c.label}`)

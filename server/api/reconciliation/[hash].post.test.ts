@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { H3Event } from 'h3'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-reconc-api-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
@@ -25,41 +26,8 @@ beforeAll(async () => {
 
   // @ts-expect-error -- accès interne drizzle pour DDL de test
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE bank_statements (
-      hash_sha256 TEXT PRIMARY KEY,
-      period_start TEXT NOT NULL,
-      period_end TEXT NOT NULL,
-      opening_balance_cents INTEGER NOT NULL,
-      closing_balance_cents INTEGER NOT NULL,
-      reliability TEXT NOT NULL DEFAULT 'reliable',
-      ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      statement_hash TEXT NOT NULL REFERENCES bank_statements(hash_sha256) ON DELETE CASCADE,
-      transaction_date TEXT NOT NULL,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      is_manual INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE INDEX transactions_period_idx ON transactions(transaction_date);
-    CREATE INDEX transactions_statement_idx ON transactions(statement_hash);
-  `)
-
-  dbMod.db.insert(schema.categoryDefinitions).values([
-    { code: 'courses', label: 'Courses' },
-    { code: 'divers', label: 'Divers / Inconnu' },
-  ]).run()
+  sqlite.exec(TEST_SCHEMA_DDL)
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 
   handler = (await import('./[hash].post')).default as Handler
 })
@@ -99,7 +67,7 @@ function seedStatementWithGap(opts: {
         transactionDate: `2026-04-${String(10 + i).padStart(2, '0')}`,
         label: `Tx${i}`,
         amountCents: a,
-        categoryCode: 'courses',
+        categoryItemCode: 'alimentation-courses',
       })),
     ).run()
   }
@@ -131,7 +99,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Carrefour',
           amountCents: -20_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { isBalanced: boolean, gapCents: number, reliability: string }
 
@@ -156,7 +124,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Remboursement',
           amountCents: 150,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { isBalanced: boolean, gapCents: number }
 
@@ -173,7 +141,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Partial',
           amountCents: -10_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { isBalanced: boolean, gapCents: number, reliability: string }
 
@@ -192,14 +160,14 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Tx',
           amountCents: -20_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { reliability: string }
 
       expect(result.reliability).toBe('unreliable')
     })
 
-    it('rejects unknown categoryCode with 422 and writes nothing', async () => {
+    it('rejects unknown categoryItemCode with 422 and writes nothing', async () => {
       seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [] })
 
       await expect(handler(makeEvent(HASH_A, {
@@ -208,7 +176,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Tx',
           amountCents: -20_000,
-          categoryCode: 'nope',
+          categoryItemCode: 'nope',
         },
       }))).rejects.toMatchObject({
         statusCode: 422,
@@ -239,7 +207,7 @@ describe('POST /api/reconciliation/[hash]', () => {
       expect(rows).toHaveLength(2)
       const accepted = rows.find(r => r.label === 'Écart accepté (réconciliation)')!
       expect(accepted.amountCents).toBe(-10)
-      expect(accepted.categoryCode).toBe('divers')
+      expect(accepted.categoryItemCode).toBe('divers-non-categorise')
       expect(accepted.isManual).toBe(true)
       expect(accepted.transactionDate).toBe('2026-04-30')
 
@@ -285,7 +253,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-03-31', // hors période 2026-04-01..2026-04-30
           label: 'Tx',
           amountCents: -20_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))).rejects.toMatchObject({
         statusCode: 422,
@@ -305,7 +273,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-05-01',
           label: 'Tx',
           amountCents: -20_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))).rejects.toMatchObject({
         statusCode: 422,
@@ -322,7 +290,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-01',
           label: 'Tx',
           amountCents: -10_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { isBalanced: boolean }
       expect(r1.isBalanced).toBe(false)
@@ -333,7 +301,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-30',
           label: 'Tx',
           amountCents: -10_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { isBalanced: boolean }
       expect(r2.isBalanced).toBe(true)
@@ -350,7 +318,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Tx',
           amountCents: 0,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))).rejects.toMatchObject({
         statusCode: 422,
@@ -392,7 +360,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-02-30', // date inexistante
           label: 'Tx',
           amountCents: -1000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))).rejects.toMatchObject({
         statusCode: 422,

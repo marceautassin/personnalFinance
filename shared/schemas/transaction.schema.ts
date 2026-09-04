@@ -31,7 +31,7 @@ export const TransactionSchema = z.object({
   transactionDate: DateIsoSchema,
   label: LabelSchema,
   amountCents: z.number().int(),
-  categoryCode: z.string().min(1),
+  categoryItemCode: z.string().min(1),
   isManual: z.boolean(),
   createdAt: z.number().int(),
 })
@@ -41,7 +41,7 @@ export const NewTransactionSchema = z.object({
   transactionDate: DateIsoSchema,
   label: LabelSchema,
   amountCents: z.number().int(),
-  categoryCode: z.string().min(1),
+  categoryItemCode: z.string().min(1),
   isManual: z.boolean().default(false),
 })
 
@@ -52,7 +52,7 @@ export const ExtractedTransactionSchema = z.object({
   transactionDate: DateIsoSchema,
   label: LabelSchema,
   amountCents: z.number().int(),
-  categoryCode: z.string().min(1),
+  categoryItemCode: z.string().min(1),
 })
 
 /**
@@ -68,10 +68,10 @@ export const TransactionListQuerySchema = z.object({
  */
 export const TransactionPatchSchema = z
   .object({
-    categoryCode: z.string().trim().min(1).optional(),
+    categoryItemCode: z.string().trim().min(1).optional(),
   })
   .refine(
-    data => data.categoryCode !== undefined,
+    data => data.categoryItemCode !== undefined,
     { message: 'Au moins un champ doit être fourni' },
   )
 

@@ -1,43 +1,54 @@
 import { defineEventHandler } from 'h3'
+import { asc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { categoryDefinitions } from '~~/server/db/schema'
-import { referenceCountsByCategory } from '~~/server/utils/category-references'
-import type { CategoryWithCount } from '~~/shared/schemas/category.schema'
+import { categoryGroups, categoryItems } from '~~/server/db/schema'
+import { transactionCountsByItem } from '~~/server/utils/category-references'
+import type { CategoryGroupWithItems } from '~~/shared/schemas/category.schema'
 
 /**
- * Contrat de sortie du listing = `CategoryWithCountSchema` (AC#4). L'interface était
- * redéclarée à la main ici, en parallèle du schéma : deux sources de vérité qui pouvaient
- * diverger sans que rien ne le signale (revue 2026-08-04). `referenceCount` = transactions
- * + charges fixes + overrides ; > 0 bloque la suppression.
+ * Référentiel complet : rubriques et leurs postes (FR15), avec le nombre de transactions
+ * référençant chaque poste.
+ *
+ * Ce compteur vient de la même source que le refus de suppression
+ * (`server/utils/category-references.ts`) : la règle ne doit exister qu'à un seul endroit,
+ * sinon l'UI et le serveur divergent sur ce qui est supprimable (revue 2026-08-04).
+ *
+ * Tri : `position` puis libellé. Le tri par libellé se fait en JS avec `localeCompare('fr')` —
+ * le `ORDER BY` de SQLite est en collation binaire, qui classe « École » et « énergie » après
+ * « Zoo ».
  */
-export type CategoryListItem = CategoryWithCount
+export default defineEventHandler(async (): Promise<CategoryGroupWithItems[]> => {
+  const groups = await db
+    .select()
+    .from(categoryGroups)
+    .orderBy(asc(categoryGroups.position))
 
-/**
- * Référentiel des catégories + compteur de références (Story 5.6, étend Story 2.10).
- * Tri : variables d'abord (alpha), puis fixes (alpha). Stable côté client.
- */
-export default defineEventHandler(async (): Promise<CategoryListItem[]> => {
-  const rows = await db
-    .select({
-      code: categoryDefinitions.code,
-      label: categoryDefinitions.label,
-      isVariable: categoryDefinitions.isVariable,
-    })
-    .from(categoryDefinitions)
+  const items = await db
+    .select()
+    .from(categoryItems)
+    .orderBy(asc(categoryItems.position))
 
-  // Même source de vérité que le refus de suppression (`server/utils/category-references.ts`) :
-  // la liste des tables référençantes ne doit exister qu'à un seul endroit, sinon l'UI et le
-  // serveur divergent sur ce qui est supprimable (revue 2026-08-04).
-  const counts = referenceCountsByCategory()
+  const counts = transactionCountsByItem()
 
-  const withCount = rows.map(r => ({ ...r, referenceCount: counts.get(r.code) ?? 0 }))
+  const byPositionThenLabel = <T extends { position: number, label: string }>(a: T, b: T) =>
+    a.position - b.position || a.label.localeCompare(b.label, 'fr')
 
-  // Variables avant fixes, label alpha à l'intérieur de chaque groupe. Tri en JS avec
-  // `localeCompare('fr')` : le ORDER BY SQLite est en collation binaire (code-point), qui
-  // classe mal accents et minuscules (« École » ou « énergie » atterrit après « Zoo »).
-  const byLabel = (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label, 'fr')
-  return [
-    ...withCount.filter(r => r.isVariable).sort(byLabel),
-    ...withCount.filter(r => !r.isVariable).sort(byLabel),
-  ]
+  return groups
+    .map(g => ({
+      code: g.code,
+      label: g.label,
+      position: g.position,
+      items: items
+        .filter(i => i.groupCode === g.code)
+        .map(i => ({
+          code: i.code,
+          groupCode: i.groupCode,
+          label: i.label,
+          nature: i.nature,
+          position: i.position,
+          transactionCount: counts.get(i.code) ?? 0,
+        }))
+        .sort(byPositionThenLabel),
+    }))
+    .sort(byPositionThenLabel)
 })

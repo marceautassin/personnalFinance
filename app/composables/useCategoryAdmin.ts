@@ -1,19 +1,23 @@
-import type { CategoryListItem } from './useCategories'
-import type { NewCategoryInput } from '~~/shared/schemas/category.schema'
+import type { CategoryGroupWithItems } from './useCategories'
+import type {
+  NewCategoryGroupInput,
+  NewCategoryItemInput,
+  CategoryItemPatch,
+} from '~~/shared/schemas/category.schema'
 import type { MutationOutcome } from './useApiError'
 import { useInvalidate } from './useInvalidate'
 
 /**
- * Administration des catégories (Story 5.6) — lecture + create/rename/delete + invalidations.
- * Partage la `key` 'categories' avec `useCategories` (le `CategoryEditor` story 2.10 voit les
- * changements). Pas de `$fetch` dans les composants ; chaque mutation refetch la liste.
+ * Administration du référentiel — lecture + CRUD rubriques et postes + invalidations.
  *
- * Les libellés de catégorie apparaissent aussi dans le dashboard et le forecast : une mutation
- * doit les invalider, sinon un renommage n'apparaît qu'après rechargement complet de la page
- * (revue 2026-08-04).
+ * Partage la `key` 'categories' avec `useCategories`, pour que le sélecteur de poste voie
+ * immédiatement une rubrique ou un poste créé. Pas de `$fetch` dans les composants.
+ *
+ * Les libellés apparaissent aussi dans les vues d'analyse : une mutation doit les invalider,
+ * sinon un renommage n'apparaît qu'après rechargement complet (revue 2026-08-04).
  */
 export function useCategoryAdmin() {
-  const fetchState = useFetch<CategoryListItem[]>('/api/categories', {
+  const fetchState = useFetch<CategoryGroupWithItems[]>('/api/categories', {
     key: 'categories',
     default: () => [],
     server: false,
@@ -23,24 +27,24 @@ export function useCategoryAdmin() {
   const { invalidateAnalysis } = useInvalidate()
 
   /**
-   * Refetch la liste, puis les vues qui affichent des libellés de catégorie.
+   * Refetch le référentiel, puis les vues qui en affichent les libellés.
    *
    * ⚠️ `fetchState.refresh()` et NON `refreshNuxtData('categories')`. Le second dépend du
-   * contexte Nuxt ambiant, qui est perdu ici : ces fonctions sont appelées APRÈS un `await`,
-   * depuis un gestionnaire d'événement du composant. Constaté à la recette du 2026-09-04 —
-   * sur le chemin « blur vers un autre élément », le `PATCH` partait, aucun `GET` ne suivait,
-   * et l'écran continuait d'afficher l'ancien libellé pendant que la base portait le nouveau.
-   * Divergence silencieuse : l'utilisateur croyait son renommage abandonné alors qu'il était
-   * enregistré. `fetchState.refresh()` s'appuie sur l'instance capturée et ne peut pas rater.
+   * contexte Nuxt ambiant, perdu ici : ces fonctions sont appelées APRÈS un `await`, depuis
+   * un gestionnaire d'événement. Constaté à la recette du 2026-09-04 — sur le chemin « blur
+   * vers un autre élément », le `PATCH` partait, aucun `GET` ne suivait, et l'écran affichait
+   * l'ancien libellé pendant que la base portait le nouveau. Divergence silencieuse :
+   * l'utilisateur croyait son renommage abandonné alors qu'il était enregistré.
    */
   async function refreshList() {
     await fetchState.refresh()
     await invalidateAnalysis()
   }
 
-  async function addCategory(input: NewCategoryInput): Promise<MutationOutcome> {
+  /** Enveloppe commune : appel, mapping d'erreur, refetch. Six mutations, une seule forme. */
+  async function mutate(url: string, options: Parameters<typeof apiMutate>[1]): Promise<MutationOutcome> {
     try {
-      await apiMutate('/api/categories', { method: 'POST', body: input })
+      await apiMutate(url, options)
     }
     catch (err) {
       return mapMutationError(err)
@@ -49,35 +53,37 @@ export function useCategoryAdmin() {
     return { ok: true }
   }
 
-  async function updateCategory(code: string, label: string): Promise<MutationOutcome> {
-    try {
-      await apiMutate(`/api/categories/${encodeURIComponent(code)}`, { method: 'PATCH', body: { label } })
-    }
-    catch (err) {
-      return mapMutationError(err)
-    }
-    await refreshList()
-    return { ok: true }
-  }
+  const groupUrl = (code: string) => `/api/categories/groups/${encodeURIComponent(code)}`
+  const itemUrl = (code: string) => `/api/categories/items/${encodeURIComponent(code)}`
 
-  async function deleteCategory(code: string): Promise<MutationOutcome> {
-    try {
-      await apiMutate(`/api/categories/${encodeURIComponent(code)}`, { method: 'DELETE' })
-    }
-    catch (err) {
-      return mapMutationError(err)
-    }
-    await refreshList()
-    return { ok: true }
-  }
+  const addGroup = (input: NewCategoryGroupInput) =>
+    mutate('/api/categories/groups', { method: 'POST', body: input })
+
+  const renameGroup = (code: string, label: string) =>
+    mutate(groupUrl(code), { method: 'PATCH', body: { label } })
+
+  const deleteGroup = (code: string) =>
+    mutate(groupUrl(code), { method: 'DELETE' })
+
+  const addItem = (input: NewCategoryItemInput) =>
+    mutate('/api/categories/items', { method: 'POST', body: input })
+
+  const updateItem = (code: string, patch: CategoryItemPatch) =>
+    mutate(itemUrl(code), { method: 'PATCH', body: patch })
+
+  const deleteItem = (code: string) =>
+    mutate(itemUrl(code), { method: 'DELETE' })
 
   return {
     data: fetchState.data,
     pending: fetchState.pending,
     error: fetchState.error,
     refresh: fetchState.refresh,
-    addCategory,
-    updateCategory,
-    deleteCategory,
+    addGroup,
+    renameGroup,
+    deleteGroup,
+    addItem,
+    updateItem,
+    deleteItem,
   }
 }

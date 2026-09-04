@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
       transactionDate: transactions.transactionDate,
       label: transactions.label,
       amountCents: transactions.amountCents,
-      categoryCode: transactions.categoryCode,
+      categoryItemCode: transactions.categoryItemCode,
       isManual: transactions.isManual,
     })
     .from(transactions)

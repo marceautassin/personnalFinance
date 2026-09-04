@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { H3Event } from 'h3'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-stmt-detail-api-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
@@ -25,41 +26,8 @@ beforeAll(async () => {
 
   // @ts-expect-error -- accès interne drizzle pour DDL de test
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE bank_statements (
-      hash_sha256 TEXT PRIMARY KEY,
-      period_start TEXT NOT NULL,
-      period_end TEXT NOT NULL,
-      opening_balance_cents INTEGER NOT NULL,
-      closing_balance_cents INTEGER NOT NULL,
-      reliability TEXT NOT NULL DEFAULT 'reliable',
-      ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      statement_hash TEXT NOT NULL REFERENCES bank_statements(hash_sha256) ON DELETE CASCADE,
-      transaction_date TEXT NOT NULL,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      is_manual INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE INDEX transactions_period_idx ON transactions(transaction_date);
-    CREATE INDEX transactions_statement_idx ON transactions(statement_hash);
-  `)
-
-  dbMod.db.insert(schema.categoryDefinitions).values([
-    { code: 'courses', label: 'Courses' },
-    { code: 'divers', label: 'Divers / Inconnu' },
-  ]).run()
+  sqlite.exec(TEST_SCHEMA_DDL)
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 
   handler = (await import('./[hash].get')).default as Handler
 })
@@ -97,7 +65,7 @@ describe('GET /api/statements/[hash]', () => {
       reliability: 'reliable',
     }).run()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Carrefour', amountCents: -20_000, categoryCode: 'courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Carrefour', amountCents: -20_000, categoryItemCode: 'alimentation-courses' },
     ]).run()
 
     const result = (await handler(makeEvent(HASH_A))) as {
@@ -134,7 +102,7 @@ describe('GET /api/statements/[hash]', () => {
     }).run()
     // closing-opening = -20000, sum = -19990 → gap = -20000 - (-19990) = -10
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Carrefour', amountCents: -19_990, categoryCode: 'courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Carrefour', amountCents: -19_990, categoryItemCode: 'alimentation-courses' },
     ]).run()
 
     const result = (await handler(makeEvent(HASH_A))) as {
@@ -169,9 +137,9 @@ describe('GET /api/statements/[hash]', () => {
       reliability: 'reliable',
     }).run()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'B', amountCents: 0, categoryCode: 'courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: 0, categoryCode: 'courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-25', label: 'C', amountCents: 0, categoryCode: 'courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'B', amountCents: 0, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: 0, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-25', label: 'C', amountCents: 0, categoryItemCode: 'alimentation-courses' },
     ]).run()
 
     const result = (await handler(makeEvent(HASH_A))) as {

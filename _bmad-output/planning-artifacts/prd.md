@@ -315,7 +315,7 @@ Trois changements arrivent simultanément sur le composant le plus fragile du pr
 | Changement | Effet sur la catégorisation |
 |---|---|
 | Fournisseur : Anthropic → **GLM-5.2** | Modèle inconnu sur cette tâche |
-| Référentiel : 19 catégories plates → **41 postes hiérarchisés** | Tâche nettement plus dure — deux fois plus de cibles, plus un choix de rubrique |
+| Référentiel : 19 catégories plates → **48 postes hiérarchisés** | Tâche nettement plus dure — deux fois plus de cibles, plus un choix de rubrique |
 | Barre de qualité : « acceptée » → **≤ 10 % de corrections** | Exigence stricte là où il n'y en avait aucune |
 
 On durcit l'exigence, on complexifie la tâche et on change de moteur en même temps. Si le taux de correction dépasse 10 %, on ne saura pas lequel des trois est en cause — et c'est le cœur du produit : si la catégorisation ne tient pas, la corvée revient et l'utilisateur décroche, exactement comme il a décroché du tableur.
@@ -343,7 +343,7 @@ L'étape 4 est un **jalon de décision**, pas une étape ordinaire. Si le taux d
 **Capacités indispensables :**
 
 - Suppression du périmètre forecast / SAS / dettes / fiscalité / disclaimers
-- Référentiel à 2 niveaux (13 rubriques, 41 postes) et 3 natures de mouvement — dont une rubrique **Mouvements internes**, sans laquelle la troisième nature n'a aucune destination et le Journey 4 est impossible
+- Référentiel à 2 niveaux (13 rubriques, 48 postes) et 3 natures de mouvement — dont une rubrique **Mouvements internes**, sans laquelle la troisième nature n'a aucune destination et le Journey 4 est impossible
 - Bascule du fournisseur LLM vers Mistral / GLM-5.2, sorties structurées validées
 - Ingestion en masse : dépôt multiple, progression, déduplication par hash, échec isolé
 - **Jalon de mesure du taux de correction manuelle**
