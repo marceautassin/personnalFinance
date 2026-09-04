@@ -1,6 +1,5 @@
 # generated: 2026-04-30
-# last_updated: 2026-05-01
-# (story 2-5-service-reconciler passée in-progress)
+# last_updated: 2026-09-04
 # project: personnalFinance
 # project_key: NOKEY
 # tracking_system: file-system
@@ -23,6 +22,8 @@
 #   - in-progress: Developer actively working on implementation
 #   - review: Ready for code review (via Dev's code-review workflow)
 #   - done: Story completed
+#   - descoped: Story abandonnée sans livraison (statut hors gabarit BMad, usage local
+#     établi le 2026-05-31 sur 4-2)
 #
 # Retrospective Status:
 #   - optional: Can be completed but not required
@@ -35,30 +36,46 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PIVOT PRODUIT DU 2026-09-04
+# ══════════════════════════════════════════════════════════════════════════════
+# Le cadrage initial (forecast inverse + dividende SAS) a été invalidé par l'usage réel.
+# PRD réécrit, architecture amendée (D11-D16 retirées, D17-D27 ajoutées), périmètre mort
+# supprimé du code : 146 fichiers, −10 457 lignes.
+#
+# Conséquences sur ce fichier :
+#   • Epics 1-4 et 7 : restent `done`. Le travail A ÉTÉ livré ; une partie du code a ensuite
+#     été retirée par le pivot. Le statut décrit ce qui s'est passé, pas ce qui subsiste.
+#   • Epics 5-6 : passent à `descoped`. Ils n'ont jamais franchi la revue et leur code est parti.
+#   • Epics 8-11 (Phase 1.x multi-profils) : RETIRÉS de ce fichier. Jamais implémentés, et les
+#     décisions qui les portaient (D11-D16) sont explicitement retirées de l'architecture.
+#     Le multi-compte repasse en Vision au PRD. Trace : sprint-change-proposal-2026-07-12.md
+#     et epics-v1-forecast.md.
+#   • Epics 12-15 : nouveau découpage, source de vérité `planning-artifacts/epics.md`.
+#     Numérotés à partir de 12 pour ne pas entrer en collision avec les fichiers de stories
+#     1-1-*.md à 7-8-*.md, qui restent dans ce dossier.
+#
+# ⚠️ ÉCART DE CONVENTION VIGIE — signalé, non corrigé.
+# Vigie attend `planning-artifacts/<chantier>/` ↔ `implementation-artifacts/<chantier>/`.
+# Ce projet utilise une structure PLATE, sans sous-dossier de chantier, depuis son origine.
+# Les 39 fichiers de stories existants sont à la racine d'implementation-artifacts.
+# Introduire un sous-dossier maintenant scinderait le projet en deux chantiers aux yeux de
+# Vigie : un « en cadrage » côté planification, un sans titres côté implémentation.
+# À trancher explicitement avant la création des stories 12-1 et suivantes.
+# ══════════════════════════════════════════════════════════════════════════════
+
 generated: 2026-04-30
 last_updated: 2026-09-04
-# (2026-09-04 : revue epic-6 → CHANGEMENTS REQUIS ; ajout stories 6-5..6-8 de remédiation)
-# (2026-09-04 : dev autonome 6-5..6-8 + revue → BLOQUER puis corrigé ; 476 tests, E2E 9/9.
-#  Clôture de l'epic 6 conditionnée à la RECETTE VISUELLE, non faite — 3e échec MCP Playwright.)
-# (2026-09-04 : archi D11-D16 actées — D12 amendée (scoping par profil), D15 wipe, D16 ledger signé)
-# (2026-09-04 : revue lot 2 epic-5 → 5-5, 5-6 patchées ; validation visuelle restant à faire)
-# (2026-08-04 : code review lot 1 epic-5 → 5-3, 5-4 done (26 patchs, 3 décisions, 5 defer))
-# (2026-07-19 : code review epic-7 → 9 patchs appliqués, 2 defer ; stories 7-1..7-8 + epic-7 → done)
-# (2026-07-12 : Sprint Change Proposal — ajout epics 8-11 Phase 1.x multi-profils/comptes, backlog)
-# (stories 5-1, 5-2 : review → done ; reste epic-5 : 5-3..5-6 ready-for-dev)
-# (dev story 5-3 : ready-for-dev → in-progress → review)
-# (dev story 5-4 : ready-for-dev → in-progress → review)
-# (review epic-3 + apply patches : 3-1, 3-2, 3-3 → done ; epic-2 et epic-3 → done)
-# (création stories epic-4 : 4-1, 4-2, 4-3 → ready-for-dev ; epic-4 → in-progress)
-# (création stories epic-5 : 5-1..5-6 → ready-for-dev ; epic-5 → in-progress)
-# (dev story 5-1 : ready-for-dev → in-progress → review)
 project: personnalFinance
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
 development_status:
+  # ─────────────────────────── SOCLE LIVRÉ (epics 1-7) ───────────────────────────
+
   # Epic 1 — Foundation & primitives financières
+  # Intégralement conservé. `Cents`, erreurs normalisées, Zod, bootstrap : le socle actuel.
   epic-1: done
   1-1-initialiser-projet-nuxt-et-dependances: done
   1-2-configurer-typescript-eslint-tests: done
@@ -70,6 +87,8 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2 — Ingestion & catégorisation des relevés
+  # Intégralement conservé. C'est sur cette base que se greffent les epics 13 et 14.
+  # La boundary posée en 2-4 rend la bascule de fournisseur LLM (13-5) confinable à un fichier.
   epic-2: done
   2-1-schema-bank-statements-et-transactions: done
   2-2-service-pdf-extractor: done
@@ -84,6 +103,7 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3 — Réconciliation manuelle des écarts
+  # Intégralement conservé. FR10-FR14 du nouveau PRD sont tenus par ce code.
   epic-3: done
   3-1-endpoint-post-api-reconciliation: done
   3-2-ui-reconciliation-gap-add-manual-transaction: done
@@ -91,6 +111,7 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4 — Dashboard mensuel narratif
+  # Conservé, mais l'epic 15 le remplace fonctionnellement.
   epic-4: done
   4-1-endpoint-get-api-dashboard: done
   # descoped 2026-05-31 : refactor pur (déménagement des helpers déjà inlinés en 4.1).
@@ -100,30 +121,40 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5 — Modèles financiers (charges, revenus, SAS, fiscalité)
-  epic-5: in-progress
-  5-1-fixed-charges-crud-et-ui: done
-  5-2-charge-suggester-et-suggestions-ui: done
-  5-3-revenue-models-endpoints-et-ui: done
-  5-4-sas-config-dividend-capacity-et-ui: done
-  5-5-tax-settings-endpoints-et-ui: review
-  5-6-gestion-categories-crud-et-ui: review
+  # DESCOPED le 2026-09-04. Charges fixes déclaratives, revenus déclaratifs, config SAS et
+  # fiscalité supprimés du code. 5-5 et 5-6 n'avaient jamais franchi la revue.
+  # Deux survivances : `charge-suggester.ts` (5-2), découplé des charges déclaratives et
+  # repositionné en FR38 phase 2 ; le CRUD catégories (5-6), que l'epic 12 remplace.
+  epic-5: descoped
+  5-1-fixed-charges-crud-et-ui: descoped
+  5-2-charge-suggester-et-suggestions-ui: descoped
+  5-3-revenue-models-endpoints-et-ui: descoped
+  5-4-sas-config-dividend-capacity-et-ui: descoped
+  5-5-tax-settings-endpoints-et-ui: descoped
+  5-6-gestion-categories-crud-et-ui: descoped
   epic-5-retrospective: optional
 
   # Epic 6 — Dettes
-  epic-6: in-progress
-  6-1-debts-schemas-crud-endpoints: review
-  6-2-ui-debts-page-card-form: review
-  6-3-marquage-transaction-remboursement-fr9: review
-  6-4-debt-projection-et-impact-ui: review
-  # Revue du 2026-09-04 (première revue de l'epic) → CHANGEMENTS REQUIS.
-  # 6-1..6-4 restent en review : leur clôture est conditionnée à 6-5..6-8 ci-dessous.
-  6-5-ledger-evenements-signes: review
-  6-6-corriger-biais-dividende: review
-  6-7-surete-donnees-dette: review
-  6-8-couverture-nfr18-et-specs: review
+  # DESCOPED le 2026-09-04. La revue du matin même avait conclu CHANGEMENTS REQUIS ;
+  # les stories de remédiation 6-5..6-8 ont été développées et corrigées, mais la recette
+  # visuelle n'a jamais eu lieu et le pivot a supprimé l'ensemble. Aucune story n'a été close.
+  # Le PRD réécrit acte que les remboursements de dette ne reçoivent aucun traitement
+  # particulier : une catégorie comme une autre.
+  epic-6: descoped
+  6-1-debts-schemas-crud-endpoints: descoped
+  6-2-ui-debts-page-card-form: descoped
+  6-3-marquage-transaction-remboursement-fr9: descoped
+  6-4-debt-projection-et-impact-ui: descoped
+  6-5-ledger-evenements-signes: descoped
+  6-6-corriger-biais-dividende: descoped
+  6-7-surete-donnees-dette: descoped
+  6-8-couverture-nfr18-et-specs: descoped
   epic-6-retrospective: optional
 
   # Epic 7 — Forecast inverse
+  # Livré et clos en juillet 2026, puis SUPPRIMÉ du code le 2026-09-04.
+  # Le statut `done` décrit le travail effectué. Le principe de 7-3 — moteur = fonction pure,
+  # aucun cache serveur — est reconduit sous D19 et porté par la story 15-1.
   epic-7: done
   7-1-service-variable-projection: done
   7-2-monthly-overrides-endpoints: done
@@ -135,40 +166,51 @@ development_status:
   7-8-recalcul-reactif-global-use-invalidate: done
   epic-7-retrospective: optional
 
-  # ── Phase 1.x — Multi-profils/comptes (Sprint Change Proposal 2026-07-12) ──
-  # Démarrer APRÈS clôture epics 5/6/7. Epic 8 = socle bloquant.
-  # Design architecture (D11-D14 + 3 open questions) à trancher par Winston avant dev.
+  # ──────────────────── NOUVEAU DÉCOUPAGE (epics 12-15, 2026-09-04) ────────────────────
+  # Chaîne strictement linéaire : 12 → 13 → 14 → 15.
+  # Aucun fichier de story n'existe encore : tout est en `backlog`.
 
-  # Epic 8 — Fondation multi-profils / multi-comptes
-  epic-8: backlog
-  8-1-schema-profiles-accounts-migration-scoping: backlog
-  8-2-endpoints-crud-profiles-accounts: backlog
-  8-3-rescoping-endpoints-existants: backlog
-  8-4-rescoping-services-calcul-snapshots: backlog
-  8-5-store-use-context-selecteur-global: backlog
-  8-6-propagation-contexte-composables-invalidation: backlog
-  epic-8-retrospective: optional
+  # Epic 12 — Référentiel hiérarchique et natures de mouvement
+  # FR15-FR19. Sa story 12-1 vide les transactions (D18) ; les PDF de _data/raw/ sont conservés.
+  epic-12: backlog
+  12-1-schema-du-referentiel-a-deux-niveaux: backlog
+  12-2-consultation-du-referentiel: backlog
+  12-3-creation-renommage-suppression-rubrique: backlog
+  12-4-creation-renommage-suppression-poste: backlog
+  epic-12-retrospective: optional
 
-  # Epic 9 — Comptes en gestion (mode suivi)
-  epic-9: backlog
-  9-1-garde-fou-serveur-profile-not-owner: backlog
-  9-2-ui-adaptative-selon-kind: backlog
-  9-3-parcours-creation-profil-managed-e2e: backlog
-  epic-9-retrospective: optional
+  # Epic 13 — Catégorisation fiable sur le nouveau référentiel
+  # FR20-FR24. Ordre volontaire : la mesure (13-3) existe AVANT la ré-ingestion (13-4),
+  # et la bascule de fournisseur (13-5) vient après une première mesure de référence.
+  # Deux mesures encadrent le changement de modèle : les causes restent séparables.
+  epic-13: backlog
+  13-1-prompt-de-categorisation-hierarchique: backlog
+  13-2-reclassement-transaction-vers-autre-nature: backlog
+  13-3-taux-de-correction-manuelle-par-releve: backlog
+  13-4-reingestion-historique-court: backlog
+  13-5-bascule-fournisseur-mistral-glm: backlog
+  epic-13-retrospective: optional
 
-  # Epic 10 — Dépenses communes (split conjoint)
-  epic-10: backlog
-  10-1-modele-flag-commune-lien-conjoint: backlog
-  10-2-service-shared-expense: backlog
-  10-3-patch-transactions-etendu-recalcul-solde: backlog
-  10-4-ui-marqueur-commune-solde-conjoint: backlog
-  10-5-test-e2e-split-conjoint: backlog
-  epic-10-retrospective: optional
+  # Epic 14 — Ingestion de l'historique complet
+  # FR1-FR9. ⚠️ SE TERMINE PAR UN JALON DE DÉCISION, PAS PAR UNE LIVRAISON.
+  # 14-4 mesure le taux de correction manuelle réel sur les ~24 relevés.
+  # SEUIL : ≤ 10 %. Au-dessus, l'epic 15 NE DÉMARRE PAS — on ajuste modèle, prompt ou
+  # finesse du référentiel avant de construire des écrans sur une donnée mal rangée.
+  epic-14: backlog
+  14-1-depot-multiple-avec-progression: backlog
+  14-2-echec-isole-et-rapport-par-fichier: backlog
+  14-3-suppression-d-un-releve-ingere: backlog
+  14-4-jalon-ingestion-historique-et-mesure: backlog
+  epic-14-retrospective: optional
 
-  # Epic 11 — Extraction PDF paramétrée par banque
-  epic-11: backlog
-  11-1-refactor-pdf-extractor-dispatcher-banque: backlog
-  11-2-deuxieme-strategie-banque-fixtures: backlog
-  11-3-pipeline-ingestion-account-bank: backlog
-  11-4-ui-parametrage-compte-selection-banque: backlog
-  epic-11-retrospective: optional
+  # Epic 15 — Analyse : répartition, évolution, indicateurs, traçabilité
+  # FR12, FR25-FR36. ⚠️ CONDITIONNÉ AU FRANCHISSEMENT DU JALON 14-4.
+  # C'est le produit : ne pas démarrer tant que les lignes ne sont pas dans les bonnes cases.
+  epic-15: backlog
+  15-1-moteur-analyse-arbre-et-indicateurs: backlog
+  15-2-endpoint-analyse-fiabilite-solde: backlog
+  15-3-page-analyse-selecteur-et-indicateurs: backlog
+  15-4-repartition-par-rubrique-et-poste: backlog
+  15-5-descente-agregat-vers-transactions: backlog
+  15-6-evolution-entre-periodes: backlog
+  epic-15-retrospective: optional
