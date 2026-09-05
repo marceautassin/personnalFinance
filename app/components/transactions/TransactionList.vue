@@ -63,5 +63,7 @@ defineEmits<{
 }
 .tx-list__col-date { width: 6em; }
 .tx-list__col-amount { width: 9em; text-align: right; }
-.tx-list__col-cat { width: 14em; }
+/* Assez large pour « Abonnements et prélèvements · Streaming » sur deux lignes plutôt que
+   trois : chaque retour à la ligne fait grandir la ligne entière et déforme le tableau. */
+.tx-list__col-cat { width: 20em; }
 </style>

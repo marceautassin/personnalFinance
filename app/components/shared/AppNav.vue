@@ -9,11 +9,10 @@ const now = new Date()
 const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
 const items: NavItem[] = [
-  { label: 'Dashboard', href: '/' },
+  { label: 'Analyse', href: '/analyse' },
   { label: 'Import', href: '/import' },
   { label: 'Transactions', href: `/transactions/${currentPeriod}` },
   { label: 'Catégories', href: '/categories' },
-  { label: 'Analyse', href: '/analyse' },
   { label: 'Règles', href: '/regles' },
 ]
 </script>

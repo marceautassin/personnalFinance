@@ -35,10 +35,29 @@ function correctionTitle(stmt: StatementListItem): string {
 }
 
 const monthFormatter = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
-function monthLabel(periodStart: string): string {
-  const [y, m] = periodStart.split('-').map(Number)
-  const label = monthFormatter.format(new Date(y!, m! - 1, 1))
-  return label.charAt(0).toUpperCase() + label.slice(1)
+const dayFormatter = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit' })
+
+function toDate(dateIso: string): Date {
+  const [y, m, d] = dateIso.split('-').map(Number)
+  return new Date(y!, m! - 1, d!)
+}
+
+/**
+ * Libellé d'un relevé — la PÉRIODE réelle, pas le mois de sa première date.
+ *
+ * Les relevés Boursobank chevauchent deux mois (28/02 → 31/03). Nommer chacun par son mois de
+ * début affichait « Mai 2026 » et « Janvier 2026 » DEUX FOIS dans la liste, sur des relevés
+ * différents : deux lignes indiscernables, dont l'une renvoyait vers le mauvais mois
+ * (recette du 2026-09-05).
+ */
+function periodLabel(periodStart: string, periodEnd: string): string {
+  const start = toDate(periodStart)
+  const end = toDate(periodEnd)
+  if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
+    const label = monthFormatter.format(start)
+    return label.charAt(0).toUpperCase() + label.slice(1)
+  }
+  return `${dayFormatter.format(start)} → ${dayFormatter.format(end)}/${end.getFullYear()}`
 }
 function periodSlug(periodStart: string): string {
   return periodStart.slice(0, 7)
@@ -97,7 +116,7 @@ function periodSlug(periodStart: string): string {
           :key="stmt.hash"
           class="statements__row"
         >
-          <span class="statements__period">{{ monthLabel(stmt.periodStart) }}</span>
+          <span class="statements__period">{{ periodLabel(stmt.periodStart, stmt.periodEnd) }}</span>
           <span class="statements__count">{{ stmt.transactionCount }} tx</span>
           <!--
             Taux de correction manuelle (FR24) — le chiffre du jalon de décision du MVP.

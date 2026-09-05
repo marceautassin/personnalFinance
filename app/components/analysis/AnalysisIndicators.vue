@@ -2,6 +2,7 @@
 import { formatEuros, type Cents } from '~~/shared/types/money'
 import { formatRatio } from '~~/shared/types/ratio'
 import type { AnalysisResponse } from '~/composables/useAnalysis'
+import { formatDate } from '~/utils/dates'
 
 const props = defineProps<{
   indicators: AnalysisResponse['indicators']
@@ -81,7 +82,7 @@ const balanceIsOffset = computed(() =>
       <span class="indic__hint">
         <template v-if="bankDelta === null">Historique incomplet sur la période</template>
         <template v-else-if="balanceIsOffset">
-          Du {{ bankBalance?.from }} au {{ bankBalance?.to }}, mouvements internes compris
+          Du {{ formatDate(bankBalance!.from) }} au {{ formatDate(bankBalance!.to) }}, mouvements internes compris
         </template>
         <template v-else>Mouvements internes compris : {{ formatEuros(indicators.internalCents as Cents) }}</template>
       </span>

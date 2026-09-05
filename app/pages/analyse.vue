@@ -6,6 +6,7 @@ import { isDegraded } from '~~/shared/types/statement-reliability'
 import { formatEuros, type Cents } from '~~/shared/types/money'
 import type { MovementNature } from '~~/shared/types/movement-nature'
 import type { AnalysisResponse } from '~/composables/useAnalysis'
+import { formatDate } from '~/utils/dates'
 
 type AnalysisNature = AnalysisResponse['natures'][number]
 
@@ -238,7 +239,7 @@ const drillTotal = computed(() =>
             :key="tx.id"
             class="analyse__drill-row"
           >
-            <span>{{ tx.transactionDate }}</span>
+            <span>{{ formatDate(tx.transactionDate) }}</span>
             <span class="analyse__drill-label">{{ tx.label }}</span>
             <span class="analyse__drill-amount">{{ formatEuros(tx.amountCents as Cents) }}</span>
             <NuxtLink

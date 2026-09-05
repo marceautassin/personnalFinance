@@ -78,6 +78,10 @@
   --transition-base: 200ms ease-out;
 
   /* === Layout === */
-  --container-max: 1280px;
+  /* 1280 px venait du produit forecast, qui n'affichait que des cartes. Les écrans actuels
+     sont des tableaux larges — transactions, répartition en deux colonnes, descente — et le
+     PRD pose que « la descente rubrique → poste → transaction peut occuper l'écran en largeur
+     sans contrainte d'empilement ». Élargi le 2026-09-05. */
+  --container-max: 1600px;
   --content-max: 960px;
 }

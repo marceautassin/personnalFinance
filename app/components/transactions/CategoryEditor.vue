@@ -76,9 +76,11 @@ onBeforeUnmount(() => {
       class="cat-editor__trigger"
       :aria-expanded="open"
       aria-haspopup="listbox"
+      :aria-label="`Poste : ${currentLabel}`"
+      :title="currentLabel"
       @click="toggle"
     >
-      {{ currentLabel }}
+      <span class="cat-editor__current">{{ currentLabel }}</span>
       <span aria-hidden="true">▾</span>
     </button>
 
@@ -160,6 +162,10 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .cat-editor__trigger:hover { border-color: var(--color-accent); }
+/* Une seule ligne, tronquée : un libellé qui passe à la ligne fait grandir toute la rangée du
+   tableau. La valeur complète reste dans le nom accessible et l'infobulle (NFR20). */
+.cat-editor__trigger { max-width: 100%; }
+.cat-editor__current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cat-editor__menu {
   position: absolute;
   top: calc(100% + 4px);

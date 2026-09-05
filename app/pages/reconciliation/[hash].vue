@@ -3,6 +3,7 @@ import { useReconciliation, useStatementDetail } from '~/composables/useReconcil
 import type { AddManualTransactionInput } from '~~/shared/schemas/reconciliation.schema'
 import { formatEuros, subCents, sumCents, type Cents } from '~~/shared/types/money'
 import { isDegraded } from '~~/shared/types/statement-reliability'
+import { formatDate, formatRange } from '~/utils/dates'
 
 const HASH_RE = /^[a-f0-9]{64}$/
 definePageMeta({
@@ -30,7 +31,7 @@ const foundCents = computed<Cents>(() =>
 
 const periodLabel = computed(() => {
   if (!data.value.periodStart) return ''
-  return `${data.value.periodStart} → ${data.value.periodEnd}`
+  return formatRange(data.value.periodStart, data.value.periodEnd)
 })
 
 const fetchErrorMessage = computed(() => (error.value ? mapError(error.value) : null))
@@ -139,7 +140,7 @@ async function onAcceptConfirm() {
             class="rec-page__tx-row"
             :class="{ 'rec-page__tx-row--manual': tx.isManual }"
           >
-            <span class="rec-page__tx-date">{{ tx.transactionDate }}</span>
+            <span class="rec-page__tx-date">{{ formatDate(tx.transactionDate) }}</span>
             <span class="rec-page__tx-label">
               {{ tx.label }}
               <small

@@ -28,13 +28,20 @@ const isNegative = computed(() => props.transaction.amountCents < 0)
       {{ dayLabel }}
     </td>
     <td class="tx-row__label">
-      <span>{{ transaction.label }}</span>
-      <small
-        v-if="transaction.isManual"
-        class="tx-row__badge tx-row__badge--manual"
-        :title="'Catégorie modifiée manuellement'"
-      >modifié</small>
-      />
+      <!--
+        Le flex vit sur un conteneur INTERNE, jamais sur le `<td>` : `display: flex` sort la
+        cellule du layout de tableau, et le `vertical-align: middle` de la ligne cesse alors
+        de s'y appliquer — le libellé se calait en haut pendant que la date et le montant
+        restaient centrés (recette du 2026-09-05).
+      -->
+      <span class="tx-row__label-inner">
+        <span class="tx-row__label-text">{{ transaction.label }}</span>
+        <small
+          v-if="transaction.isManual"
+          class="tx-row__badge tx-row__badge--manual"
+          :title="'Catégorie modifiée manuellement'"
+        >modifié</small>
+      </span>
     </td>
     <td
       class="tx-row__amount"
@@ -59,7 +66,8 @@ const isNegative = computed(() => props.transaction.amountCents < 0)
   vertical-align: middle;
 }
 .tx-row__date { color: var(--color-text-muted); white-space: nowrap; }
-.tx-row__label { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.tx-row__label-inner { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.tx-row__label-text { overflow-wrap: anywhere; }
 .tx-row__amount { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tx-row__amount--neg { color: var(--color-danger); }
 .tx-row__amount--pos { color: var(--color-success); }
