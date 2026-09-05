@@ -58,9 +58,25 @@ export const ExtractedTransactionSchema = z.object({
 /**
  * Query string de `GET /api/transactions?month=YYYY-MM`.
  */
-export const TransactionListQuerySchema = z.object({
-  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Format mois attendu: YYYY-MM'),
-})
+/**
+ * Deux façons de demander des transactions, exclusives l'une de l'autre :
+ *
+ *  - `month=YYYY-MM` — la vue mensuelle historique ;
+ *  - `from`/`to` (+ `item` optionnel) — la DESCENTE depuis un agrégat (AR8, NFR2).
+ *
+ * La descente est ce qui rend NFR2 satisfaisable sans précalcul : l'arbre d'analyse ne
+ * transporte aucune ligne, il porte de quoi construire cette requête.
+ */
+export const TransactionListQuerySchema = z.union([
+  z.object({
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Format mois attendu: YYYY-MM'),
+  }).strict(),
+  z.object({
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD'),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD'),
+    item: z.string().trim().min(1).optional(),
+  }).strict().refine(q => q.from <= q.to, { message: 'from doit précéder to', path: ['from'] }),
+])
 
 /**
  * Body du `PATCH /api/transactions/[id]`.
@@ -79,4 +95,12 @@ export type Transaction = z.infer<typeof TransactionSchema>
 export type NewTransaction = z.infer<typeof NewTransactionSchema>
 export type ExtractedTransaction = z.infer<typeof ExtractedTransactionSchema>
 export type TransactionListQuery = z.infer<typeof TransactionListQuerySchema>
+
+/**
+ * Requête mensuelle seule, pour les endpoints qui n'acceptent QUE cette forme (le dashboard).
+ * Les faire dépendre de l'union les obligerait à écarter une branche qu'ils ne servent pas.
+ */
+export const MonthQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Format mois attendu: YYYY-MM'),
+})
 export type TransactionPatch = z.infer<typeof TransactionPatchSchema>

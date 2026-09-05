@@ -22,7 +22,7 @@ import { type StatementReliability, worstReliability } from '~~/shared/types/sta
 import { reliabilityOverlapping } from '~~/server/utils/statement-reliability'
 import { validateQuery } from '~~/server/utils/validation'
 import { previousMonth, monthEnd } from '~~/server/utils/period'
-import { TransactionListQuerySchema } from '~~/shared/schemas/transaction.schema'
+import { MonthQuerySchema } from '~~/shared/schemas/transaction.schema'
 import { type Cents, cents, formatEuros } from '~~/shared/types/money'
 
 export interface DashboardDelta {
@@ -52,7 +52,7 @@ const DELTA_MIN_ABS_CENTS = 1000 // 10 €
 const DELTA_MIN_PCT = 0.20
 
 export default defineEventHandler(async (event): Promise<DashboardResponse> => {
-  const { month } = validateQuery(event, TransactionListQuerySchema)
+  const { month } = validateQuery(event, MonthQuerySchema)
 
   // Périmètre du mois (dates ISO, comparaison lexicographique sûre).
   // monthEnd reflète la vraie longueur du mois plutôt qu'un '-31' littéral : borne de comparaison

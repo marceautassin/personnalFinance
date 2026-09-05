@@ -159,3 +159,55 @@ describe('GET /api/transactions', () => {
     })
   })
 })
+
+/**
+ * Descente depuis un agrégat (FR35, AR8).
+ *
+ * C'est ce qui rend NFR2 satisfaisable sans précalcul : l'arbre d'analyse ne transporte aucune
+ * ligne, il porte de quoi construire cette requête.
+ */
+describe('GET /api/transactions — descente par bornes et par poste', () => {
+  beforeEach(() => {
+    seedStatement()
+    dbMod.db.insert(schema.transactions).values([
+      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: -1000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'B', amountCents: -2000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'C', amountCents: -3000, categoryItemCode: 'alimentation-restaurant' },
+      { statementHash: HASH_A, transactionDate: '2026-05-02', label: 'HORS', amountCents: -4000, categoryItemCode: 'alimentation-courses' },
+    ]).run()
+  })
+
+  it('filtre sur les bornes', async () => {
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30'))) as Resp
+    expect(r.transactions.map(t => t.label)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('filtre en plus sur le poste', async () => {
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=alimentation-courses'))) as Resp
+    expect(r.transactions.map(t => t.label)).toEqual(['A', 'B'])
+  })
+
+  /**
+   * La somme des lignes de la descente doit valoir le montant du nœud d'où l'on vient : c'est
+   * la propriété que NFR2 exige, et la seule qui rende un agrégat vérifiable.
+   */
+  it('somme exactement le total du poste sur la période', async () => {
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=alimentation-courses'))) as Resp
+    expect(r.transactions.reduce((s, t) => s + t.amountCents, 0)).toBe(-3000)
+  })
+
+  it('rend une liste vide sur un poste sans ligne, sans lever', async () => {
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=voyages-restaurant'))) as Resp
+    expect(r.transactions).toEqual([])
+  })
+
+  it('refuse un mélange des deux formes de requête', async () => {
+    await expect(handler(eventWithQuery('month=2026-04&item=alimentation-courses')))
+      .rejects.toMatchObject({ statusCode: 422 })
+  })
+
+  it('refuse des bornes inversées', async () => {
+    await expect(handler(eventWithQuery('from=2026-04-30&to=2026-04-01')))
+      .rejects.toMatchObject({ statusCode: 422 })
+  })
+})

@@ -95,6 +95,14 @@ export interface AnalysisResult {
 
 export interface AnalysisInput {
   transactions: readonly AnalysisTransaction[]
+  /**
+   * Lignes de la FENÊTRE d'évolution, plus large que la période analysée.
+   *
+   * L'arbre décrit la période choisie ; la série, elle, n'a de sens que sur plusieurs
+   * tranches. Les confondre donnait, en granularité mois, une série d'un seul point — un
+   * graphique d'évolution qui n'évolue pas. Par défaut, la fenêtre est la période elle-même.
+   */
+  seriesTransactions?: readonly AnalysisTransaction[]
   /** Lignes de la période précédente, pour `previousTotalCents` (D24). Vide si non demandée. */
   previousTransactions?: readonly AnalysisTransaction[]
   referential: readonly AnalysisItemRef[]
@@ -186,7 +194,7 @@ export function analyze(input: AnalysisInput): AnalysisResult {
     })
   }
 
-  const series = buildSeries(transactions, byCode, granularity)
+  const series = buildSeries(input.seriesTransactions ?? transactions, byCode, granularity)
   const indicators = computeIndicators(natures, series)
 
   return { natures, indicators, series, orphanCount }
@@ -214,6 +222,8 @@ function computeIndicators(
     expenseCents,
     internalCents,
     resultCents,
+    // Cumul à la FIN de la fenêtre d'évolution : c'est ce que « trésorerie cumulée » veut
+    // dire — ce qui reste après tout ce qui précède, pas le résultat de la seule période.
     cumulativeResultCents: series.at(-1)?.cumulativeResultCents ?? resultCents,
     // Dénominateur nul → `null`, jamais zéro : un mois sans recette n'a pas un taux
     // d'épargne nul, il n'en a pas (AR10).

@@ -26,6 +26,7 @@ interface Resp {
     resultCents: number
     spendRate: number | null
     savingsRate: number | null
+    cumulativeResultCents: number
   }
   natures: Array<{ nature: string, totalCents: number, groups: Array<{ groupCode: string, totalCents: number }> }>
   series: Array<{ bucket: string, resultCents: number }>
@@ -222,5 +223,41 @@ describe('GET /api/analysis — comparaison à la période précédente (D24)', 
       natures: Array<{ nature: string, groups: Array<{ previousTotalCents: number }> }>
     }
     expect(r.natures.find(n => n.nature === 'expense')!.groups[0]!.previousTotalCents).toBe(-10_000)
+  })
+})
+
+/**
+ * Fenêtre d'évolution (FR31).
+ *
+ * L'arbre décrit la période choisie ; la série n'a de sens que sur plusieurs tranches. Les
+ * confondre donnait, en granularité mois, un graphique d'évolution d'un seul point.
+ */
+describe('GET /api/analysis — fenêtre d\'évolution', () => {
+  beforeEach(() => {
+    for (const month of ['01', '02', '03']) {
+      seedStatement({ hash: `m${month}`, periodStart: `2026-${month}-01`, periodEnd: `2026-${month}-28` })
+      seedTx(`m${month}`, `2026-${month}-10`, -10_000 * Number(month), 'alimentation-courses')
+    }
+  })
+
+  it('couvre plusieurs tranches, pas la seule période analysée', async () => {
+    const r = await handler(query(MARCH))
+    expect(r.series.map(s => s.bucket)).toEqual(['2026-01', '2026-02', '2026-03'])
+  })
+
+  it('borne l\'arbre à la période demandée, malgré la série élargie', async () => {
+    const r = await handler(query(MARCH))
+    expect(r.natures.find(n => n.nature === 'expense')!.totalCents).toBe(-30_000)
+  })
+
+  it('cumule sur toute la fenêtre, pas sur la seule période', async () => {
+    const r = await handler(query(MARCH))
+    expect(r.series.at(-1)!.resultCents).toBe(-30_000)
+    expect(r.indicators.cumulativeResultCents).toBe(-60_000)
+  })
+
+  it('annonce la première tranche couverte', async () => {
+    const r = await handler(query(MARCH)) as unknown as { seriesFrom: string }
+    expect(r.seriesFrom).toBe('2025-04-01')
   })
 })

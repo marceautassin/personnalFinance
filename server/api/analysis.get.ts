@@ -36,7 +36,12 @@ export interface AnalysisResponse extends AnalysisResult {
    * internes, le résultat les exclut (NFR4). Deux chiffres, deux questions.
    */
   bankBalance: { openingCents: Cents, closingCents: Cents } | null
+  /** Première tranche couverte par la série d'évolution. */
+  seriesFrom: string
 }
+
+/** Nombre de tranches affichées par la série, période courante comprise. */
+const SERIES_WINDOW = 12
 
 export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
   const { from, to, granularity } = await validateQuery(event, AnalysisQuerySchema)
@@ -67,14 +72,24 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
   // « le mois d'avant » (D24).
   const previousBounds = bucketBounds(shiftBucket(bucketOf(from, granularity), granularity, -1), granularity)
 
-  const [current, previous] = await Promise.all([
+  // Fenêtre d'évolution : les tranches précédentes, jusqu'à la période analysée incluse.
+  // Une série d'un seul point n'évolue pas — et en granularité mois, c'est ce que donnait
+  // une série calée sur les seules bornes demandées.
+  const seriesStart = bucketBounds(
+    shiftBucket(bucketOf(from, granularity), granularity, -(SERIES_WINDOW - 1)),
+    granularity,
+  ).from
+
+  const [current, previous, windowRows] = await Promise.all([
     rowsIn(from, to),
     rowsIn(previousBounds.from, previousBounds.to),
+    rowsIn(seriesStart, to),
   ])
 
   const result = analyze({
     transactions: current,
     previousTransactions: previous,
+    seriesTransactions: windowRows,
     referential,
     granularity,
   })
@@ -91,6 +106,7 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
     reliability: worstReliability(statements.map(s => s.reliability)),
     unreliableStatements,
     bankBalance: await bankBalanceFor(from, to),
+    seriesFrom: seriesStart,
   }
 })
 

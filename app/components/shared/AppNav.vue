@@ -13,6 +13,7 @@ const items: NavItem[] = [
   { label: 'Import', href: '/import' },
   { label: 'Transactions', href: `/transactions/${currentPeriod}` },
   { label: 'Catégories', href: '/categories' },
+  { label: 'Analyse', href: '/analyse' },
   { label: 'Règles', href: '/regles' },
 ]
 </script>
