@@ -15,7 +15,55 @@ const router = useRouter()
 const period = computed(() => route.params.period as string)
 const mutationError = ref<string | null>(null)
 
-const { data, pending, mutateCategory } = useTransactions(period)
+const { data, pending, mutateCategory, ruleSuggestion, dismissSuggestion } = useTransactions(period)
+const { addRule } = useRules()
+const { data: groups } = useCategories()
+
+const savingRule = ref(false)
+
+/**
+ * Motif éditable avant création.
+ *
+ * L'extraction ne peut pas savoir si le suffixe d'un libellé fait partie du nom du commerçant
+ * ou du numéro de terminal : `BOULANGERIE EX 2` est une enseigne, `CDISCOUNT 4` n'en est qu'un
+ * point de vente. Proposer sans laisser corriger produirait des règles qui ne se déclenchent
+ * qu'une fois — l'inverse du but.
+ */
+const editablePattern = ref('')
+watch(ruleSuggestion, (suggestion) => {
+  editablePattern.value = suggestion?.pattern ?? ''
+})
+
+/** Libellé lisible du poste visé par la proposition — un code ne dit rien à personne. */
+const suggestionTarget = computed(() => {
+  const code = ruleSuggestion.value?.categoryItemCode
+  if (!code) return null
+  return flattenReferential(groups.value).find(i => i.code === code) ?? null
+})
+
+/**
+ * Crée la règle proposée après une correction (FR43).
+ *
+ * On propose plutôt que de créer d'office : toutes les corrections ne se généralisent pas.
+ * Déplacer un restaurant vers la rubrique Voyages vaut pour ce séjour-là, pas pour le bistrot
+ * du coin — et une règle posée sans le dire se découvrirait des mois plus tard, en cherchant
+ * pourquoi les chiffres ont bougé.
+ */
+async function onAcceptSuggestion() {
+  const suggestion = ruleSuggestion.value
+  if (!suggestion || savingRule.value) return
+  const pattern = editablePattern.value.trim()
+  if (pattern.length < 2) {
+    mutationError.value = 'Le motif doit faire au moins 2 caractères.'
+    return
+  }
+  mutationError.value = null
+  savingRule.value = true
+  const outcome = await addRule({ pattern, categoryItemCode: suggestion.categoryItemCode })
+  savingRule.value = false
+  if (outcome.error) mutationError.value = outcome.error
+  else dismissSuggestion()
+}
 
 const monthFormatter = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
 const monthLabel = computed(() => {
@@ -103,8 +151,49 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
       </NuxtLink>
     </div>
 
+    <!--
+      La proposition survit au refetch de la liste : la faire disparaître avec le re-rendu
+      reviendrait à ne jamais la montrer.
+    -->
+    <div
+      v-if="ruleSuggestion"
+      class="tx-page__suggestion"
+      role="status"
+    >
+      <label class="tx-page__suggestion-label">
+        <span>Toujours ranger les libellés contenant</span>
+        <input
+          v-model="editablePattern"
+          type="text"
+          class="tx-page__suggestion-input"
+          maxlength="120"
+          aria-label="Motif de la règle"
+          @keyup.enter="onAcceptSuggestion"
+        >
+      </label>
+      <span>
+        dans
+        <strong>{{ suggestionTarget ? `${suggestionTarget.groupLabel} · ${suggestionTarget.label}` : ruleSuggestion.categoryItemCode }}</strong> ?
+      </span>
+      <button
+        type="button"
+        class="tx-page__suggestion-accept"
+        :aria-disabled="savingRule"
+        @click="onAcceptSuggestion"
+      >
+        {{ savingRule ? 'Création…' : 'Créer la règle' }}
+      </button>
+      <button
+        type="button"
+        class="tx-page__suggestion-dismiss"
+        @click="dismissSuggestion"
+      >
+        Non merci
+      </button>
+    </div>
+
     <TransactionList
-      v-else
+      v-if="data.transactions.length > 0"
       :transactions="data.transactions"
       @category-change="onCategoryChange"
     />
@@ -112,6 +201,46 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
 </template>
 
 <style scoped>
+.tx-page__suggestion {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  font-size: var(--font-size-sm);
+}
+.tx-page__suggestion-label { display: flex; align-items: center; gap: var(--space-2); }
+.tx-page__suggestion-input {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: inherit;
+  font: inherit;
+  font-family: var(--font-mono, monospace);
+  min-width: 14rem;
+}
+.tx-page__suggestion-accept {
+  margin-left: auto;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font: inherit;
+  cursor: pointer;
+}
+.tx-page__suggestion-accept[aria-disabled='true'] { opacity: 0.6; cursor: default; }
+.tx-page__suggestion-dismiss {
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
 .tx-page {
   display: flex;
   flex-direction: column;

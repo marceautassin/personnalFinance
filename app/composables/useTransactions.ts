@@ -4,6 +4,12 @@ import type { MutationOutcome } from './useApiError'
 import { useInvalidate } from './useInvalidate'
 import type { StatementReliability } from '~~/shared/types/statement-reliability'
 
+/** Règle que le serveur propose après une correction manuelle (FR43). */
+export interface RuleSuggestion {
+  pattern: string
+  categoryItemCode: string
+}
+
 export interface TransactionListItem {
   id: number
   statementHash: string
@@ -40,18 +46,31 @@ export function useTransactions(month: Ref<string>) {
   const invalidate = useInvalidate()
   const { mapError } = useApiError()
 
+  /**
+   * Motif de règle proposé par le serveur après la dernière correction, ou `null`.
+   *
+   * Vit ici et non dans le composant : la proposition survit au refetch de la liste, sinon
+   * elle disparaîtrait avant que l'utilisateur ait eu le temps de la lire.
+   */
+  const ruleSuggestion = ref<RuleSuggestion | null>(null)
+
   async function patchTransaction(
     id: number,
     body: Record<string, unknown>,
     afterRefresh?: () => Promise<unknown> | unknown,
   ): Promise<MutationOutcome> {
+    let response: { ruleSuggestion?: RuleSuggestion | null } | undefined
     try {
-      await apiMutate(`/api/transactions/${id}`, { method: 'PATCH', body })
+      response = await apiMutate<{ ruleSuggestion?: RuleSuggestion | null }>(
+        `/api/transactions/${id}`,
+        { method: 'PATCH', body },
+      )
     }
     catch (err) {
       const e = err as { statusMessage?: string, data?: { statusMessage?: string } }
       return { error: mapError(err), errorCode: e.data?.statusMessage ?? e.statusMessage }
     }
+    ruleSuggestion.value = response?.ruleSuggestion ?? null
     await fetchState.refresh()
     if (afterRefresh) await afterRefresh()
     invalidate.invalidateAnalysis()
@@ -62,8 +81,14 @@ export function useTransactions(month: Ref<string>) {
     return patchTransaction(id, { categoryItemCode })
   }
 
+  function dismissSuggestion() {
+    ruleSuggestion.value = null
+  }
+
   return {
     ...fetchState,
     mutateCategory,
+    ruleSuggestion,
+    dismissSuggestion,
   }
 }

@@ -392,7 +392,7 @@ Conséquences :
 
 ## Functional Requirements
 
-> **Contrat de capacités.** Ce qui ne figure pas ici n'existera pas dans le produit. Le PRD v1 comptait 71 FRs pour un périmètre qui s'est révélé faux ; celui-ci en compte 42, dont 3 en phase 2.
+> **Contrat de capacités.** Ce qui ne figure pas ici n'existera pas dans le produit. Le PRD v1 comptait 71 FRs pour un périmètre qui s'est révélé faux ; celui-ci en compte 43, dont 3 en phase 2.
 
 ### Ingestion des relevés
 
@@ -456,10 +456,15 @@ Conséquences :
 - **FR40** — L'utilisateur peut définir des règles qui rangent automatiquement dans un poste tout libellé contenant un motif donné.
 - **FR41** — Une règle s'applique à l'ingestion, par-dessus la catégorisation automatique, et l'écrase.
 - **FR42** — L'utilisateur peut consulter, pour chaque règle, le nombre de transactions déjà en base qu'elle couvre.
+- **FR43** — Après une correction manuelle, le système propose de créer une règle à partir du commerçant du libellé, et l'utilisateur peut ajuster le motif avant de l'accepter.
 
 *Ajoutées le 2026-09-05, après mesure. Elles ne figuraient pas au cadrage : c'est la première ingestion réelle qui les a rendues nécessaires. Sur quatre occurrences d'un même libellé (`VIR INST SOCIETEX`, les remboursements de compte courant de la SASU de l'utilisateur), le modèle en avait classé trois en repli et une ailleurs — non par faiblesse, mais parce que rien ne pouvait lui apprendre ce que ce libellé désigne. Les libellés bancaires étant très répétitifs, une règle écrite une fois vaut pour toutes leurs occurrences futures, sans token et sans hasard. Effet mesuré : le taux de repli passe de 13,0 % à 10,1 %.*
 
 *Le motif est une sous-chaîne, jamais une expression régulière : dans un outil personnel, une regex échoue silencieusement et se débogue mal, pour un gain nul sur des libellés qui sont des chaînes fixes.*
+
+*FR42 n'est pas un confort d'affichage. Le 2026-09-05, une règle « DUPONT Jean » — a priori évidente puisqu'il s'agit du titulaire — annonçait **106 lignes couvertes**. L'inspection a montré qu'elle aurait rangé en mouvement interne 7 604 € de remboursement d'emprunt et 4 296 € de charges, c'est-à-dire fait disparaître 14 300 € de dépenses réelles. Le compteur a arrêté la règle avant qu'elle ne serve. Une règle qui couvre beaucoup de lignes doit être regardée, pas célébrée.*
+
+*FR43 propose, ne décide pas. Toutes les corrections ne se généralisent pas : déplacer un restaurant vers la rubrique Voyages vaut pour ce séjour-là, pas pour le bistrot du coin. Et le motif est éditable, parce qu'aucune extraction ne peut deviner si le suffixe d'un libellé appartient au nom de l'enseigne (`BOULANGERIE EX 2`) ou au numéro de terminal (`CDISCOUNT 4`).*
 
 ### Phase 2 — Croissance
 

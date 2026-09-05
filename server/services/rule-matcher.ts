@@ -40,6 +40,48 @@ export function resolveRule(label: string, rules: readonly MatchableRule[]): Mat
   return best
 }
 
+/**
+ * Fragments que les banques ajoutent autour du nom du commerçant : date d'opération, numéro
+ * de carte tronqué, type d'opération. Les retirer isole ce qui identifie vraiment la ligne.
+ *
+ * Relevés sur 1 855 transactions Boursobank réelles, le 2026-09-05.
+ */
+const LABEL_NOISE: RegExp[] = [
+  /\bCARTE\s+\d{2}\/\d{2}\/\d{2,4}\b/giu,
+  /\bCB\*\d+\b/giu,
+  /\b(?:PRLV|VIR)(?:\s+(?:SEPA|INST))?\b/giu,
+  /\bR[èe]f\s*:\s*\S+/giu,
+  /\b\d{2}\/\d{2}\/\d{2,4}\b/giu,
+  // Un chèque n'a pas de commerçant, seulement un numéro : `CHQ. N.7925088` ne doit produire
+  // aucun motif, sinon la règle proposée attraperait TOUS les chèques — qui vont pourtant
+  // dans des postes différents (restaurant, frais scolaires…).
+  /\bCHQ\.?\s*N?\.?\s*\d*/giu,
+]
+
+/**
+ * Extrait de quoi identifier le commerçant dans un libellé bancaire.
+ *
+ * Sert à PROPOSER un motif de règle quand l'utilisateur reclasse une transaction à la main :
+ * `CARTE 03/07/25 Mol*EXEMPLE BV CB*0000` donne `mol*exemple bv`, qui vaudra pour toutes
+ * les occurrences futures — alors qu'une règle sur le libellé entier, avec sa date et son
+ * numéro de carte, ne se déclencherait jamais deux fois.
+ *
+ * Retourne `null` s'il ne reste rien d'exploitable : mieux vaut ne rien proposer qu'un motif
+ * qui attraperait la moitié du relevé.
+ */
+export function extractMerchant(label: string): string | null {
+  let cleaned = label
+  for (const noise of LABEL_NOISE) cleaned = cleaned.replace(noise, ' ')
+  // Les suites de chiffres restantes sont des numéros d'opération ou de commande : elles
+  // rendraient le motif unique à cette ligne, donc inutilisable comme règle.
+  cleaned = cleaned.replace(/\d{3,}/gu, ' ')
+  const merchant = normalizeForMatch(cleaned).replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+  // Le seuil porte sur les caractères ALPHANUMÉRIQUES : `. .` fait quatre caractères mais
+  // n'identifie rien.
+  const substance = merchant.replace(/[^\p{L}\p{N}]/gu, '')
+  return substance.length >= 3 ? merchant : null
+}
+
 export interface RuleApplication<T> {
   transactions: T[]
   /** Nombre de lignes dont le poste a été imposé par une règle, pour le rapport d'ingestion. */

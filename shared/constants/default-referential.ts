@@ -1,5 +1,5 @@
 /**
- * Référentiel initial — 13 rubriques / 48 postes (D17, AR3).
+ * Référentiel initial — 14 rubriques / 51 postes (D17, AR3).
  *
  * Dérivé du tableur `Dépenses 2022.xlsx` que l'utilisateur tenait à la main, lu le
  * 2026-09-04 : c'est sa propre taxonomie, dépersonnalisée (marques et prénoms retirés,
@@ -13,6 +13,11 @@
  *  2. La rubrique `internes` porte la nature `internal_transfer`. Sans elle, la troisième
  *     nature n'aurait aucune destination. Dans le tableur d'origine, « Virement intercompte »
  *     était rangé en Produits — il gonflait les recettes et masquait les mois déficitaires.
+ *
+ * La rubrique « Impôts et taxes » a été ajoutée le 2026-09-05, après l'ingestion des 20 relevés
+ * réels : le référentiel dérivé de l'Excel avait fondu « Prélèvement obligatoire » dans
+ * « Abonnements et prélèvements » et perdu la dimension fiscale au passage. Seize prélèvements
+ * DGFIP et URSSAF tombaient donc au repli, faute de destination.
  *
  * NFR22 : ces constantes sont consommées au seed, jamais depuis une fonction de calcul.
  */
@@ -143,6 +148,18 @@ export const DEFAULT_REFERENTIAL: ReadonlyArray<DefaultCategoryGroup> = [
       { code: 'abonnements-presse', label: 'Presse', nature: 'expense' },
       { code: 'abonnements-frais-bancaires', label: 'Frais bancaires', nature: 'expense' },
       { code: 'abonnements-dons', label: 'Dons', nature: 'expense' },
+    ],
+  },
+  {
+    code: 'impots',
+    label: 'Impôts',
+    items: [
+      // Codes alignés sur ce que produirait la slugification côté API : un poste créé à la
+      // main et le même poste seedé doivent porter le MÊME code, sinon deux bases divergent
+      // sur un identifiant qu'on croit stable.
+      { code: 'impots-impot-sur-le-revenu', label: 'Impôt sur le revenu', nature: 'expense' },
+      { code: 'impots-taxes-locales', label: 'Taxes locales', nature: 'expense' },
+      { code: 'impots-cotisations-sociales', label: 'Cotisations sociales', nature: 'expense' },
     ],
   },
   {

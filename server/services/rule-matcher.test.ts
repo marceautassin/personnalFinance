@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveRule, applyRules, normalizeForMatch } from './rule-matcher'
+import { resolveRule, applyRules, normalizeForMatch, extractMerchant } from './rule-matcher'
 
 const rule = (pattern: string, categoryItemCode: string) => ({ pattern, categoryItemCode })
 
@@ -95,5 +95,53 @@ describe('applyRules', () => {
 
   it('accepte une liste vide', () => {
     expect(applyRules([], [rule('x', 'y')])).toEqual({ transactions: [], overriddenCount: 0 })
+  })
+})
+
+/**
+ * Extraction du commerçant — utilisée pour PROPOSER un motif quand l'utilisateur reclasse une
+ * transaction. Les exemples viennent des 1 855 transactions Boursobank réelles ingérées le
+ * 2026-09-05.
+ */
+describe('extractMerchant', () => {
+  it('retire la date d\'opération et le numéro de carte', () => {
+    expect(extractMerchant('CARTE 03/07/25 Mol*EXEMPLE BV CB*0000')).toBe('mol*exemple bv')
+  })
+
+  it('retire le type d\'opération', () => {
+    expect(extractMerchant('PRLV SEPA URSSAF D\'EXEMPLE')).toBe('urssaf d\'exemple')
+    expect(extractMerchant('VIR SEPA DUPONT Jean charges')).toBe('dupont jean charges')
+  })
+
+  it('retire les longues suites de chiffres, qui rendraient le motif unique', () => {
+    expect(extractMerchant('CARTE 12/03/26 AMAZON PAYMENTS 123456789')).toBe('amazon payments')
+  })
+
+  it('conserve les chiffres courts qui font partie du nom', () => {
+    expect(extractMerchant('CARTE 28/02/26 BOULANGERIE EX 2 CB*0000')).toBe('boulangerie ex 2')
+  })
+
+  it('retire la référence SEPA', () => {
+    expect(extractMerchant('VIR Epargne programmee Rèf : SCT0000120260302')).toBe('epargne programmee')
+  })
+
+  it('normalise casse et accents, comme les motifs de règle', () => {
+    expect(extractMerchant('CARTE 01/03/26 PÉAGE AUTOROUTE')).toBe('peage autoroute')
+  })
+
+  /**
+   * Mieux vaut ne rien proposer qu'un motif qui attraperait la moitié du relevé : un chèque
+   * n'a pas de commerçant, seulement un numéro.
+   */
+  it('rend null quand il ne reste rien d\'identifiant', () => {
+    expect(extractMerchant('CHQ. N.7925088')).toBeNull()
+    expect(extractMerchant('CARTE 01/03/26 CB*0000')).toBeNull()
+  })
+
+  it('produit un motif que le moteur retrouve dans le libellé d\'origine', () => {
+    const label = 'CARTE 18/03/26 HELLOASSO* PAIEMENT CB*0000'
+    const merchant = extractMerchant(label)!
+    expect(resolveRule(label, [{ pattern: merchant, categoryItemCode: 'enfants-activites' }]))
+      .not.toBeNull()
   })
 })

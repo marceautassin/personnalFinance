@@ -163,3 +163,75 @@ describe('PATCH /api/transactions/[id]', () => {
     })
   })
 })
+
+/**
+ * Proposition de règle après une correction manuelle (FR43).
+ *
+ * Une correction porte une connaissance que le modèle n'a pas. Sans mémoire, l'utilisateur la
+ * ressaisit à chaque relevé : sur 20 mois de données réelles, `CDISCOUNT` revient 18 fois.
+ */
+describe('PATCH /api/transactions/[id] — proposition de règle', () => {
+  function seedTx(label: string) {
+    seedStatement()
+    dbMod.db.insert(schema.transactions).values({
+      statementHash: HASH_A,
+      transactionDate: '2026-04-05',
+      label,
+      amountCents: -1000,
+      categoryItemCode: 'divers-non-categorise',
+    }).run()
+    return dbMod.db.select().from(schema.transactions).all().at(-1)!.id
+  }
+
+  beforeEach(() => {
+    dbMod.db.delete(schema.classificationRules).run()
+  })
+
+  it('propose le commerçant comme motif après un reclassement', async () => {
+    const id = seedTx('CARTE 12/03/26 CDISCOUNT A CB*0000')
+    const out = (await handler(makeEvent(String(id), { categoryItemCode: 'alimentation-courses' }))) as {
+      ruleSuggestion: { pattern: string, categoryItemCode: string } | null
+    }
+    expect(out.ruleSuggestion).toEqual({
+      pattern: 'cdiscount a',
+      categoryItemCode: 'alimentation-courses',
+    })
+  })
+
+  /** Un chèque n'a pas de commerçant : une règle attraperait tous les chèques indistinctement. */
+  it('ne propose rien quand le libellé ne porte aucun commerçant', async () => {
+    const id = seedTx('CHQ. N.7925088')
+    const out = (await handler(makeEvent(String(id), { categoryItemCode: 'alimentation-courses' }))) as {
+      ruleSuggestion: unknown
+    }
+    expect(out.ruleSuggestion).toBeNull()
+  })
+
+  /**
+   * Une règle couvre déjà ce libellé : elle vient d'être contredite par la correction.
+   * En proposer une seconde créerait deux règles concurrentes sur la même ligne.
+   */
+  it('ne propose rien quand une règle couvre déjà le libellé', async () => {
+    dbMod.db.insert(schema.classificationRules).values({
+      pattern: 'cdiscount',
+      categoryItemCode: 'alimentation-courses',
+    }).run()
+    const id = seedTx('CARTE 12/03/26 CDISCOUNT A CB*0000')
+    const out = (await handler(makeEvent(String(id), { categoryItemCode: 'alimentation-restaurant' }))) as {
+      ruleSuggestion: unknown
+    }
+    expect(out.ruleSuggestion).toBeNull()
+    dbMod.db.delete(schema.classificationRules).run()
+  })
+
+  /**
+   * Le garde `categoryChanged` de `suggestRule` n'est pas atteignable par l'API : depuis la
+   * suppression du périmètre dettes, `TransactionPatchSchema` n'accepte plus QUE la catégorie
+   * et refuse un corps vide en 422. La garde reste, parce qu'elle redeviendra utile au premier
+   * champ patchable qui n'est pas une catégorie — mais on le teste au bon endroit.
+   */
+  it('refuse un patch qui ne touche pas la catégorie, avant même la proposition', async () => {
+    const id = seedTx('CARTE 12/03/26 CDISCOUNT A CB*0000')
+    await expect(handler(makeEvent(String(id), {}))).rejects.toMatchObject({ statusCode: 422 })
+  })
+})

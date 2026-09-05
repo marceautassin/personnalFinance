@@ -1,12 +1,13 @@
 import { defineEventHandler, getRouterParam } from 'h3'
 import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions } from '~~/server/db/schema'
+import { transactions, classificationRules } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { assertCategoryItemExists } from '~~/server/utils/category-fk'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { TransactionPatchSchema } from '~~/shared/schemas/transaction.schema'
+import { extractMerchant, resolveRule } from '~~/server/services/rule-matcher'
 
 export default defineEventHandler(async (event) => {
   const idParam = getRouterParam(event, 'id')
@@ -50,5 +51,42 @@ export default defineEventHandler(async (event) => {
     })
     .from(transactions)
     .where(eq(transactions.id, id))
-  return updated
+
+  return { ...updated, ruleSuggestion: suggestRule(updated, patch.categoryItemCode !== undefined) }
 })
+
+/**
+ * Motif de règle proposé après une correction manuelle.
+ *
+ * Une correction porte une connaissance que le modèle n'a pas — que `CDISCOUNT` est un achat
+ * divers, que `HELLOASSO*` est du périscolaire. Sans mémoire, l'utilisateur la ressaisit à
+ * chaque relevé : sur 20 mois, `CDISCOUNT` revient 18 fois.
+ *
+ * On PROPOSE, on ne crée pas. Toutes les corrections ne se généralisent pas : déplacer un
+ * restaurant vers la rubrique Voyages vaut pour ce séjour-là, pas pour le bistrot du coin.
+ * Décider à la place de l'utilisateur produirait des règles qu'il n'a pas voulues et qu'il
+ * découvrirait des mois plus tard, en cherchant pourquoi ses chiffres ont bougé.
+ *
+ * Rien n'est proposé si une règle couvre déjà ce libellé : elle vient d'être contredite par
+ * une correction, et la remplacer silencieusement serait pire que de ne rien faire.
+ */
+function suggestRule(
+  updated: { label: string, categoryItemCode: string } | undefined,
+  categoryChanged: boolean,
+): { pattern: string, categoryItemCode: string } | null {
+  if (!updated || !categoryChanged) return null
+
+  const pattern = extractMerchant(updated.label)
+  if (!pattern) return null
+
+  // Une règle couvre déjà ce libellé : elle vient d'être contredite par la correction.
+  // Proposer d'en ajouter une seconde créerait deux règles concurrentes sur la même ligne,
+  // et la plus longue gagnerait sans que personne comprenne pourquoi.
+  const rules = db
+    .select({ pattern: classificationRules.pattern, categoryItemCode: classificationRules.categoryItemCode })
+    .from(classificationRules)
+    .all()
+  if (resolveRule(updated.label, rules)) return null
+
+  return { pattern, categoryItemCode: updated.categoryItemCode }
+}
