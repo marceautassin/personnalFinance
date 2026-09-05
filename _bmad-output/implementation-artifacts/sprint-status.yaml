@@ -65,7 +65,7 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 generated: 2026-04-30
-last_updated: 2026-09-04
+last_updated: 2026-09-05
 project: personnalFinance
 project_key: NOKEY
 tracking_system: file-system
@@ -172,23 +172,36 @@ development_status:
 
   # Epic 12 — Référentiel hiérarchique et natures de mouvement
   # FR15-FR19. Sa story 12-1 vide les transactions (D18) ; les PDF de _data/raw/ sont conservés.
-  epic-12: backlog
-  12-1-schema-du-referentiel-a-deux-niveaux: backlog
-  12-2-consultation-du-referentiel: backlog
-  12-3-creation-renommage-suppression-rubrique: backlog
-  12-4-creation-renommage-suppression-poste: backlog
+  epic-12: done
+  12-1-schema-du-referentiel-a-deux-niveaux: done
+  12-2-consultation-du-referentiel: done
+  12-3-creation-renommage-suppression-rubrique: done
+  12-4-creation-renommage-suppression-poste: done
   epic-12-retrospective: optional
 
   # Epic 13 — Catégorisation fiable sur le nouveau référentiel
   # FR20-FR24. Ordre volontaire : la mesure (13-3) existe AVANT la ré-ingestion (13-4),
   # et la bascule de fournisseur (13-5) vient après une première mesure de référence.
   # Deux mesures encadrent le changement de modèle : les causes restent séparables.
-  epic-13: backlog
-  13-1-prompt-de-categorisation-hierarchique: backlog
-  13-2-reclassement-transaction-vers-autre-nature: backlog
-  13-3-taux-de-correction-manuelle-par-releve: backlog
-  13-4-reingestion-historique-court: backlog
-  13-5-bascule-fournisseur-mistral-glm: backlog
+  epic-13: review
+  13-1-prompt-de-categorisation-hierarchique: review
+  13-2-reclassement-transaction-vers-autre-nature: review
+  13-3-taux-de-correction-manuelle-par-releve: review
+  13-4-reingestion-historique-court: review
+  13-5-bascule-fournisseur-mistral-glm: review
+
+  # Stories NÉES DE LA MESURE, hors découpage initial (2026-09-05).
+  # Chacune vient d'un défaut constaté sur les données réelles, pas d'une intention de cadrage.
+  # 13-6 : le texte plat du PDF perdait les colonnes Débit/Crédit ; le modèle devinait le signe
+  #        et donnait deux signes opposés au même libellé récurrent. Écarts de 2 187 € et
+  #        1 764 € sur deux relevés, ramenés à zéro sur les vingt.
+  # 13-7 : « non fiable » confondait l'écart CONSTATÉ et l'écart ASSUMÉ ; deux relevés à
+  #        2 187 € et 1 764 € d'écart s'affichaient « fiables ».
+  # 13-8/13-9 : règles de classement déterministes (FR40-FR43, amendement PRD du 2026-09-05).
+  13-6-extraction-du-signe-par-colonne: review
+  13-7-modele-de-fiabilite-a-trois-etats: review
+  13-8-regles-de-classement-deterministes: review
+  13-9-apprentissage-depuis-les-corrections: review
   epic-13-retrospective: optional
 
   # Epic 14 — Ingestion de l'historique complet
@@ -196,21 +209,28 @@ development_status:
   # 14-4 mesure le taux de correction manuelle réel sur les ~24 relevés.
   # SEUIL : ≤ 10 %. Au-dessus, l'epic 15 NE DÉMARRE PAS — on ajuste modèle, prompt ou
   # finesse du référentiel avant de construire des écrans sur une donnée mal rangée.
-  epic-14: backlog
-  14-1-depot-multiple-avec-progression: backlog
-  14-2-echec-isole-et-rapport-par-fichier: backlog
+  epic-14: in-progress
+  14-1-depot-multiple-avec-progression: review
+  14-2-echec-isole-et-rapport-par-fichier: review
   14-3-suppression-d-un-releve-ingere: backlog
-  14-4-jalon-ingestion-historique-et-mesure: backlog
+  # JALON MESURÉ le 2026-09-05, mais NON FRANCHI et volontairement dépassé.
+  # 20 relevés ingérés, 1 855 transactions, 0 écart de réconciliation (critère technique tenu).
+  # Taux de repli : 16,8 % — au-dessus du seuil de 10 %. L'utilisateur a décidé de poursuivre
+  # sur les écrans en prenant les corrections manuelles à sa charge (décision tracée, 2026-09-05).
+  # Le taux de correction MANUELLE reste à 0 % : il ne mesure rien tant qu'aucune correction
+  # n'a été faite. À remesurer après la passe de correction.
+  14-4-jalon-ingestion-historique-et-mesure: in-progress
   epic-14-retrospective: optional
 
   # Epic 15 — Analyse : répartition, évolution, indicateurs, traçabilité
   # FR12, FR25-FR36. ⚠️ CONDITIONNÉ AU FRANCHISSEMENT DU JALON 14-4.
   # C'est le produit : ne pas démarrer tant que les lignes ne sont pas dans les bonnes cases.
-  epic-15: backlog
-  15-1-moteur-analyse-arbre-et-indicateurs: backlog
-  15-2-endpoint-analyse-fiabilite-solde: backlog
-  15-3-page-analyse-selecteur-et-indicateurs: backlog
-  15-4-repartition-par-rubrique-et-poste: backlog
-  15-5-descente-agregat-vers-transactions: backlog
-  15-6-evolution-entre-periodes: backlog
+  # Démarré malgré le jalon non franchi — décision de l'utilisateur du 2026-09-05.
+  epic-15: review
+  15-1-moteur-analyse-arbre-et-indicateurs: review
+  15-2-endpoint-analyse-fiabilite-solde: review
+  15-3-page-analyse-selecteur-et-indicateurs: review
+  15-4-repartition-par-rubrique-et-poste: review
+  15-5-descente-agregat-vers-transactions: review
+  15-6-evolution-entre-periodes: review
   epic-15-retrospective: optional
