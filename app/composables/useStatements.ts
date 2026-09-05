@@ -1,12 +1,12 @@
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
-import type { ReliabilityValue } from '~~/server/db/schema'
+import type { StatementReliability } from '~~/shared/types/statement-reliability'
 import type { Ratio } from '~~/shared/types/ratio'
 
 export interface StatementListItem {
   hash: string
   periodStart: string
   periodEnd: string
-  reliability: ReliabilityValue
+  reliability: StatementReliability
   ingestedAt: number
   transactionCount: number
   manualCount: number

@@ -1,6 +1,6 @@
 import { computed, type Ref } from 'vue'
 import type { Cents } from '~~/shared/types/money'
-import type { ReliabilityValue } from '~~/server/db/schema'
+import type { StatementReliability } from '~~/shared/types/statement-reliability'
 
 export interface DashboardDelta {
   categoryItemCode: string
@@ -25,7 +25,7 @@ export interface DashboardResponse {
   }
   deltasVsPriorMonths: DashboardDelta[]
   phrases: string[]
-  reliability: ReliabilityValue | null
+  reliability: StatementReliability | null
 }
 
 /**

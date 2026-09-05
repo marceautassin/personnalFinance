@@ -241,7 +241,11 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
         periodEnd,
         openingBalanceCents: raw.openingBalanceCents!,
         closingBalanceCents: raw.closingBalanceCents!,
-        reliability: 'reliable',
+        // Aucune décision n'est prise à l'ingestion : `gap_accepted` reste faux. Si la
+        // réconciliation laisse un écart, le relevé sort donc « écart non examiné » — et non
+        // « fiable », comme le faisait l'ancien champ écrit en dur (constaté le 2026-09-05 :
+        // deux relevés à 2 187 € et 1 764 € d'écart s'affichaient sains).
+        gapAccepted: false,
       }).run()
       if (extracted.length > 0) {
         tx.insert(transactions).values(extracted.map(t => ({

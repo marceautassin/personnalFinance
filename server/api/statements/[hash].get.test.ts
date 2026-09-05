@@ -62,7 +62,7 @@ describe('GET /api/statements/[hash]', () => {
       periodEnd: '2026-04-30',
       openingBalanceCents: 100_000,
       closingBalanceCents: 80_000,
-      reliability: 'reliable',
+      gapAccepted: false,
     }).run()
     dbMod.db.insert(schema.transactions).values([
       { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Carrefour', amountCents: -20_000, categoryItemCode: 'alimentation-courses' },
@@ -98,7 +98,7 @@ describe('GET /api/statements/[hash]', () => {
       periodEnd: '2026-04-30',
       openingBalanceCents: 100_000,
       closingBalanceCents: 80_000,
-      reliability: 'reliable',
+      gapAccepted: false,
     }).run()
     // closing-opening = -20000, sum = -19990 → gap = -20000 - (-19990) = -10
     dbMod.db.insert(schema.transactions).values([
@@ -134,7 +134,7 @@ describe('GET /api/statements/[hash]', () => {
       periodEnd: '2026-04-30',
       openingBalanceCents: 100_000,
       closingBalanceCents: 100_000,
-      reliability: 'reliable',
+      gapAccepted: false,
     }).run()
     dbMod.db.insert(schema.transactions).values([
       { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'B', amountCents: 0, categoryItemCode: 'alimentation-courses' },

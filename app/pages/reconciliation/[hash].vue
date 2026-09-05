@@ -2,6 +2,7 @@
 import { useReconciliation, useStatementDetail } from '~/composables/useReconciliation'
 import type { AddManualTransactionInput } from '~~/shared/schemas/reconciliation.schema'
 import { formatEuros, subCents, sumCents, type Cents } from '~~/shared/types/money'
+import { isDegraded } from '~~/shared/types/statement-reliability'
 
 const HASH_RE = /^[a-f0-9]{64}$/
 definePageMeta({
@@ -78,8 +79,9 @@ async function onAcceptConfirm() {
     </header>
 
     <ReliabilityBadge
-      v-if="data.reliability === 'unreliable'"
+      v-if="isDegraded(data.reliability)"
       :reliability="data.reliability"
+      :gap-cents="data.reconciliation.gapCents"
     />
 
     <p

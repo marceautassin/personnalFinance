@@ -70,16 +70,6 @@ export type CategoryItemRow = typeof categoryItems.$inferSelect
 export type NewCategoryItemRow = typeof categoryItems.$inferInsert
 
 /**
- * Reliabilité d'un mois ingéré.
- * - reliable : la réconciliation auto a passé OU l'utilisateur a ajouté manuellement
- *              les transactions manquantes jusqu'à équilibrer le solde.
- * - unreliable : l'utilisateur a accepté un gap résiduel (cf. Story 3.x). L'analyse
- *                doit le signaler au niveau période (D23).
- */
-export const RELIABILITY_VALUES = ['reliable', 'unreliable'] as const
-export type ReliabilityValue = typeof RELIABILITY_VALUES[number]
-
-/**
  * bank_statements — un PDF de relevé bancaire ingéré.
  * Le hash SHA-256 du PDF EST la PK : idempotence par contenu (FR2, D3).
  */
@@ -89,7 +79,15 @@ export const bankStatements = sqliteTable('bank_statements', {
   periodEnd: text('period_end').notNull(),
   openingBalanceCents: integer('opening_balance_cents').notNull(),
   closingBalanceCents: integer('closing_balance_cents').notNull(),
-  reliability: text('reliability', { enum: RELIABILITY_VALUES }).notNull().default('reliable'),
+  /**
+   * L'utilisateur a examiné l'écart de ce relevé et l'a assumé.
+   *
+   * Seule la DÉCISION est stockée ; l'écart lui-même est recalculé depuis les transactions
+   * (cf. `shared/types/statement-reliability.ts`). Le champ `reliability` d'origine
+   * confondait les deux, et deux relevés portant 2 187 € et 1 764 € d'écart s'affichaient
+   * « fiables » parce que personne n'avait encore rien accepté.
+   */
+  gapAccepted: integer('gap_accepted', { mode: 'boolean' }).notNull().default(false),
   ingestedAt: integer('ingested_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
 })
 

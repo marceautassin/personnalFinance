@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useDashboard } from '~/composables/useDashboard'
 import { useStatementsList } from '~/composables/useStatements'
 import { useApiError } from '~/composables/useApiError'
+import { isDegraded } from '~~/shared/types/statement-reliability'
 
 const route = useRoute()
 const router = useRouter()
@@ -81,12 +82,17 @@ const errorMessage = computed(() => (error.value ? mapError(error.value) : null)
         <MonthlyNarrative :phrases="data.phrases" />
 
         <div
-          v-if="data.reliability === 'unreliable'"
+          v-if="data.reliability && isDegraded(data.reliability)"
           class="dashboard__alert"
-          role="alert"
+          :class="{ 'dashboard__alert--accepted': data.reliability === 'gap_accepted' }"
+          :role="data.reliability === 'gap_unreviewed' ? 'alert' : 'status'"
         >
           <ReliabilityBadge :reliability="data.reliability" />
-          <span class="dashboard__alert-hint">Les chiffres de ce mois peuvent être inexacts.</span>
+          <span class="dashboard__alert-hint">{{
+            data.reliability === 'gap_accepted'
+              ? 'Un écart a été assumé sur ce mois : les totaux en tiennent compte.'
+              : 'Les chiffres de ce mois peuvent être inexacts — l\'écart n\'a pas encore été examiné.'
+          }}</span>
         </div>
       </template>
     </template>

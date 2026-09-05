@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTransactions } from '~/composables/useTransactions'
+import { isDegraded } from '~~/shared/types/statement-reliability'
 
 // Validation du paramètre dynamique : Nuxt rejoue la guard à chaque navigation
 // (re-mount ou réutilisation du composant), évitant le bypass d'un throw top-level setup.
@@ -62,12 +63,16 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
     </header>
 
     <div
-      v-if="data.reliability === 'unreliable'"
+      v-if="data.reliability && isDegraded(data.reliability)"
       class="tx-page__alert"
-      role="alert"
+      :role="data.reliability === 'gap_unreviewed' ? 'alert' : 'status'"
     >
       <ReliabilityBadge :reliability="data.reliability" />
-      <span class="tx-page__alert-hint">La réconciliation a un écart résiduel.</span>
+      <span class="tx-page__alert-hint">{{
+        data.reliability === 'gap_accepted'
+          ? 'Un écart a été assumé sur ce mois.'
+          : 'La réconciliation laisse un écart, encore inexaminé.'
+      }}</span>
     </div>
 
     <p

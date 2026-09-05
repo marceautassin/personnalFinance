@@ -1,6 +1,6 @@
 import { computed, type Ref } from 'vue'
 import type { Cents } from '~~/shared/types/money'
-import type { ReliabilityValue } from '~~/server/db/schema'
+import type { StatementReliability } from '~~/shared/types/statement-reliability'
 import type { TransactionListItem } from './useTransactions'
 import type { AddManualTransactionInput } from '~~/shared/schemas/reconciliation.schema'
 import type { MutationOutcome } from './useApiError'
@@ -11,7 +11,7 @@ export interface StatementDetailResponse {
   periodEnd: string
   openingBalanceCents: Cents
   closingBalanceCents: Cents
-  reliability: ReliabilityValue
+  reliability: StatementReliability
   transactions: TransactionListItem[]
   reconciliation: { isBalanced: boolean, gapCents: Cents }
 }

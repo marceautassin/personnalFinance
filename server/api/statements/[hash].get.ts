@@ -13,6 +13,7 @@ import { reconcile } from '~~/server/services/reconciler'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { cents } from '~~/shared/types/money'
+import { deriveReliability } from '~~/shared/types/statement-reliability'
 
 const HASH_RE = /^[a-f0-9]{64}$/
 
@@ -51,13 +52,18 @@ export default defineEventHandler(async (event) => {
     transactions: txRows.map(t => ({ amountCents: cents(t.amountCents) })),
   })
 
+  // La fiabilité est dérivée de l'écart courant et de la décision de l'utilisateur, jamais
+  // lue dans une colonne d'état — cf. `shared/types/statement-reliability.ts`.
+  const reliability = deriveReliability(reconciliation.gapCents, statement.gapAccepted)
+
   return {
     hash: statement.hashSha256,
     periodStart: statement.periodStart,
     periodEnd: statement.periodEnd,
     openingBalanceCents: statement.openingBalanceCents,
     closingBalanceCents: statement.closingBalanceCents,
-    reliability: statement.reliability,
+    reliability,
+    gapAccepted: statement.gapAccepted,
     transactions: txRows,
     reconciliation,
   }

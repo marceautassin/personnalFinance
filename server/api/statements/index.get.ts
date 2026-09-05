@@ -15,12 +15,16 @@ import { sql, desc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { bankStatements, transactions } from '~~/server/db/schema'
 import { ratio, type Ratio } from '~~/shared/types/ratio'
+import type { StatementReliability } from '~~/shared/types/statement-reliability'
+import { reliabilityByStatement } from '~~/server/utils/statement-reliability'
 
 export interface StatementListItem {
   hash: string
   periodStart: string
   periodEnd: string
-  reliability: string
+  reliability: StatementReliability
+  /** Écart courant du relevé, recalculé — jamais stocké. */
+  gapCents: number
   ingestedAt: number
   transactionCount: number
   manualCount: number
@@ -40,7 +44,6 @@ export default defineEventHandler(async (): Promise<{ statements: StatementListI
       hash: bankStatements.hashSha256,
       periodStart: bankStatements.periodStart,
       periodEnd: bankStatements.periodEnd,
-      reliability: bankStatements.reliability,
       ingestedAt: bankStatements.ingestedAt,
       transactionCount: countFor(null),
       manualCount: countFor(sql`AND ${transactions.isManual} = 1`),
@@ -48,12 +51,19 @@ export default defineEventHandler(async (): Promise<{ statements: StatementListI
     .from(bankStatements)
     .orderBy(desc(bankStatements.periodStart))
 
+  const reliabilities = await reliabilityByStatement()
+
   return {
-    statements: rows.map(r => ({
-      ...r,
-      transactionCount: Number(r.transactionCount),
-      manualCount: Number(r.manualCount),
-      correctionRate: ratio(Number(r.manualCount), Number(r.transactionCount)),
-    })),
+    statements: rows.map((r) => {
+      const rel = reliabilities.get(r.hash)
+      return {
+        ...r,
+        transactionCount: Number(r.transactionCount),
+        manualCount: Number(r.manualCount),
+        correctionRate: ratio(Number(r.manualCount), Number(r.transactionCount)),
+        reliability: rel?.reliability ?? 'reliable',
+        gapCents: rel?.gapCents ?? 0,
+      }
+    }),
   }
 })

@@ -1,7 +1,9 @@
 import { defineEventHandler } from 'h3'
-import { sql, asc, and, lte, gte } from 'drizzle-orm'
+import { sql, asc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions, bankStatements, type ReliabilityValue } from '~~/server/db/schema'
+import { transactions } from '~~/server/db/schema'
+import { type StatementReliability, worstReliability } from '~~/shared/types/statement-reliability'
+import { reliabilityOverlapping } from '~~/server/utils/statement-reliability'
 import { validateQuery } from '~~/server/utils/validation'
 import { TransactionListQuerySchema } from '~~/shared/schemas/transaction.schema'
 
@@ -23,20 +25,13 @@ export default defineEventHandler(async (event) => {
     .where(sql`${transactions.transactionDate} LIKE ${`${month}-%`}`)
     .orderBy(asc(transactions.transactionDate), asc(transactions.id))
 
-  // Reliability agrégée des statements *qui couvrent la période demandée* (recouvrement
-  // d'intervalles de dates ISO), indépendamment du nombre de transactions extraites.
-  // Couvre le cas du statement unreliable avec 0 transaction parsée.
-  const monthStart = `${month}-01`
-  const monthEnd = `${month}-31`
-  const statements = await db
-    .select({ reliability: bankStatements.reliability })
-    .from(bankStatements)
-    .where(and(lte(bankStatements.periodStart, monthEnd), gte(bankStatements.periodEnd, monthStart)))
+  // Fiabilité agrégée des relevés *qui couvrent la période demandée*, le pire état
+  // l'emportant (D23) : un seul relevé bancal contamine tout le mois.
+  const statements = await reliabilityOverlapping(`${month}-01`, `${month}-31`)
 
-  let reliability: ReliabilityValue | null = null
-  if (statements.length > 0) {
-    reliability = statements.some(s => s.reliability === 'unreliable') ? 'unreliable' : 'reliable'
-  }
+  const reliability: StatementReliability | null = statements.length > 0
+    ? worstReliability(statements.map(s => s.reliability))
+    : null
 
   return { transactions: rows, reliability }
 })

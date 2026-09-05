@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { H3Event } from 'h3'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
+import type { StatementReliability } from '~~/shared/types/statement-reliability'
 
 // Set DATABASE_URL avant tout import du module `db/client` (singleton).
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-tx-api-'))
@@ -60,7 +61,7 @@ function seedStatement(hash = HASH_A) {
     periodEnd: '2026-04-30',
     openingBalanceCents: 100_000,
     closingBalanceCents: 50_000,
-    reliability: 'reliable',
+    gapAccepted: false,
   }).run()
 }
 
@@ -75,7 +76,7 @@ type Row = {
   categoryItemCode: string
   id: number
 }
-type Resp = { transactions: Row[], reliability: 'reliable' | 'unreliable' | null }
+type Resp = { transactions: Row[], reliability: StatementReliability | null }
 
 describe('GET /api/transactions', () => {
   it('returns transactions of the requested month sorted by date asc', async () => {
@@ -100,18 +101,20 @@ describe('GET /api/transactions', () => {
       statementHash: HASH_A,
     })
     expect(typeof result.transactions[0]!.id).toBe('number')
-    expect(result.reliability).toBe('reliable')
+    // Les soldes de la fixture sont arbitraires : la somme des transactions ne retombe pas
+    // dessus, donc le mois porte légitimement un écart que personne n'a examiné.
+    expect(result.reliability).toBe('gap_unreviewed')
   })
 
-  it('returns reliability=unreliable if any contributing statement is unreliable', async () => {
+  it('propage l\'écart assumé d\'un relevé contribuant au mois', async () => {
     seedStatement()
-    dbMod.db.update(schema.bankStatements).set({ reliability: 'unreliable' }).run()
+    dbMod.db.update(schema.bankStatements).set({ gapAccepted: true }).run()
     dbMod.db.insert(schema.transactions).values([
       { statementHash: HASH_A, transactionDate: '2026-04-10', label: 'X', amountCents: -1000, categoryItemCode: 'alimentation-courses' },
     ]).run()
 
     const result = (await handler(eventWithQuery('month=2026-04'))) as Resp
-    expect(result.reliability).toBe('unreliable')
+    expect(result.reliability).toBe('gap_accepted')
   })
 
   it('returns reliability=unreliable when the period is covered by an unreliable statement with zero transactions', async () => {
@@ -121,12 +124,12 @@ describe('GET /api/transactions', () => {
       periodEnd: '2026-04-30',
       openingBalanceCents: 100_000,
       closingBalanceCents: 50_000,
-      reliability: 'unreliable',
+      gapAccepted: true,
     }).run()
 
     const result = (await handler(eventWithQuery('month=2026-04'))) as Resp
     expect(result.transactions).toEqual([])
-    expect(result.reliability).toBe('unreliable')
+    expect(result.reliability).toBe('gap_accepted')
   })
 
   it('returns empty array and null reliability for a month with no data', async () => {

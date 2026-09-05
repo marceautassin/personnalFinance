@@ -2,6 +2,7 @@ import { computed, type Ref } from 'vue'
 import type { Cents } from '~~/shared/types/money'
 import type { MutationOutcome } from './useApiError'
 import { useInvalidate } from './useInvalidate'
+import type { StatementReliability } from '~~/shared/types/statement-reliability'
 
 export interface TransactionListItem {
   id: number
@@ -15,7 +16,7 @@ export interface TransactionListItem {
 
 export interface TransactionsResponse {
   transactions: TransactionListItem[]
-  reliability: 'reliable' | 'unreliable' | null
+  reliability: StatementReliability | null
 }
 
 const EMPTY_RESPONSE: TransactionsResponse = { transactions: [], reliability: null }

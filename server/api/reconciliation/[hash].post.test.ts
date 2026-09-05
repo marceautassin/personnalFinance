@@ -50,7 +50,7 @@ function seedStatementWithGap(opts: {
   opening: number
   closing: number
   txAmounts: number[]
-  reliability?: 'reliable' | 'unreliable'
+  gapAccepted?: boolean
 }) {
   dbMod.db.insert(schema.bankStatements).values({
     hashSha256: HASH_A,
@@ -58,7 +58,7 @@ function seedStatementWithGap(opts: {
     periodEnd: '2026-04-30',
     openingBalanceCents: opts.opening,
     closingBalanceCents: opts.closing,
-    reliability: opts.reliability ?? 'reliable',
+    gapAccepted: opts.gapAccepted ?? false,
   }).run()
   if (opts.txAmounts.length > 0) {
     dbMod.db.insert(schema.transactions).values(
@@ -148,11 +148,16 @@ describe('POST /api/reconciliation/[hash]', () => {
       expect(result.isBalanced).toBe(false)
       // gap = (80_000 - 100_000) - (-10_000) = -20_000 + 10_000 = -10_000
       expect(result.gapCents).toBe(-10_000)
-      expect(result.reliability).toBe('reliable')
+      expect(result.reliability).toBe('gap_unreviewed')
     })
 
-    it('does not flip reliability back to reliable when gap closes on an unreliable statement', async () => {
-      seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [], reliability: 'unreliable' })
+    /**
+     * Accepter un écart insère une transaction d'équilibrage : l'écart courant retombe donc
+     * à zéro immédiatement. C'est la DÉCISION, et non l'écart, qui maintient le relevé
+     * signalé — sans quoi le trou assumé disparaîtrait de l'écran.
+     */
+    it('garde l\'état « écart accepté » quand un ajout referme l\'écart', async () => {
+      seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [], gapAccepted: true })
 
       const result = (await handler(makeEvent(HASH_A, {
         action: 'add_transaction',
@@ -164,7 +169,7 @@ describe('POST /api/reconciliation/[hash]', () => {
         },
       }))) as { reliability: string }
 
-      expect(result.reliability).toBe('unreliable')
+      expect(result.reliability).toBe('gap_accepted')
     })
 
     it('rejects unknown categoryItemCode with 422 and writes nothing', async () => {
@@ -189,7 +194,7 @@ describe('POST /api/reconciliation/[hash]', () => {
   })
 
   describe('accept_gap', () => {
-    it('inserts a divers transaction matching the gap and flips reliability to unreliable', async () => {
+    it('insère une transaction de repli du montant de l\'écart et pose la décision', async () => {
       // opening 100_000, closing 80_000, sum = -19_990 → gap = -20_000 - (-19_990) = -10
       seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [-19_990] })
 
@@ -201,7 +206,7 @@ describe('POST /api/reconciliation/[hash]', () => {
 
       expect(result.isBalanced).toBe(true)
       expect(result.gapCents).toBe(0)
-      expect(result.reliability).toBe('unreliable')
+      expect(result.reliability).toBe('gap_accepted')
 
       const rows = dbMod.db.select().from(schema.transactions).all()
       expect(rows).toHaveLength(2)
@@ -212,7 +217,7 @@ describe('POST /api/reconciliation/[hash]', () => {
       expect(accepted.transactionDate).toBe('2026-04-30')
 
       const stmt = dbMod.db.select().from(schema.bankStatements).all()
-      expect(stmt[0]!.reliability).toBe('unreliable')
+      expect(stmt[0]!.gapAccepted).toBe(true)
     })
 
     it('returns 400 reconciliation_failed when statement is already balanced', async () => {
@@ -226,12 +231,12 @@ describe('POST /api/reconciliation/[hash]', () => {
       const rows = dbMod.db.select().from(schema.transactions).all()
       expect(rows).toHaveLength(1)
       const stmt = dbMod.db.select().from(schema.bankStatements).all()
-      expect(stmt[0]!.reliability).toBe('reliable')
+      expect(stmt[0]!.gapAccepted).toBe(false)
     })
 
     it('refuses accept_gap on an already-unreliable statement (one-shot remediation)', async () => {
       // Une seconde acceptation après un add_transaction qui re-déséquilibre serait sinon possible.
-      seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [-19_990], reliability: 'unreliable' })
+      seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [-19_990], gapAccepted: true })
 
       await expect(handler(makeEvent(HASH_A, { action: 'accept_gap' }))).rejects.toMatchObject({
         statusCode: 400,

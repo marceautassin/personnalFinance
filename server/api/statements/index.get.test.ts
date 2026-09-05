@@ -63,7 +63,7 @@ describe('GET /api/statements', () => {
       periodEnd: '2026-04-30',
       openingBalanceCents: 100_000,
       closingBalanceCents: 80_000,
-      reliability: 'reliable',
+      gapAccepted: false,
     }).run()
     dbMod.db.insert(schema.transactions).values([
       { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'A', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
@@ -79,7 +79,7 @@ describe('GET /api/statements', () => {
     expect(Number(result.statements[0]!.transactionCount)).toBe(2)
   })
 
-  it('orders statements by periodStart DESC and surfaces unreliable flag', async () => {
+  it('trie par periodStart DESC et expose la fiabilité dérivée', async () => {
     dbMod.db.insert(schema.bankStatements).values([
       {
         hashSha256: HASH_A,
@@ -87,7 +87,7 @@ describe('GET /api/statements', () => {
         periodEnd: '2026-03-31',
         openingBalanceCents: 0,
         closingBalanceCents: 0,
-        reliability: 'reliable',
+        gapAccepted: false,
       },
       {
         hashSha256: HASH_B,
@@ -95,7 +95,7 @@ describe('GET /api/statements', () => {
         periodEnd: '2026-04-30',
         openingBalanceCents: 0,
         closingBalanceCents: 0,
-        reliability: 'unreliable',
+        gapAccepted: true,
       },
     ]).run()
 
@@ -103,7 +103,7 @@ describe('GET /api/statements', () => {
       statements: Array<{ hash: string, periodStart: string, reliability: string }>
     }
     expect(result.statements.map(s => s.periodStart)).toEqual(['2026-04-01', '2026-03-01'])
-    expect(result.statements[0]!.reliability).toBe('unreliable')
+    expect(result.statements[0]!.reliability).toBe('gap_accepted')
     expect(result.statements[1]!.reliability).toBe('reliable')
   })
 })

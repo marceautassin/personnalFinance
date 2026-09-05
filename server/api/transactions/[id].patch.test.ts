@@ -53,7 +53,7 @@ function seedStatement(hash = HASH_A) {
     periodEnd: '2026-04-30',
     openingBalanceCents: 100_000,
     closingBalanceCents: 50_000,
-    reliability: 'reliable',
+    gapAccepted: false,
   }).run()
 }
 

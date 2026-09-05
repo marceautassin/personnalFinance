@@ -39,7 +39,7 @@ export const TEST_SCHEMA_DDL = `
     period_end TEXT NOT NULL,
     opening_balance_cents INTEGER NOT NULL,
     closing_balance_cents INTEGER NOT NULL,
-    reliability TEXT NOT NULL DEFAULT 'reliable',
+    gap_accepted INTEGER NOT NULL DEFAULT 0,
     ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   );
   CREATE TABLE transactions (

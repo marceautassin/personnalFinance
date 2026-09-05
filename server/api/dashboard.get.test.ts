@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { H3Event } from 'h3'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
+import type { StatementReliability } from '~~/shared/types/statement-reliability'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-dashboard-api-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
@@ -54,7 +55,7 @@ function seedStatement(opts: {
   periodEnd: string
   opening?: number
   closing?: number
-  reliability?: 'reliable' | 'unreliable'
+  gapAccepted?: boolean
 }) {
   dbMod.db.insert(schema.bankStatements).values({
     hashSha256: opts.hash,
@@ -62,7 +63,7 @@ function seedStatement(opts: {
     periodEnd: opts.periodEnd,
     openingBalanceCents: opts.opening ?? 0,
     closingBalanceCents: opts.closing ?? 0,
-    reliability: opts.reliability ?? 'reliable',
+    gapAccepted: opts.gapAccepted ?? false,
   }).run()
 }
 
@@ -79,7 +80,7 @@ interface Resp {
     pct: number | null
   }>
   phrases: string[]
-  reliability: 'reliable' | 'unreliable' | null
+  reliability: StatementReliability | null
 }
 
 const H_FEB = 'a'.repeat(64)
@@ -143,7 +144,11 @@ describe('GET /api/dashboard', () => {
     expect(r.phrases[0]).toContain('principal facteur')
     expect(r.phrases[1]).not.toContain('principal facteur')
 
-    expect(r.reliability).toBe('reliable')
+    // Les soldes de la fixture sont arbitraires et ne retombent pas sur la somme des
+    // transactions : le mois est donc légitimement signalé comme portant un écart inexaminé.
+    // C'est le comportement voulu depuis le passage à une fiabilité dérivée — avant, un
+    // relevé incohérent s'affichait « fiable » (constaté le 2026-09-05 sur données réelles).
+    expect(r.reliability).toBe('gap_unreviewed')
   })
 
   // Cas (b) — mois sans transactions ni statement → tous zéros, deltas vide, phrases vide.
@@ -158,12 +163,24 @@ describe('GET /api/dashboard', () => {
     expect(r.reliability).toBeNull()
   })
 
-  // Cas (c) — mois unreliable propagé via les statements chevauchants.
-  it('propagates unreliable reliability when at least one covering statement is unreliable', async () => {
-    seedStatement({ hash: H_APR, periodStart: '2026-04-01', periodEnd: '2026-04-30', closing: 100_000, reliability: 'unreliable' })
+  // Cas (c) — écart propagé au mois via les relevés chevauchants (D23).
+  it('propage l\'écart assumé d\'un relevé couvrant le mois', async () => {
+    seedStatement({ hash: H_APR, periodStart: '2026-04-01', periodEnd: '2026-04-30', closing: 100_000, gapAccepted: true })
 
     const r = (await handler(eventWithQuery('month=2026-04'))) as Resp
-    expect(r.reliability).toBe('unreliable')
+    expect(r.reliability).toBe('gap_accepted')
+  })
+
+  /**
+   * Le défaut qui a motivé le modèle dérivé : un relevé dont la somme des transactions ne
+   * tombe pas sur le solde s'affichait « fiable » tant que personne n'avait rien accepté.
+   */
+  it('signale un écart que PERSONNE n\'a examiné, sans décision de l\'utilisateur', async () => {
+    // Solde annoncé à +2 000 € alors qu'aucune transaction ne le justifie.
+    seedStatement({ hash: H_APR, periodStart: '2026-04-01', periodEnd: '2026-04-30', opening: 0, closing: 200_000 })
+
+    const r = (await handler(eventWithQuery('month=2026-04'))) as Resp
+    expect(r.reliability).toBe('gap_unreviewed')
   })
 
   // Cas (d) — nouvelle catégorie (priorAvg = 0) → incluse, pct = null.

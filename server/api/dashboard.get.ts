@@ -17,7 +17,9 @@
 import { defineEventHandler } from 'h3'
 import { sql, asc, and, lte, gte, desc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions, bankStatements, categoryItems, type ReliabilityValue } from '~~/server/db/schema'
+import { transactions, bankStatements, categoryItems } from '~~/server/db/schema'
+import { type StatementReliability, worstReliability } from '~~/shared/types/statement-reliability'
+import { reliabilityOverlapping } from '~~/server/utils/statement-reliability'
 import { validateQuery } from '~~/server/utils/validation'
 import { previousMonth, monthEnd } from '~~/server/utils/period'
 import { TransactionListQuerySchema } from '~~/shared/schemas/transaction.schema'
@@ -42,7 +44,7 @@ export interface DashboardResponse {
   }
   deltasVsPriorMonths: DashboardDelta[]
   phrases: string[]
-  reliability: ReliabilityValue | null
+  reliability: StatementReliability | null
 }
 
 const TOP_DELTAS_LIMIT = 3
@@ -108,16 +110,12 @@ export default defineEventHandler(async (event): Promise<DashboardResponse> => {
   // 8) Formater les phrases (idem — helper privé en attendant story 4.2).
   const phrases = deltas.map((d, i) => phraseDelta(d, { isPrimary: i === 0 }))
 
-  // 9) Agrégation reliability — pattern identique à `transactions/index.get.ts:31-41`.
-  const stmtsCovering = await db
-    .select({ reliability: bankStatements.reliability })
-    .from(bankStatements)
-    .where(and(lte(bankStatements.periodStart, monthEndDate), gte(bankStatements.periodEnd, monthStart)))
+  // 9) Fiabilité agrégée des relevés couvrant le mois, le pire état l'emportant (D23).
+  const stmtsCovering = await reliabilityOverlapping(monthStart, monthEndDate)
 
-  let reliability: ReliabilityValue | null = null
-  if (stmtsCovering.length > 0) {
-    reliability = stmtsCovering.some(s => s.reliability === 'unreliable') ? 'unreliable' : 'reliable'
-  }
+  const reliability: StatementReliability | null = stmtsCovering.length > 0
+    ? worstReliability(stmtsCovering.map(s => s.reliability))
+    : null
 
   return {
     month,

@@ -2,12 +2,13 @@
  * POST /api/reconciliation/[hash] — réconciliation manuelle (Story 3.1).
  *
  * Deux actions, validées par discriminated union (cf. shared/schemas/reconciliation.schema.ts) :
- *  - add_transaction : insère une transaction `is_manual: true`, recompute le gap.
- *                      `reliability` n'est PAS dégradée ici (elle reste à sa valeur courante) ;
- *                      le passage `unreliable` se fait exclusivement via `accept_gap`.
- *  - accept_gap : insère une transaction `divers` du montant exact du gap résiduel,
- *                 marque `bank_statements.reliability = 'unreliable'`. Refusé si déjà équilibré
- *                 ou si le statement est déjà `unreliable` (one-shot remediation).
+ *  - add_transaction : insère une transaction `is_manual: true`, recompute l'écart. Aucune
+ *                      décision n'est prise ici : si l'ajout referme l'écart, le relevé
+ *                      redevient fiable de lui-même, puisque la fiabilité est dérivée.
+ *  - accept_gap : insère une transaction de repli du montant exact de l'écart résiduel et
+ *                 pose `gap_accepted`. Refusé si déjà équilibré, ou si l'écart a déjà été
+ *                 accepté (sinon des « Écart accepté » s'empilent après un add_transaction
+ *                 qui re-déséquilibre).
  *
  * Convention de signe (cf. server/services/reconciler.ts) :
  *   gap = (closing - opening) - sum(transactions.amountCents)
@@ -25,6 +26,7 @@ import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { ReconciliationActionSchema } from '~~/shared/schemas/reconciliation.schema'
 import { HashSha256Schema } from '~~/shared/schemas/transaction.schema'
 import { cents } from '~~/shared/types/money'
+import { deriveReliability } from '~~/shared/types/statement-reliability'
 
 /**
  * Poste de repli d'un écart accepté. Défini une seule fois, dans le référentiel : un
@@ -101,13 +103,13 @@ export default defineEventHandler(async (event) => {
     return {
       isBalanced: reconciliation.isBalanced,
       gapCents: reconciliation.gapCents,
-      reliability: statement.reliability,
+      reliability: deriveReliability(reconciliation.gapCents, statement.gapAccepted),
     }
   }
 
-  // accept_gap : one-shot. Refusé si déjà unreliable (sinon des "Écart accepté"
-  // peuvent s'empiler après un add_transaction qui re-déséquilibre).
-  if (statement.reliability === 'unreliable') {
+  // accept_gap : one-shot. Refusé si un écart a déjà été accepté sur ce relevé (sinon des
+  // « Écart accepté » peuvent s'empiler après un add_transaction qui re-déséquilibre).
+  if (statement.gapAccepted) {
     throw domainError(
       ApiErrorCode.ReconciliationFailed,
       { reason: 'already_unreliable' },
@@ -145,7 +147,7 @@ export default defineEventHandler(async (event) => {
       isManual: true,
     }).run()
     trx.update(bankStatements)
-      .set({ reliability: 'unreliable' })
+      .set({ gapAccepted: true })
       .where(eq(bankStatements.hashSha256, hash))
       .run()
     return recomputeReconciliation(trx, statement.openingBalanceCents, statement.closingBalanceCents, hash)
@@ -154,7 +156,9 @@ export default defineEventHandler(async (event) => {
   return {
     isBalanced: result.isBalanced,
     gapCents: result.gapCents,
-    reliability: 'unreliable' as const,
+    // L'insertion d'équilibrage vient de ramener l'écart à zéro : c'est la DÉCISION, et non
+    // l'écart courant, qui maintient le relevé signalé.
+    reliability: 'gap_accepted' as const,
   }
 })
 
