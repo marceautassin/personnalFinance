@@ -4,8 +4,12 @@
  * SEUL POINT D'ENTRÉE vers `unpdf` (NFR16, CLAUDE.md §Boundaries imperméables).
  * Tout autre import direct de `unpdf` ailleurs dans le code est un anti-pattern.
  */
-import { extractText } from 'unpdf'
+import { extractText, getDocumentProxy } from 'unpdf'
 import { eurosToCents, type Cents } from '~~/shared/types/money'
+
+/** Marqueurs de colonne ajoutés aux montants. Consommés par le prompt de catégorisation. */
+export const DEBIT_MARKER = '[DÉBIT]'
+export const CREDIT_MARKER = '[CRÉDIT]'
 
 export interface RawStatement {
   /** Texte concaténé de toutes les pages du PDF. */
@@ -21,32 +25,146 @@ export interface RawStatement {
 }
 
 export async function extractStatement(pdfBuffer: Buffer): Promise<RawStatement> {
-  let rawText: string
+  let flatText: string
 
   try {
     const result = await extractText(new Uint8Array(pdfBuffer), { mergePages: true })
     // `mergePages: true` type `text: string` côté `unpdf`, mais on garde une garde
     // défensive contre une éventuelle dérive de version (text: string[]).
-    rawText = Array.isArray(result.text) ? result.text.join('\n') : (result.text ?? '')
+    flatText = Array.isArray(result.text) ? result.text.join('\n') : (result.text ?? '')
   }
   catch (err) {
     throw new Error(`PDF extraction failed: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  if (!rawText || rawText.trim().length === 0) {
+  if (!flatText || flatText.trim().length === 0) {
     throw new Error('PDF contains no extractable text')
   }
 
-  const period = extractPeriod(rawText)
-  const balances = extractBalances(rawText)
+  // Le texte plat reste la source des métadonnées : ses expressions régulières sont calées
+  // dessus depuis la story 2.2 et n'ont aucune raison de changer.
+  const period = extractPeriod(flatText)
+  const balances = extractBalances(flatText)
 
   return {
-    rawText,
+    rawText: (await extractPositionalText(pdfBuffer)) ?? flatText,
     periodStart: period.start,
     periodEnd: period.end,
     openingBalanceCents: balances.openingCents,
     closingBalanceCents: balances.closingCents,
   }
+}
+
+/** Un fragment de texte du PDF, avec sa position. `right` est le bord droit. */
+export interface PositionedItem {
+  x: number
+  right: number
+  y: number
+  text: string
+}
+
+/** Tolérance verticale, en points, pour considérer deux fragments sur la même ligne. */
+const ROW_TOLERANCE = 2
+
+/** Un montant au format français, tel qu'il apparaît dans une colonne du relevé. */
+const AMOUNT_RE = /^-?\d{1,3}(?:[\s\u00a0\u202f.]\d{3})*,\d{2}$/u
+
+/**
+ * Reconstruit le texte du relevé en RESPECTANT LES COLONNES, et marque chaque montant
+ * `[DÉBIT]` ou `[CRÉDIT]` selon la colonne où il se trouve.
+ *
+ * **Pourquoi (constaté le 2026-09-05).** L'extraction à plat perd les colonnes : une ligne
+ * arrivait au modèle sous la forme `VIR INST SOCIETEX 02/03/2026 500,00`, sans rien qui dise si
+ * ce montant est au débit ou au crédit. Le modèle devinait — et se trompait, jusqu'à donner
+ * DEUX SIGNES OPPOSÉS au même libellé récurrent (`VIR Epargne programmee`, −10,00 puis
+ * +10,00). Sur les deux relevés réels, la réconciliation accusait 2 187 € et 1 764 € d'écart.
+ *
+ * L'information existe pourtant dans le PDF : les colonnes Débit et Crédit sont séparées de
+ * plus de soixante points. La lire est déterministe ; la deviner ne l'est pas. C'est aussi
+ * l'esprit de NFR15 — le modèle ne doit rien inventer qu'on puisse constater.
+ *
+ * Retourne `null` si la structure de colonnes n'est pas reconnue (autre banque, autre
+ * gabarit) : l'appelant retombe alors sur le texte plat, dégradé mais fonctionnel.
+ */
+async function extractPositionalText(pdfBuffer: Buffer): Promise<string | null> {
+  let pages: PositionedItem[][]
+  try {
+    pages = await readPositionedPages(pdfBuffer)
+  }
+  catch {
+    // L'extraction positionnelle est un CONFORT DE FIABILITÉ, pas un prérequis : son échec
+    // ne doit pas faire échouer une ingestion que le texte plat rend possible.
+    return null
+  }
+
+  const rendered: string[] = []
+  let anyColumnFound = false
+
+  for (const items of pages) {
+    const separator = findDebitCreditSeparator(items)
+    if (separator !== null) anyColumnFound = true
+    rendered.push(renderRows(items, separator))
+  }
+
+  return anyColumnFound ? rendered.join('\n') : null
+}
+
+async function readPositionedPages(pdfBuffer: Buffer): Promise<PositionedItem[][]> {
+  const doc = await getDocumentProxy(new Uint8Array(pdfBuffer))
+  const pages: PositionedItem[][] = []
+  for (let n = 1; n <= doc.numPages; n++) {
+    const content = await (await doc.getPage(n)).getTextContent()
+    const items = (content.items as { str?: string, transform?: number[], width?: number }[])
+      .flatMap((i) => {
+        const text = (i.str ?? '').trim()
+        const x = i.transform?.[4]
+        const y = i.transform?.[5]
+        if (text.length === 0 || typeof x !== 'number' || typeof y !== 'number') return []
+        return [{ x, right: x + (i.width ?? 0), y, text }]
+      })
+    pages.push(items)
+  }
+  return pages
+}
+
+/**
+ * Abscisse qui sépare la colonne Débit de la colonne Crédit, déduite des en-têtes.
+ *
+ * On prend le milieu entre les CENTRES des deux en-têtes plutôt qu'un bord : les montants
+ * sont alignés à droite et débordent de leur en-tête, si bien qu'un seuil calé sur un bord
+ * classait mal les montants les plus larges.
+ */
+export function findDebitCreditSeparator(items: PositionedItem[]): number | null {
+  const center = (i: PositionedItem) => (i.x + i.right) / 2
+  const debit = items.find(i => /^d[ée]bit$/iu.test(i.text))
+  const credit = items.find(i => /^cr[ée]dit$/iu.test(i.text))
+  if (!debit || !credit) return null
+  // Les deux en-têtes doivent être sur la même ligne et dans cet ordre : sinon on lit autre
+  // chose qu'un tableau d'opérations et le seuil n'aurait aucun sens.
+  if (Math.abs(debit.y - credit.y) > ROW_TOLERANCE) return null
+  if (center(debit) >= center(credit)) return null
+  return (center(debit) + center(credit)) / 2
+}
+
+/** Regroupe les fragments par ligne (y décroissant), puis par abscisse croissante. */
+export function renderRows(items: PositionedItem[], separator: number | null): string {
+  const rows: PositionedItem[][] = []
+  for (const item of [...items].sort((a, b) => b.y - a.y || a.x - b.x)) {
+    const current = rows.at(-1)
+    if (current && Math.abs(current[0]!.y - item.y) <= ROW_TOLERANCE) current.push(item)
+    else rows.push([item])
+  }
+
+  return rows
+    .map(row => row
+      .sort((a, b) => a.x - b.x)
+      .map((item) => {
+        if (separator === null || !AMOUNT_RE.test(item.text)) return item.text
+        // Le montant est aligné à droite dans sa colonne : c'est son bord droit qui la désigne.
+        return `${item.text} ${item.right <= separator ? DEBIT_MARKER : CREDIT_MARKER}`
+      })
+      .join(' '))
+    .join('\n')
 }
 
 function frDateToIso(dd: string, mm: string, yyyy: string): string | null {

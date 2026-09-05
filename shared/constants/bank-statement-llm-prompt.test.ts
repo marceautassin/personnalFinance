@@ -85,4 +85,19 @@ describe('BANK_STATEMENT_SYSTEM_PROMPT', () => {
   it('dissocie le signe du montant de la nature du poste', () => {
     expect(BANK_STATEMENT_SYSTEM_PROMPT).toMatch(/signe et la nature sont INDÉPENDANTS/)
   })
+
+  /**
+   * Le signe ne se déduit plus : il est lu dans la colonne du relevé et transmis en marqueur.
+   * Le modèle avait donné deux signes opposés au même libellé récurrent quand il devait le
+   * deviner (constaté le 2026-09-05 sur les relevés réels).
+   */
+  it('impose les marqueurs de colonne comme autorité sur le signe', () => {
+    expect(BANK_STATEMENT_SYSTEM_PROMPT).toContain('[DÉBIT]')
+    expect(BANK_STATEMENT_SYSTEM_PROMPT).toContain('[CRÉDIT]')
+    expect(BANK_STATEMENT_SYSTEM_PROMPT).toMatch(/Ne JAMAIS contredire le marqueur/)
+  })
+
+  it('écarte explicitement les lignes de solde', () => {
+    expect(BANK_STATEMENT_SYSTEM_PROMPT).toMatch(/lignes de solde.*ne sont PAS des opérations/su)
+  })
 })

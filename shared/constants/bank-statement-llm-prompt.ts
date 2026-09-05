@@ -26,8 +26,8 @@ export interface LlmCategoryItem {
   readonly groupLabel: string
 }
 
-/** Version 2 : référentiel hiérarchique à deux niveaux et trois natures (D17). */
-export const BANK_STATEMENT_PROMPT_VERSION = 2
+/** Version 3 : référentiel hiérarchique, trois natures (D17) et marqueurs de colonne. */
+export const BANK_STATEMENT_PROMPT_VERSION = 3
 
 const NATURE_FR: Record<MovementNature, string> = {
   income: 'recette',
@@ -45,10 +45,11 @@ RÈGLES CRITIQUES :
 
 1. **Exhaustivité** : extraire TOUTES les opérations, sans en omettre. Une ligne ambiguë est incluse quand même, avec le poste de repli.
 
-2. **Signe du montant** :
-   - SORTIES (achats, prélèvements, virements émis, frais bancaires) → montant NÉGATIF
-   - ENTRÉES (virements reçus, salaire, remboursements) → montant POSITIF
-   - Le signe se détermine à partir du contexte (colonne « Débit »/« Crédit » du relevé, ou indicateurs textuels).
+2. **Signe du montant — il est DONNÉ, pas à déduire** :
+   - Chaque montant est suivi du marqueur \`[DÉBIT]\` ou \`[CRÉDIT]\`, lu directement dans la colonne du relevé.
+   - \`[DÉBIT]\` → montant NÉGATIF. \`[CRÉDIT]\` → montant POSITIF. **Sans exception.**
+   - Ne JAMAIS contredire le marqueur, même si le libellé suggère l'inverse. Le marqueur vient du relevé ; le libellé n'est qu'un indice.
+   - Si un montant n'a pas de marqueur, alors seulement, déduire le signe du contexte.
    - Le signe et la nature sont INDÉPENDANTS : un remboursement rangé sur un poste de dépense reste un montant positif, et c'est correct.
 
 3. **Mouvement interne** : un déplacement d'argent entre les comptes de la même personne — virement vers ou depuis un livret, retrait d'espèces. Ce n'est NI une recette NI une dépense. Le classer en recette gonflerait les revenus et masquerait un déficit. En cas de doute sur un virement, regarde s'il désigne un compte d'épargne ou une contrepartie externe.
@@ -62,6 +63,8 @@ RÈGLES CRITIQUES :
 7. **Libellé (\`label\`)** : conserver le libellé brut du relevé (raccourci raisonnablement à 100 caractères), sans paraphraser. Garder les références utiles (numéro de carte tronqué, ville, date d'opération si différente de la date de débit).
 
 8. **Pas d'invention** : si le montant, la date ou le libellé d'une ligne n'est pas lisible, NE PAS l'inclure. Mieux vaut omettre qu'inventer.
+
+   Les lignes de solde (« SOLDE AU », « Nouveau solde ») ne sont PAS des opérations : les ignorer.
 
 9. **Pas d'enrichissement** : ne pas ajouter de TVA, ne pas calculer de soldes, ne pas regrouper plusieurs lignes. Une ligne du relevé = une transaction.
 

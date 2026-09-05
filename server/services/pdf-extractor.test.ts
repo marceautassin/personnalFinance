@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { extractStatement, parseFrAmount } from './pdf-extractor'
+import {
+  extractStatement,
+  parseFrAmount,
+  findDebitCreditSeparator,
+  renderRows,
+  DEBIT_MARKER,
+  CREDIT_MARKER,
+  type PositionedItem,
+} from './pdf-extractor'
 import { eurosToCents } from '~~/shared/types/money'
 
 const FIXTURE_DIR = resolve('tests/fixtures/pdfs')
@@ -156,5 +164,83 @@ describe('extractStatement', () => {
     if (result.openingBalanceCents !== null) {
       expect(Number.isInteger(result.openingBalanceCents)).toBe(true)
     }
+  })
+})
+
+/**
+ * Reconstruction en colonnes (2026-09-05).
+ *
+ * L'extraction à plat perdait la distinction Débit / Crédit et le modèle devinait le signe —
+ * jusqu'à donner deux signes opposés au même libellé récurrent. Sur les deux relevés réels,
+ * la réconciliation accusait 2 187 € et 1 764 € d'écart ; avec les marqueurs, elle tombe à
+ * zéro. Ces tests portent sur les fonctions PURES, sans PDF : la géométrie se simule.
+ */
+describe('reconstruction en colonnes', () => {
+  const item = (text: string, x: number, y: number, width = 20): PositionedItem =>
+    ({ text, x, right: x + width, y })
+
+  // Géométrie relevée sur un extrait Boursobank réel : en-têtes Débit x≈442, Crédit x≈506 ;
+  // montants alignés à droite, bord droit ≈480 au débit et ≈546 au crédit.
+  const headers = [item('Débit', 442, 427, 23), item('Crédit', 506, 427, 27)]
+
+  it('déduit le séparateur des en-têtes', () => {
+    expect(findDebitCreditSeparator(headers)).toBeCloseTo(486.5, 1)
+  })
+
+  it('rend null sans en-tête reconnaissable', () => {
+    expect(findDebitCreditSeparator([item('Montant', 442, 427)])).toBeNull()
+  })
+
+  it('rend null si les en-têtes ne sont pas sur la même ligne', () => {
+    expect(findDebitCreditSeparator([headers[0]!, item('Crédit', 506, 300, 27)])).toBeNull()
+  })
+
+  it('rend null si Crédit précède Débit — ce n\'est pas le tableau attendu', () => {
+    expect(findDebitCreditSeparator([item('Débit', 506, 427, 23), item('Crédit', 442, 427, 27)])).toBeNull()
+  })
+
+  it('marque un montant de la colonne gauche en DÉBIT, celui de droite en CRÉDIT', () => {
+    const rows = renderRows([
+      item('VIR Epargne programmee', 95, 371, 120),
+      item('10,00', 455, 371, 25),
+      item('VIR INST SOCIETEX', 95, 314, 90),
+      item('500,00', 516, 314, 30),
+    ], 486.5)
+    expect(rows).toContain(`10,00 ${DEBIT_MARKER}`)
+    expect(rows).toContain(`500,00 ${CREDIT_MARKER}`)
+  })
+
+  it('n\'annote rien quand la structure de colonnes est inconnue', () => {
+    const rows = renderRows([item('Libellé', 95, 371, 40), item('10,00', 455, 371, 25)], null)
+    expect(rows).toBe('Libellé 10,00')
+  })
+
+  it('regroupe une ligne par ordonnée et ordonne par abscisse', () => {
+    const rows = renderRows([
+      item('C', 300, 100, 10),
+      item('A', 100, 100, 10),
+      item('B', 200, 100, 10),
+      item('suivante', 100, 80, 10),
+    ], null)
+    expect(rows).toBe('A B C\nsuivante')
+  })
+
+  it('tolère un décalage vertical de moins de deux points sur une même ligne', () => {
+    const rows = renderRows([item('A', 100, 100, 10), item('B', 200, 101.5, 10)], null)
+    expect(rows).toBe('A B')
+  })
+
+  it('n\'annote que les montants, pas les dates ni les références', () => {
+    const rows = renderRows([
+      item('02/03/2026', 46, 371, 40),
+      item('CB*0000', 300, 371, 40),
+      item('12,34', 455, 371, 25),
+    ], 486.5)
+    expect(rows).toBe(`02/03/2026 CB*0000 12,34 ${DEBIT_MARKER}`)
+  })
+
+  it('reconnaît un montant à séparateur de milliers', () => {
+    const rows = renderRows([item('1 234,56', 440, 371, 40)], 486.5)
+    expect(rows).toBe(`1 234,56 ${DEBIT_MARKER}`)
   })
 })
