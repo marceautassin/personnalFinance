@@ -12,6 +12,8 @@ export interface StatementListItem {
   manualCount: number
   /** `null` sur un relevé sans transaction : le taux n'est pas défini, il n'est pas nul. */
   correctionRate: Ratio | null
+  /** Écart courant, recalculé à la lecture — jamais stocké. */
+  gapCents: number
 }
 
 export interface StatementsListResponse {

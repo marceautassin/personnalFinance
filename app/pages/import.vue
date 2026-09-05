@@ -1,12 +1,24 @@
 <script setup lang="ts">
-import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
-import { formatEuros, type Cents } from '~~/shared/types/money'
-import { isRetryableErrorCode, useStatementsList, type OverlapInfo, type StatementListItem } from '~/composables/useStatements'
+import { useStatementsList, type StatementListItem } from '~/composables/useStatements'
+import { useIngestionQueue } from '~/composables/useIngestionQueue'
 import { formatRatio } from '~~/shared/types/ratio'
+import type { Cents } from '~~/shared/types/money'
 import { MANUAL_CORRECTION_THRESHOLD } from '~~/shared/constants/quality-thresholds'
 
-const { uploadStatement } = useStatements()
-const { data: listData, refresh: refreshList } = useStatementsList()
+const { data: listData } = useStatementsList()
+const {
+  items,
+  running,
+  awaiting,
+  counts,
+  finished,
+  enqueue,
+  confirmReplace,
+  skipAwaiting,
+  retry,
+  cancelCurrent,
+  clear,
+} = useIngestionQueue()
 
 /**
  * Un taux au-dessus du seuil est signalé visuellement. Le seuil vient d'une constante
@@ -31,129 +43,36 @@ function monthLabel(periodStart: string): string {
 function periodSlug(periodStart: string): string {
   return periodStart.slice(0, 7)
 }
-
-type Status = 'idle' | 'uploading' | 'success' | 'error' | 'overlap'
-const status = ref<Status>('idle')
-const result = ref<IngestionResult | null>(null)
-const errorMsg = ref<string | null>(null)
-const errorCode = ref<string | null>(null)
-const overlap = ref<OverlapInfo | null>(null)
-const lastFile = ref<File | null>(null)
-let abortCtrl: AbortController | null = null
-
-async function handleUpload(file: File, confirmReplace = false) {
-  if (status.value === 'uploading') return
-  lastFile.value = file
-  errorMsg.value = null
-  errorCode.value = null
-  result.value = null
-  abortCtrl = new AbortController()
-  status.value = 'uploading'
-  const out = await uploadStatement(file, { confirmReplace, signal: abortCtrl.signal })
-  abortCtrl = null
-  if (out.aborted) {
-    status.value = 'idle'
-    return
-  }
-  if (out.result) {
-    result.value = out.result
-    status.value = 'success'
-    void refreshList()
-  }
-  else if (out.overlap) {
-    overlap.value = out.overlap
-    status.value = 'overlap'
-  }
-  else {
-    errorMsg.value = out.error ?? 'Erreur inconnue'
-    errorCode.value = out.errorCode ?? null
-    status.value = 'error'
-  }
-}
-
-function onConfirmReplace() {
-  if (!lastFile.value || status.value === 'uploading') return
-  overlap.value = null
-  void handleUpload(lastFile.value, true)
-}
-function onCancelOverlap() {
-  overlap.value = null
-  if (status.value === 'overlap') status.value = 'idle'
-}
-function onRetry() {
-  if (lastFile.value && status.value !== 'uploading') void handleUpload(lastFile.value)
-}
-function onCancelUpload() {
-  abortCtrl?.abort()
-}
-
-const canRetry = computed(() => isRetryableErrorCode(errorCode.value ?? undefined))
-
-const transactionsLink = computed(() => {
-  if (!result.value) return null
-  return `/transactions/${result.value.periodStart.slice(0, 7)}`
-})
 </script>
 
 <template>
   <section class="import">
-    <h2>Importer un relevé</h2>
+    <h2>Importer des relevés</h2>
 
     <PdfDropZone
-      v-if="status === 'idle' || status === 'error'"
-      @upload="handleUpload($event)"
+      v-if="!running && awaiting === null"
+      @upload="enqueue($event)"
     />
 
-    <IngestionProgress
-      :active="status === 'uploading'"
-      @cancel="onCancelUpload"
+    <IngestionQueue
+      :items="items"
+      :running="running"
+      :counts="counts"
+      :finished="finished"
+      @retry="retry"
+      @cancel="cancelCurrent"
+      @clear="clear"
     />
 
-    <div
-      v-if="status === 'success' && result"
-      class="success"
-    >
-      <h3>✅ Relevé ingéré</h3>
-      <p>Période : <strong>{{ result.periodStart }} → {{ result.periodEnd }}</strong></p>
-      <p>{{ result.transactionCount }} transaction{{ result.transactionCount > 1 ? 's' : '' }} catégorisée{{ result.transactionCount > 1 ? 's' : '' }}.</p>
-      <p
-        v-if="!result.isBalanced"
-        class="success__warning"
-      >
-        ⚠️ Réconciliation non équilibrée : écart de {{ formatEuros(result.gapCents as Cents) }}.
-        <NuxtLink :to="`/reconciliation/${result.hash}`">
-          Résoudre l'écart
-        </NuxtLink>
-      </p>
-      <NuxtLink
-        v-if="transactionsLink"
-        class="success__link"
-        :to="transactionsLink"
-      >
-        Voir les transactions de {{ result.periodStart.slice(0, 7) }}
-      </NuxtLink>
-    </div>
-
-    <div
-      v-if="status === 'error'"
-      class="error"
-      role="alert"
-    >
-      <p>{{ errorMsg }}</p>
-      <button
-        v-if="canRetry"
-        type="button"
-        class="btn btn--primary"
-        @click="onRetry"
-      >
-        Réessayer
-      </button>
-    </div>
-
+    <!--
+      Le chevauchement met la file EN PAUSE : traiter les fichiers suivants pendant que
+      l'utilisateur décide rendrait la progression incompréhensible, et un remplacement
+      pourrait entrer en concurrence avec le relevé suivant (FR6).
+    -->
     <PeriodOverlapDialog
-      :overlap="status === 'overlap' ? overlap : null"
-      @confirm="onConfirmReplace"
-      @cancel="onCancelOverlap"
+      :overlap="awaiting?.overlap ?? null"
+      @confirm="confirmReplace"
+      @cancel="skipAwaiting"
     />
 
     <section
@@ -189,7 +108,10 @@ const transactionsLink = computed(() => {
             :class="{ 'statements__rate--high': isRateHigh(stmt) }"
             :title="correctionTitle(stmt)"
           >{{ formatRatio(stmt.correctionRate) }} corrigé</span>
-          <ReliabilityBadge :reliability="stmt.reliability" />
+          <ReliabilityBadge
+            :reliability="stmt.reliability"
+            :gap-cents="stmt.gapCents as Cents"
+          />
           <span class="statements__links">
             <NuxtLink :to="`/transactions/${periodSlug(stmt.periodStart)}`">
               Transactions

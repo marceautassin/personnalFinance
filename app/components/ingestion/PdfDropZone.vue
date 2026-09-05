@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const emit = defineEmits<{ upload: [file: File] }>()
+const emit = defineEmits<{ upload: [files: File[]] }>()
 
 const isDragging = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -18,24 +18,46 @@ function isPdfFile(file: File): boolean {
   return false
 }
 
-function handleFiles(files: FileList | null | undefined) {
-  errorMessage.value = null
-  const file = files?.[0]
-  if (!file) return
-  if (!isPdfFile(file)) {
-    errorMessage.value = 'Seuls les fichiers PDF sont acceptés.'
-    return
-  }
-  if (file.size === 0) {
-    errorMessage.value = 'Le fichier est vide.'
-    return
-  }
+/** Motif de rejet d'un fichier, ou `null` s'il est acceptable. */
+function rejectionReason(file: File): string | null {
+  if (!isPdfFile(file)) return 'n\'est pas un PDF'
+  if (file.size === 0) return 'est vide'
   if (file.size > MAX_BYTES) {
     const mb = Math.round((file.size / 1024 / 1024) * 10) / 10
-    errorMessage.value = `Le fichier dépasse 10 Mo (${mb} Mo).`
-    return
+    return `dépasse 10 Mo (${mb} Mo)`
   }
-  emit('upload', file)
+  return null
+}
+
+/**
+ * Accepte un dépôt MULTIPLE (FR1) et trie sur place ce qui n'a aucune chance de passer.
+ *
+ * Un fichier rejeté ici n'empêche pas les autres de partir : c'est déjà l'esprit de FR3, et
+ * ce serait absurde de refuser 23 relevés valides parce qu'une capture d'écran s'est glissée
+ * dans la sélection. Les motifs de rejet sont énumérés, pas résumés — « certains fichiers ont
+ * été ignorés » n'aide personne.
+ */
+function handleFiles(fileList: FileList | null | undefined) {
+  errorMessage.value = null
+  const files = Array.from(fileList ?? [])
+  if (files.length === 0) return
+
+  const accepted: File[] = []
+  const rejected: string[] = []
+  for (const file of files) {
+    const reason = rejectionReason(file)
+    if (reason) rejected.push(`${file.name} ${reason}`)
+    else accepted.push(file)
+  }
+
+  if (rejected.length > 0) {
+    errorMessage.value = `Ignoré${rejected.length > 1 ? 's' : ''} : ${rejected.join(' ; ')}.`
+  }
+  // Tri par nom : l'ordre d'un dépôt multiple dépend sinon du système de fichiers, et une
+  // file de 24 relevés dans un ordre arbitraire est illisible.
+  if (accepted.length > 0) {
+    emit('upload', accepted.sort((a, b) => a.name.localeCompare(b.name, 'fr')))
+  }
 }
 
 function onDrop(e: DragEvent) {
@@ -73,7 +95,7 @@ function onInput(e: Event) {
       type="button"
       class="dropzone"
       :class="{ 'dropzone--dragging': isDragging }"
-      :aria-label="'Déposer un relevé PDF'"
+      :aria-label="'Déposer un ou plusieurs relevés PDF'"
       @drop="onDrop"
       @dragover="onDragOver"
       @dragenter="onDragEnter"
@@ -81,15 +103,16 @@ function onInput(e: Event) {
       @click="onClick"
     >
       <p class="dropzone__title">
-        Dépose un relevé PDF Boursorama ici
+        Dépose tes relevés PDF Boursorama ici
       </p>
       <p class="dropzone__hint">
-        <small>ou clique pour sélectionner un fichier (max 10 Mo)</small>
+        <small>un ou plusieurs à la fois — ou clique pour les sélectionner (max 10 Mo par fichier)</small>
       </p>
     </button>
     <input
       ref="inputRef"
       type="file"
+      multiple
       accept="application/pdf"
       class="dropzone__input"
       @change="onInput"
