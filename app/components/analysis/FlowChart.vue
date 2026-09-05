@@ -96,6 +96,43 @@ function niceStep(raw: number): number {
  */
 const tickEvery = computed(() => (props.series.length > 8 ? 2 : 1))
 const showTick = (index: number) => (props.series.length - 1 - index) % tickEvery.value === 0
+
+/**
+ * Survol : une bande invisible par tranche capte la souris et ouvre l'infobulle.
+ *
+ * Des bandes plutôt que les points eux-mêmes — viser un disque de 3 px de rayon est un exercice
+ * d'adresse, et il y en a deux superposés par tranche. La bande couvre toute la hauteur, donc
+ * la tranche entière est une cible. Rien de tout ceci n'est exposé au clavier : le tableau
+ * sous le graphique porte déjà les mêmes valeurs, atteignables et lisibles.
+ */
+const hovered = ref<number | null>(null)
+
+const bands = computed(() =>
+  props.series.map((p, i) => {
+    const n = Math.max(1, props.series.length - 1)
+    const half = plot.value.w / n / 2
+    const left = Math.max(PAD.left, x(i) - half)
+    const right = Math.min(W - PAD.right, x(i) + half)
+    return { key: p.bucket, index: i, x: left, width: Math.max(1, right - left) }
+  }),
+)
+
+const tip = computed(() => {
+  const i = hovered.value
+  if (i === null) return null
+  const p = props.series[i]
+  if (!p) return null
+  return {
+    left: `${(x(i) / W) * 100}%`,
+    /** Ancrage retourné près des bords, sinon l'infobulle sort du cadre. */
+    anchor: x(i) < W * 0.2 ? 'start' : x(i) > W * 0.8 ? 'end' : 'middle',
+    label: p.label,
+    income: formatEuros(p.incomeCents as Cents),
+    expense: formatEuros(p.expenseCents as Cents),
+    result: formatEuros(p.resultCents as Cents),
+    deficit: p.resultCents < 0,
+  }
+})
 </script>
 
 <template>
@@ -108,81 +145,133 @@ const showTick = (index: number) => (props.series.length - 1 - index) % tickEver
     </figcaption>
 
     <div class="flow__frame">
-      <!--
+      <div
+        class="flow__plot"
+        @mouseleave="hovered = null"
+      >
+        <!--
         `aria-hidden` : le graphique n'est PAS l'information, il en est la forme. Le tableau
         sous le composant porte les valeurs, et c'est lui que lisent le clavier et le lecteur
         d'écran. Le doubler dans le SVG produirait une lecture illisible.
       -->
-      <svg
-        class="flow__svg"
-        :viewBox="`0 0 ${W} ${H}`"
-        aria-hidden="true"
-      >
-        <g class="flow__grid">
-          <line
-            v-for="line in gridLines"
-            :key="line.value"
-            :x1="PAD.left"
-            :x2="W - PAD.right"
-            :y1="line.y"
-            :y2="line.y"
+        <svg
+          class="flow__svg"
+          :viewBox="`0 0 ${W} ${H}`"
+          aria-hidden="true"
+        >
+          <g class="flow__grid">
+            <line
+              v-for="line in gridLines"
+              :key="line.value"
+              :x1="PAD.left"
+              :x2="W - PAD.right"
+              :y1="line.y"
+              :y2="line.y"
+            />
+            <text
+              v-for="line in gridLines"
+              :key="`t-${line.value}`"
+              :x="PAD.left - 8"
+              :y="line.y + 4"
+              text-anchor="end"
+              class="flow__axis-label"
+            >{{ line.label }}</text>
+          </g>
+
+          <path
+            v-for="band in gapBands"
+            :key="band.key"
+            :d="band.d"
+            :class="band.deficit ? 'flow__band flow__band--deficit' : 'flow__band flow__band--surplus'"
           />
+
+          <path
+            :d="expensePath"
+            class="flow__line flow__line--expense"
+          />
+          <path
+            :d="incomePath"
+            class="flow__line flow__line--income"
+          />
+
+          <!-- Les points marquent chaque tranche : sans eux, on ne sait pas où sont les mesures. -->
+          <g>
+            <circle
+              v-for="(p, i) in series"
+              :key="`i-${p.bucket}`"
+              :cx="x(i)"
+              :cy="y(p.incomeCents)"
+              r="3"
+              class="flow__dot flow__dot--income"
+            />
+            <circle
+              v-for="(p, i) in series"
+              :key="`e-${p.bucket}`"
+              :cx="x(i)"
+              :cy="y(Math.abs(p.expenseCents))"
+              r="3"
+              class="flow__dot flow__dot--expense"
+            />
+          </g>
+
           <text
-            v-for="line in gridLines"
-            :key="`t-${line.value}`"
-            :x="PAD.left - 8"
-            :y="line.y + 4"
-            text-anchor="end"
+            v-for="(p, i) in series"
+            v-show="showTick(i)"
+            :key="`x-${p.bucket}`"
+            :x="x(i)"
+            :y="H - 10"
+            :text-anchor="i === 0 ? 'start' : i === series.length - 1 ? 'end' : 'middle'"
             class="flow__axis-label"
-          >{{ line.label }}</text>
-        </g>
+          >{{ p.label }}</text>
 
-        <path
-          v-for="band in gapBands"
-          :key="band.key"
-          :d="band.d"
-          :class="band.deficit ? 'flow__band flow__band--deficit' : 'flow__band flow__band--surplus'"
-        />
-
-        <path
-          :d="expensePath"
-          class="flow__line flow__line--expense"
-        />
-        <path
-          :d="incomePath"
-          class="flow__line flow__line--income"
-        />
-
-        <!-- Les points marquent chaque tranche : sans eux, on ne sait pas où sont les mesures. -->
-        <g>
-          <circle
-            v-for="(p, i) in series"
-            :key="`i-${p.bucket}`"
-            :cx="x(i)"
-            :cy="y(p.incomeCents)"
-            r="3"
-            class="flow__dot flow__dot--income"
+          <!-- Repère du survol, sous les bandes de capture pour ne pas leur voler la souris. -->
+          <line
+            v-if="hovered !== null"
+            :x1="x(hovered)"
+            :x2="x(hovered)"
+            :y1="PAD.top"
+            :y2="PAD.top + plot.h"
+            class="flow__guide"
           />
-          <circle
-            v-for="(p, i) in series"
-            :key="`e-${p.bucket}`"
-            :cx="x(i)"
-            :cy="y(Math.abs(p.expenseCents))"
-            r="3"
-            class="flow__dot flow__dot--expense"
-          />
-        </g>
+          <g v-if="hovered !== null">
+            <circle
+              :cx="x(hovered)"
+              :cy="y(series[hovered]!.incomeCents)"
+              r="5"
+              class="flow__dot flow__dot--income"
+            />
+            <circle
+              :cx="x(hovered)"
+              :cy="y(Math.abs(series[hovered]!.expenseCents))"
+              r="5"
+              class="flow__dot flow__dot--expense"
+            />
+          </g>
 
-        <text
-          v-for="(p, i) in series"
-          v-show="showTick(i)"
-          :key="`x-${p.bucket}`"
-          :x="x(i)"
-          :y="H - 10"
-          :text-anchor="i === 0 ? 'start' : i === series.length - 1 ? 'end' : 'middle'"
-          class="flow__axis-label"
-        >{{ p.label }}</text>
-      </svg>
+          <rect
+            v-for="band in bands"
+            :key="`h-${band.key}`"
+            :x="band.x"
+            :y="PAD.top"
+            :width="band.width"
+            :height="plot.h"
+            class="flow__hit"
+            @mouseenter="hovered = band.index"
+          />
+        </svg>
+
+        <div
+          v-if="tip"
+          class="flow__tip"
+          :data-anchor="tip.anchor"
+          :style="{ left: tip.left }"
+        >
+          <strong>{{ tip.label }}</strong>
+          <span><i class="flow__swatch flow__swatch--income" />Recettes<b>{{ tip.income }}</b></span>
+          <span><i class="flow__swatch flow__swatch--expense" />Dépenses<b>{{ tip.expense }}</b></span>
+          <span :class="{ 'flow__tip-neg': tip.deficit }">Résultat<b>{{ tip.result }}</b></span>
+        </div>
+      </div>
     </div>
   </figure>
 </template>
@@ -190,7 +279,34 @@ const showTick = (index: number) => (props.series.length - 1 - index) % tickEver
 <style scoped>
 .flow { margin: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .flow__frame { overflow-x: auto; }
-.flow__svg { width: 100%; min-width: 40rem; height: auto; }
+.flow__plot { position: relative; min-width: 40rem; }
+.flow__svg { width: 100%; height: auto; display: block; }
+.flow__hit { fill: transparent; }
+.flow__guide { stroke: var(--color-text-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+
+.flow__tip {
+  position: absolute;
+  top: var(--space-2);
+  z-index: 1;
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.flow__tip[data-anchor='middle'] { transform: translateX(-50%); }
+.flow__tip[data-anchor='end'] { transform: translateX(-100%); }
+.flow__tip span { display: flex; align-items: center; gap: var(--space-2); }
+.flow__tip b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.flow__tip-neg b { color: var(--color-danger); }
+.flow__swatch { width: 0.75rem; height: 2px; border-radius: 1px; }
+.flow__swatch--income { background: var(--color-success); }
+.flow__swatch--expense { background: var(--color-danger); }
 .flow__grid line { stroke: var(--color-border); stroke-width: 1; }
 .flow__axis-label { fill: var(--color-text-muted); font-size: 11px; }
 .flow__band { opacity: 0.22; }

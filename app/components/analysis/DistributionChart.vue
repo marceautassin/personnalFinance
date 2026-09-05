@@ -19,7 +19,10 @@ const props = defineProps<{
   failedItems: string[]
 }>()
 
-const emit = defineEmits<{ expandItem: [itemCode: string] }>()
+const emit = defineEmits<{
+  expandItem: [itemCode: string]
+  recategorize: [transaction: RangeTransaction, categoryItemCode: string]
+}>()
 
 const expanded = ref<Set<string>>(new Set())
 function toggle(code: string) {
@@ -268,13 +271,18 @@ function isDeltaAlarming(value: number): boolean {
                     <span class="dist__tx-date">{{ formatDate(tx.transactionDate) }}</span>
                     <span class="dist__tx-label">{{ tx.label }}</span>
                     <span class="dist__tx-amount">{{ formatEuros(tx.amountCents as Cents) }}</span>
-                    <NuxtLink
-                      :to="`/reconciliation/${tx.statementHash}`"
-                      class="dist__tx-source"
-                      :aria-label="`Relevé d'origine de ${tx.label}`"
-                    >
-                      relevé
-                    </NuxtLink>
+                    <!--
+                      Reclassement EN PLACE. Le lien « relevé » qui occupait cette colonne
+                      renvoyait vers le PDF d'origine — une information qu'on ne vient jamais
+                      chercher ici. Quand on lit ses dépenses poste par poste, ce qu'on veut
+                      faire d'une ligne mal rangée, c'est la ranger (recette du 2026-09-05).
+                    -->
+                    <CategoryEditor
+                      :transaction-id="tx.id"
+                      :current-code="tx.categoryItemCode"
+                      trigger-label="Modifier"
+                      @change="(_id, code) => emit('recategorize', tx, code)"
+                    />
                   </li>
                 </ol>
                 <p class="dist__tx-state">
@@ -347,17 +355,19 @@ function isDeltaAlarming(value: number): boolean {
 .dist__item[disabled] { cursor: default; opacity: 0.65; }
 .dist__item[disabled]:hover { background: none; }
 
-/* Les lignes vivent sous leur poste, décalées et bornées en hauteur : un poste à 300 lignes
-   ne doit pas rendre le reste de la page inatteignable. */
+/* Les lignes vivent sous leur poste, décalées. Pas de hauteur bornée : le menu de reclassement
+   s'ouvre en position absolue et un conteneur qui défile le rognerait sur les dernières lignes.
+   Le poste se replie, ce qui suffit à ne pas noyer la page. */
 .dist__tx {
   margin: 0 0 var(--space-2) var(--space-6, 3rem);
   padding-left: var(--space-3);
   border-left: 2px solid var(--color-border);
 }
-.dist__tx-list { list-style: none; margin: 0; padding: 0; max-height: 22rem; overflow-y: auto; }
+.dist__tx-list { list-style: none; margin: 0; padding: 0; }
 .dist__tx-row {
   display: grid;
-  grid-template-columns: 6rem 1fr 6rem 4rem;
+  grid-template-columns: 6rem 1fr 6rem auto;
+  align-items: center;
   gap: var(--space-2);
   padding: 2px 0;
   font-size: var(--font-size-xs);

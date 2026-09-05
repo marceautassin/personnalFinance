@@ -4,6 +4,15 @@ import type { MovementNature } from '~~/shared/types/movement-nature'
 const props = defineProps<{
   currentCode: string
   transactionId: number
+  /**
+   * Libellé compact du déclencheur — « Modifier » dans la descente d'analyse.
+   *
+   * Là-bas, chaque ligne est DÉJÀ sous son poste : réafficher « Alimentation · Courses » sur
+   * chacune des quarante lignes du poste répète quarante fois ce que le titre au-dessus dit une
+   * fois. Le nom accessible, lui, garde le poste courant : hors contexte visuel, « Modifier »
+   * seul ne dit pas ce qu'on modifie.
+   */
+  triggerLabel?: string
 }>()
 
 const emit = defineEmits<{ change: [transactionId: number, code: string] }>()
@@ -74,13 +83,14 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="cat-editor__trigger"
+      :class="{ 'cat-editor__trigger--compact': triggerLabel }"
       :aria-expanded="open"
       aria-haspopup="listbox"
-      :aria-label="`Poste : ${currentLabel}`"
+      :aria-label="triggerLabel ? `${triggerLabel} le poste : ${currentLabel}` : `Poste : ${currentLabel}`"
       :title="currentLabel"
       @click="toggle"
     >
-      <span class="cat-editor__current">{{ currentLabel }}</span>
+      <span class="cat-editor__current">{{ triggerLabel ?? currentLabel }}</span>
       <span aria-hidden="true">▾</span>
     </button>
 
@@ -162,6 +172,15 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .cat-editor__trigger:hover { border-color: var(--color-accent); }
+/* Variante compacte : un bouton d'action au bout d'une ligne, pas un champ. */
+.cat-editor__trigger--compact {
+  padding: 0 var(--space-1);
+  border-color: transparent;
+  background: none;
+  color: var(--color-accent);
+  font-size: var(--font-size-xs);
+}
+.cat-editor__trigger--compact:hover { border-color: var(--color-accent); }
 /* Une seule ligne, tronquée : un libellé qui passe à la ligne fait grandir toute la rangée du
    tableau. La valeur complète reste dans le nom accessible et l'infobulle (NFR20). */
 .cat-editor__trigger { max-width: 100%; }

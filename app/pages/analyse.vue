@@ -5,6 +5,7 @@ import { GRANULARITIES, type Granularity, bucketLabel, shiftBucket } from '~~/sh
 import { isDegraded } from '~~/shared/types/statement-reliability'
 import type { MovementNature } from '~~/shared/types/movement-nature'
 import type { AnalysisResponse } from '~/composables/useAnalysis'
+import type { RangeTransaction } from '~/composables/useItemTransactions'
 
 type AnalysisNature = AnalysisResponse['natures'][number]
 
@@ -71,6 +72,14 @@ const itemTransactions = useItemTransactions()
 
 function onExpandItem(itemCode: string) {
   void itemTransactions.load(itemCode, bounds.value)
+}
+
+/** Dernier échec de reclassement — une correction qui échoue en silence est un mensonge. */
+const recategorizeError = ref<string | null>(null)
+
+async function onRecategorize(transaction: RangeTransaction, categoryItemCode: string) {
+  const outcome = await itemTransactions.recategorize(transaction, categoryItemCode)
+  recategorizeError.value = 'error' in outcome ? outcome.error : null
 }
 
 // Changer de période vide le cache : des lignes d'un autre mois affichées sous un total qui a
@@ -184,6 +193,14 @@ watch(bounds, () => itemTransactions.reset())
         </NuxtLink>
       </p>
 
+      <p
+        v-if="recategorizeError"
+        class="analyse__error"
+        role="alert"
+      >
+        {{ recategorizeError }}
+      </p>
+
       <div class="analyse__columns">
         <DistributionChart
           :nature="expense"
@@ -193,6 +210,7 @@ watch(bounds, () => itemTransactions.reset())
           :failed-items="itemTransactions.failed.value"
           title="Dépenses"
           @expand-item="onExpandItem"
+          @recategorize="onRecategorize"
         />
         <DistributionChart
           :nature="income"
@@ -202,6 +220,7 @@ watch(bounds, () => itemTransactions.reset())
           :failed-items="itemTransactions.failed.value"
           title="Recettes"
           @expand-item="onExpandItem"
+          @recategorize="onRecategorize"
         />
       </div>
 
@@ -217,6 +236,7 @@ watch(bounds, () => itemTransactions.reset())
         :failed-items="itemTransactions.failed.value"
         title="Mouvements internes"
         @expand-item="onExpandItem"
+        @recategorize="onRecategorize"
       />
     </template>
   </section>

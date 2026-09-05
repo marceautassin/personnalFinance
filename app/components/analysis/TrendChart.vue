@@ -15,7 +15,9 @@ const props = withDefaults(defineProps<{
   /** Aire remplie sous la courbe — pertinente pour un cumul, bruyante pour une trajectoire. */
   filled?: boolean
   height?: number
-}>(), { filled: false, height: 180 })
+  /** Nom de la grandeur suivie, affiché dans l'infobulle. */
+  valueLabel?: string
+}>(), { filled: false, height: 180, valueLabel: 'Montant' })
 
 const W = 960
 const PAD = { top: 14, right: 16, bottom: 34, left: 68 }
@@ -64,7 +66,9 @@ const gridLines = computed(() => {
   const first = Math.ceil(bounds.value.min / step) * step
   const lines: Array<{ value: number, y: number, label: string }> = []
   for (let v = first; v <= bounds.value.max; v += step) {
-    lines.push({ value: v, y: y(v), label: formatEuros(v as Cents) })
+    // `v === 0` neutralise le zéro NÉGATIF que produit `ceil(min / step) * step` : sans lui,
+    // la ligne d'eau s'étiquette « -0,00 € ».
+    lines.push({ value: v, y: y(v), label: formatEuros((v === 0 ? 0 : v) as Cents) })
   }
   return lines
 })
@@ -85,87 +89,182 @@ const showTick = (index: number) => (props.points.length - 1 - index) % tickEver
 
 /** Le dernier point est nommé : c'est la valeur qu'on vient chercher. */
 const last = computed(() => props.points.at(-1) ?? null)
+
+/**
+ * Survol : une bande invisible par tranche, sur toute la hauteur, plutôt que le point lui-même
+ * — viser un disque de 3 px n'est pas une interaction. Le tableau reste le support accessible.
+ */
+const hovered = ref<number | null>(null)
+
+const bands = computed(() =>
+  props.points.map((p, i) => {
+    const n = Math.max(1, props.points.length - 1)
+    const half = plot.value.w / n / 2
+    const left = Math.max(PAD.left, x(i) - half)
+    const right = Math.min(W - PAD.right, x(i) + half)
+    return { key: p.bucket, index: i, x: left, width: Math.max(1, right - left) }
+  }),
+)
+
+const tip = computed(() => {
+  const i = hovered.value
+  if (i === null) return null
+  const p = props.points[i]
+  if (!p) return null
+  return {
+    left: `${(x(i) / W) * 100}%`,
+    anchor: x(i) < W * 0.2 ? 'start' : x(i) > W * 0.8 ? 'end' : 'middle',
+    label: p.label,
+    value: formatEuros(p.value as Cents),
+    negative: p.value < 0,
+  }
+})
 </script>
 
 <template>
   <div class="trend__frame">
-    <!-- `aria-hidden` : les valeurs vivent dans le tableau, seul support lisible au clavier. -->
-    <svg
-      class="trend__svg"
-      :viewBox="`0 0 ${W} ${height}`"
-      :style="{ '--trend-height': `${height}px` }"
-      aria-hidden="true"
+    <div
+      class="trend__plot"
+      @mouseleave="hovered = null"
     >
-      <g class="trend__grid">
+      <!-- `aria-hidden` : les valeurs vivent dans le tableau, seul support lisible au clavier. -->
+      <svg
+        class="trend__svg"
+        :viewBox="`0 0 ${W} ${height}`"
+        :style="{ '--trend-height': `${height}px` }"
+        aria-hidden="true"
+      >
+        <g class="trend__grid">
+          <line
+            v-for="line in gridLines"
+            :key="line.value"
+            :x1="PAD.left"
+            :x2="W - PAD.right"
+            :y1="line.y"
+            :y2="line.y"
+          />
+          <text
+            v-for="line in gridLines"
+            :key="`t-${line.value}`"
+            :x="PAD.left - 8"
+            :y="line.y + 4"
+            text-anchor="end"
+            class="trend__axis-label"
+          >{{ line.label }}</text>
+        </g>
+
         <line
-          v-for="line in gridLines"
-          :key="line.value"
           :x1="PAD.left"
           :x2="W - PAD.right"
-          :y1="line.y"
-          :y2="line.y"
+          :y1="zeroY"
+          :y2="zeroY"
+          class="trend__zero"
         />
+
+        <path
+          v-if="filled"
+          :d="areaPath"
+          class="trend__area"
+        />
+        <path
+          :d="linePath"
+          class="trend__line"
+        />
+
+        <circle
+          v-for="(p, i) in points"
+          :key="p.bucket"
+          :cx="x(i)"
+          :cy="y(p.value)"
+          r="3"
+          :class="p.value < 0 ? 'trend__dot trend__dot--negative' : 'trend__dot'"
+        />
+
         <text
-          v-for="line in gridLines"
-          :key="`t-${line.value}`"
-          :x="PAD.left - 8"
-          :y="line.y + 4"
-          text-anchor="end"
+          v-for="(p, i) in points"
+          v-show="showTick(i)"
+          :key="`x-${p.bucket}`"
+          :x="x(i)"
+          :y="height - 10"
+          :text-anchor="i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'"
           class="trend__axis-label"
-        >{{ line.label }}</text>
-      </g>
+        >{{ p.label }}</text>
 
-      <line
-        :x1="PAD.left"
-        :x2="W - PAD.right"
-        :y1="zeroY"
-        :y2="zeroY"
-        class="trend__zero"
-      />
+        <text
+          v-if="last"
+          :x="x(points.length - 1)"
+          :y="y(last.value) - 10"
+          text-anchor="end"
+          class="trend__last"
+        >{{ formatEuros(last.value as Cents) }}</text>
 
-      <path
-        v-if="filled"
-        :d="areaPath"
-        class="trend__area"
-      />
-      <path
-        :d="linePath"
-        class="trend__line"
-      />
+        <line
+          v-if="hovered !== null"
+          :x1="x(hovered)"
+          :x2="x(hovered)"
+          :y1="PAD.top"
+          :y2="PAD.top + plot.h"
+          class="trend__guide"
+        />
+        <circle
+          v-if="hovered !== null"
+          :cx="x(hovered)"
+          :cy="y(points[hovered]!.value)"
+          r="5"
+          :class="points[hovered]!.value < 0 ? 'trend__dot trend__dot--negative' : 'trend__dot'"
+        />
 
-      <circle
-        v-for="(p, i) in points"
-        :key="p.bucket"
-        :cx="x(i)"
-        :cy="y(p.value)"
-        r="3"
-        :class="p.value < 0 ? 'trend__dot trend__dot--negative' : 'trend__dot'"
-      />
+        <rect
+          v-for="band in bands"
+          :key="`h-${band.key}`"
+          :x="band.x"
+          :y="PAD.top"
+          :width="band.width"
+          :height="plot.h"
+          class="trend__hit"
+          @mouseenter="hovered = band.index"
+        />
+      </svg>
 
-      <text
-        v-for="(p, i) in points"
-        v-show="showTick(i)"
-        :key="`x-${p.bucket}`"
-        :x="x(i)"
-        :y="height - 10"
-        :text-anchor="i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'"
-        class="trend__axis-label"
-      >{{ p.label }}</text>
-
-      <text
-        v-if="last"
-        :x="x(points.length - 1)"
-        :y="y(last.value) - 10"
-        text-anchor="end"
-        class="trend__last"
-      >{{ formatEuros(last.value as Cents) }}</text>
-    </svg>
+      <div
+        v-if="tip"
+        class="trend__tip"
+        :data-anchor="tip.anchor"
+        :style="{ left: tip.left }"
+      >
+        <strong>{{ tip.label }}</strong>
+        <span>{{ valueLabel }}<b :class="{ 'trend__tip-neg': tip.negative }">{{ tip.value }}</b></span>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .trend__frame { overflow-x: auto; }
-.trend__svg { width: 100%; min-width: 40rem; height: auto; }
+.trend__plot { position: relative; min-width: 40rem; }
+.trend__svg { width: 100%; height: auto; display: block; }
+.trend__hit { fill: transparent; }
+.trend__guide { stroke: var(--color-text-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.trend__tip {
+  position: absolute;
+  top: var(--space-2);
+  z-index: 1;
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.trend__tip[data-anchor='middle'] { transform: translateX(-50%); }
+.trend__tip[data-anchor='end'] { transform: translateX(-100%); }
+.trend__tip span { display: flex; align-items: center; gap: var(--space-3); }
+.trend__tip b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.trend__tip-neg { color: var(--color-danger); }
 .trend__grid line { stroke: var(--color-border); stroke-width: 1; }
 .trend__zero { stroke: var(--color-text-muted); stroke-width: 1.5; }
 .trend__axis-label { fill: var(--color-text-muted); font-size: 11px; }

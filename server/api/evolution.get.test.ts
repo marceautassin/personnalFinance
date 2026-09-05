@@ -167,3 +167,39 @@ describe('GET /api/evolution — suivi d\'une cible (FR31)', () => {
       .toEqual(['alimentation-courses', 'alimentation-restaurant'])
   })
 })
+
+/**
+ * Orientation de la cible : les dépenses sont stockées en négatif, et une courbe tracée telle
+ * quelle DESCEND quand on dépense plus — l'inverse de ce que tout le monde lit.
+ */
+describe('GET /api/evolution — nature de la cible', () => {
+  beforeEach(() => seedTx('2026-08-10', -50_000, 'alimentation-courses'))
+
+  it('rend la nature d\'un poste', async () => {
+    const r = await handler(query(`${AUGUST}&target=item:alimentation-courses`)) as unknown as { targetNature: string | null }
+    expect(r.targetNature).toBe('expense')
+  })
+
+  it('rend la nature d\'une rubrique homogène', async () => {
+    const r = await handler(query(`${AUGUST}&target=group:internes`)) as unknown as { targetNature: string | null }
+    expect(r.targetNature).toBe('internal_transfer')
+  })
+
+  /** Une rubrique qui mêle plusieurs natures n'a pas d'orientation défendable. */
+  it('rend null sur une rubrique aux natures mêlées', async () => {
+    dbMod.db.insert(schema.categoryItems).values({
+      code: 'alimentation-remboursement', groupCode: 'alimentation',
+      label: 'Remboursement', nature: 'income', position: 9,
+    }).run()
+    const r = await handler(query(`${AUGUST}&target=group:alimentation`)) as unknown as { targetNature: string | null }
+    expect(r.targetNature).toBeNull()
+    dbMod.db.delete(schema.categoryItems).where(
+      (await import('drizzle-orm')).eq(schema.categoryItems.code, 'alimentation-remboursement'),
+    ).run()
+  })
+
+  it('rend null sans cible', async () => {
+    const r = await handler(query(AUGUST)) as unknown as { targetNature: string | null }
+    expect(r.targetNature).toBeNull()
+  })
+})

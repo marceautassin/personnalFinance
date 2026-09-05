@@ -35,15 +35,39 @@ const cumulativePoints = computed(() =>
   (data.value?.series ?? []).map(p => ({ bucket: p.bucket, label: p.label, value: p.cumulativeResultCents })),
 )
 
-const targetPoints = computed(() =>
-  (data.value?.targetSeries ?? []).map(p => ({ bucket: p.bucket, label: p.label, value: p.totalCents })),
-)
+/**
+ * Orientation de la courbe de la cible.
+ *
+ * Les dépenses sont stockées en négatif (D28, le signe est un fait bancaire). Tracées telles
+ * quelles, dépenser DAVANTAGE faisait DESCENDRE la courbe — l'inverse de ce que tout le monde
+ * lit, et le défaut remonté à la recette du 2026-09-05. On retourne donc l'affichage d'un poste
+ * de dépense pour que « plus haut » veuille dire « plus dépensé ».
+ *
+ * Le retournement vit ICI, dans la couche de rendu, et jamais dans le moteur : `analysis-engine`
+ * reste en somme algébrique sans `Math.abs`. Le tableau sous le graphique garde, lui, le montant
+ * signé tel qu'il est en base.
+ */
+const targetInverted = computed(() => data.value?.targetNature === 'expense')
 
-/** Écart entre la première et la dernière tranche de la cible — la dérive, chiffrée. */
+const targetPoints = computed(() => {
+  const sign = targetInverted.value ? -1 : 1
+  return (data.value?.targetSeries ?? []).map(p => ({
+    bucket: p.bucket,
+    label: p.label,
+    value: p.totalCents * sign,
+  }))
+})
+
+const targetValueLabel = computed(() => (targetInverted.value ? 'Dépense' : 'Montant'))
+
+/**
+ * Écart entre la première et la dernière tranche — la dérive, chiffrée, dans le même sens que
+ * la courbe : pour une dépense, un écart positif signifie « on dépense plus qu'au début ».
+ */
 const targetDrift = computed(() => {
-  const points = data.value?.targetSeries
-  if (!points || points.length < 2) return null
-  return (points.at(-1)!.totalCents - points[0]!.totalCents) as Cents
+  const points = targetPoints.value
+  if (points.length < 2) return null
+  return (points.at(-1)!.value - points[0]!.value) as Cents
 })
 </script>
 
@@ -178,6 +202,7 @@ const targetDrift = computed(() => {
         </h3>
         <TrendChart
           :points="cumulativePoints"
+          value-label="Trésorerie cumulée"
           filled
         />
       </section>
@@ -227,10 +252,20 @@ const targetDrift = computed(() => {
             <strong>{{ data.targetLabel ?? 'Cible inconnue' }}</strong>
             <template v-if="targetDrift !== null">
               · écart entre la première et la dernière tranche :
-              <span :class="{ 'evo-page__neg': targetDrift < 0 }">{{ formatEuros(targetDrift) }}</span>
+              <span :class="{ 'evo-page__neg': targetInverted ? targetDrift > 0 : targetDrift < 0 }">{{ formatEuros(targetDrift) }}</span>
             </template>
           </p>
-          <TrendChart :points="targetPoints" />
+          <TrendChart
+            :points="targetPoints"
+            :value-label="targetValueLabel"
+          />
+          <p
+            v-if="targetInverted"
+            class="evo-page__hint"
+          >
+            Poste de dépense : la courbe monte quand on dépense davantage. Le tableau ci-dessous
+            garde le montant signé tel qu'il figure sur les relevés.
+          </p>
           <table class="evo-page__table">
             <caption class="evo-page__caption">
               Montant par tranche pour {{ data.targetLabel }}
@@ -307,6 +342,7 @@ const targetDrift = computed(() => {
   background: var(--color-bg-elevated);
 }
 .evo-page__pending { color: var(--color-text-muted); }
+.evo-page__hint { margin: var(--space-1) 0 0; color: var(--color-text-muted); font-size: var(--font-size-sm); }
 .evo-page__table {
   width: 100%;
   border-collapse: collapse;

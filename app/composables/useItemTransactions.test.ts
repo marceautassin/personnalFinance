@@ -8,6 +8,11 @@ vi.stubGlobal('$fetch', fetchMock)
 // plutôt que d'ajouter un import au code de production que Nuxt rendrait redondant.
 vi.stubGlobal('ref', ref)
 
+// `useInvalidate` capture `useNuxtApp()` : hors runtime Nuxt, on rejoue juste `runWithContext`.
+const refreshMock = vi.fn()
+vi.stubGlobal('useNuxtApp', () => ({ runWithContext: (fn: () => unknown) => fn() }))
+vi.stubGlobal('refreshNuxtData', refreshMock)
+
 const { useItemTransactions } = await import('./useItemTransactions')
 
 const RANGE = { from: '2026-03-01', to: '2026-03-31' }
@@ -21,7 +26,10 @@ const tx = (id: number) => ({
   isManual: false,
 })
 
-beforeEach(() => fetchMock.mockReset())
+beforeEach(() => {
+  fetchMock.mockReset()
+  refreshMock.mockReset()
+})
 
 describe('useItemTransactions', () => {
   it('charge les lignes d\'un poste et les mémorise par code', async () => {
@@ -92,5 +100,68 @@ describe('useItemTransactions', () => {
 
     expect(s.byItem.value).toEqual({})
     expect(s.failed.value).toEqual([])
+  })
+})
+
+/**
+ * Reclassement depuis la descente d'analyse.
+ *
+ * Le point sensible n'est pas l'appel : c'est l'état du cache après coup. Une ligne qui resterait
+ * affichée sous son ancien poste, ou un poste d'arrivée complété à la main, ferait diverger
+ * l'écran des totaux recalculés par le serveur — exactement ce que NFR2 interdit.
+ */
+describe('useItemTransactions — reclassement', () => {
+  it('retire la ligne de son ancien poste et oublie le nouveau', async () => {
+    fetchMock.mockResolvedValueOnce({ transactions: [tx(1), tx(2)] })
+    fetchMock.mockResolvedValueOnce({ transactions: [tx(9)] })
+    const s = useItemTransactions()
+    await s.load('alimentation-courses', RANGE)
+    await s.load('transport-carburant', RANGE)
+
+    fetchMock.mockResolvedValueOnce({})
+    const outcome = await s.recategorize(tx(1), 'transport-carburant')
+
+    expect(outcome).toEqual({ ok: true })
+    expect(s.byItem.value['alimentation-courses']!.map(t => t.id)).toEqual([2])
+    expect(s.byItem.value).not.toHaveProperty('transport-carburant')
+    expect(refreshMock).toHaveBeenCalled()
+  })
+
+  /** Les postes non concernés ne bougent pas : un reclassement n'invalide pas tout le cache. */
+  it('laisse intacts les autres postes chargés', async () => {
+    fetchMock.mockResolvedValueOnce({ transactions: [tx(1)] })
+    fetchMock.mockResolvedValueOnce({ transactions: [tx(7)] })
+    const s = useItemTransactions()
+    await s.load('alimentation-courses', RANGE)
+    await s.load('loisirs-sorties', RANGE)
+
+    fetchMock.mockResolvedValueOnce({})
+    await s.recategorize(tx(1), 'transport-carburant')
+
+    expect(s.byItem.value['loisirs-sorties']!.map(t => t.id)).toEqual([7])
+  })
+
+  /** Reclasser vers le poste courant n'appelle rien : ce n'est pas un changement. */
+  it('ne fait rien quand le poste est déjà le bon', async () => {
+    const s = useItemTransactions()
+    const outcome = await s.recategorize(tx(1), 'alimentation-courses')
+
+    expect(outcome).toEqual({ ok: true })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(refreshMock).not.toHaveBeenCalled()
+  })
+
+  /** Un échec ne doit RIEN retirer de l'écran : la ligne est toujours là où elle était. */
+  it('rend une erreur et ne touche pas au cache quand le serveur refuse', async () => {
+    fetchMock.mockResolvedValueOnce({ transactions: [tx(1)] })
+    const s = useItemTransactions()
+    await s.load('alimentation-courses', RANGE)
+
+    fetchMock.mockRejectedValueOnce(new Error('boom'))
+    const outcome = await s.recategorize(tx(1), 'transport-carburant')
+
+    expect(outcome).toHaveProperty('error')
+    expect(s.byItem.value['alimentation-courses']).toHaveLength(1)
+    expect(refreshMock).not.toHaveBeenCalled()
   })
 })

@@ -12,6 +12,7 @@ import {
   type CategorySeriesPoint,
 } from '~~/server/services/analysis-engine'
 import { bucketBounds, shiftBucket, bucketLabel } from '~~/shared/types/granularity'
+import type { MovementNature } from '~~/shared/types/movement-nature'
 
 /**
  * GET /api/evolution — la trajectoire sur douze tranches (FR31, FR34).
@@ -33,6 +34,13 @@ export interface EvolutionResponse {
   /** Trajectoire de la cible demandée, `null` si aucune. */
   targetSeries: CategorySeriesPoint[] | null
   targetLabel: string | null
+  /**
+   * Nature de la cible — sert à ORIENTER sa courbe.
+   *
+   * Les dépenses sont stockées en négatif : tracées telles quelles, dépenser davantage faisait
+   * DESCENDRE la courbe, à l'inverse de ce que tout le monde lit (recette du 2026-09-05).
+   */
+  targetNature: MovementNature | null
   /** Référentiel, pour peupler le sélecteur de cible sans second appel. */
   groups: Array<{ code: string, label: string, items: Array<{ code: string, label: string }> }>
 }
@@ -98,6 +106,7 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
       ? categorySeries(rows, referential, granularity, parsed, buckets)
       : null,
     targetLabel: parsed ? labelOf(parsed, referential) : null,
+    targetNature: parsed ? natureOf(parsed, referential) : null,
     groups: groupsOf(referential),
   }
 })
@@ -114,6 +123,19 @@ function labelOf(target: { kind: 'group' | 'item', code: string }, referential: 
   }
   const item = referential.find(r => r.code === target.code)
   return item ? `${item.groupLabel} · ${item.label}` : null
+}
+
+/**
+ * Nature d'une cible. Pour une rubrique, celle de ses postes — `null` si elle en mélange
+ * plusieurs, auquel cas aucune orientation n'est défendable.
+ */
+function natureOf(
+  target: { kind: 'group' | 'item', code: string },
+  referential: AnalysisItemRef[],
+): MovementNature | null {
+  if (target.kind === 'item') return referential.find(r => r.code === target.code)?.nature ?? null
+  const natures = new Set(referential.filter(r => r.groupCode === target.code).map(r => r.nature))
+  return natures.size === 1 ? [...natures][0]! : null
 }
 
 function groupsOf(referential: AnalysisItemRef[]): EvolutionResponse['groups'] {
