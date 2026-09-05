@@ -20,6 +20,7 @@ const FR_MESSAGES: Record<ApiErrorCodeValue, string> = {
   [ApiErrorCode.CategoriesNotSeeded]: 'Référentiel absent en base : relance l\'application pour rejouer l\'initialisation.',
   [ApiErrorCode.GroupNotEmpty]: 'Rubrique encore peuplée — supprime ou déplace ses postes d\'abord.',
   [ApiErrorCode.GroupNotFound]: 'Rubrique introuvable.',
+  [ApiErrorCode.RuleAlreadyExists]: 'Une règle existe déjà pour ce motif.',
 }
 
 const FALLBACK_MESSAGE = 'Une erreur est survenue. Réessaie ou recharge la page.'

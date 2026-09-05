@@ -54,6 +54,13 @@ export const TEST_SCHEMA_DDL = `
   );
   CREATE INDEX transactions_period_idx ON transactions(transaction_date);
   CREATE INDEX transactions_statement_idx ON transactions(statement_hash);
+  CREATE TABLE classification_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pattern TEXT NOT NULL UNIQUE,
+    category_item_code TEXT NOT NULL REFERENCES category_items(code) ON DELETE RESTRICT,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  );
+  CREATE INDEX classification_rules_item_idx ON classification_rules(category_item_code);
   CREATE TABLE dismissed_suggestions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     normalized_label TEXT NOT NULL UNIQUE,

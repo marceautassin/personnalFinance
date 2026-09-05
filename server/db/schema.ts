@@ -129,6 +129,43 @@ export type TransactionRow = typeof transactions.$inferSelect
 export type NewTransactionRow = typeof transactions.$inferInsert
 
 /**
+ * classification_rules — règles de classement déterministes, écrites par l'utilisateur.
+ *
+ * Une règle dit : « tout libellé contenant ce motif va dans ce poste ». Elle s'applique APRÈS
+ * le modèle et l'écrase.
+ *
+ * **Pourquoi une règle plutôt qu'un meilleur prompt.** Les libellés bancaires sont très
+ * répétitifs : `VIR INST SOCIETEX` revient quatre fois en deux mois, donc une cinquantaine sur
+ * deux ans. Le modèle, lui, n'a aucun moyen de savoir que SOCIETEX est la SASU de l'utilisateur —
+ * et sur ces quatre occurrences identiques il en avait classé trois en repli et une ailleurs
+ * (constaté le 2026-09-05). Une règle écrite une fois règle les cinquante, sans token et sans
+ * hasard. C'est la même logique que la lecture des colonnes Débit/Crédit : retirer une
+ * décision au modèle plutôt que mieux la lui suggérer.
+ *
+ * `is_manual` reste FAUX sur une transaction classée par règle : la règle est un automatisme,
+ * pas une reprise à la main. Le taux de correction mesure donc ce qui reste à corriger APRÈS
+ * les règles — ce qui est exactement le chiffre utile.
+ */
+export const classificationRules = sqliteTable(
+  'classification_rules',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** Motif recherché dans le libellé, en forme normalisée (minuscules, sans accents). */
+    pattern: text('pattern').notNull().unique(),
+    categoryItemCode: text('category_item_code')
+      .notNull()
+      .references(() => categoryItems.code, { onDelete: 'restrict' }),
+    createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+  },
+  t => ({
+    classificationRulesItemIdx: index('classification_rules_item_idx').on(t.categoryItemCode),
+  }),
+)
+
+export type ClassificationRuleRow = typeof classificationRules.$inferSelect
+export type NewClassificationRuleRow = typeof classificationRules.$inferInsert
+
+/**
  * dismissed_suggestions — libellés normalisés de suggestions de charges récurrentes
  * rejetées par l'utilisateur (Story 5.2). `charge-suggester` exclut ces labels.
  * Insert idempotent (UNIQUE) ; pas de soft-delete.

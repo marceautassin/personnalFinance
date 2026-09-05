@@ -392,7 +392,7 @@ Conséquences :
 
 ## Functional Requirements
 
-> **Contrat de capacités.** Ce qui ne figure pas ici n'existera pas dans le produit. Le PRD v1 comptait 71 FRs pour un périmètre qui s'est révélé faux ; celui-ci en compte 39, dont 3 en phase 2.
+> **Contrat de capacités.** Ce qui ne figure pas ici n'existera pas dans le produit. Le PRD v1 comptait 71 FRs pour un périmètre qui s'est révélé faux ; celui-ci en compte 42, dont 3 en phase 2.
 
 ### Ingestion des relevés
 
@@ -450,6 +450,16 @@ Conséquences :
 
 - **FR35** — L'utilisateur peut descendre d'un montant agrégé jusqu'aux transactions qui le composent.
 - **FR36** — L'utilisateur peut consulter le libellé bancaire d'origine d'une transaction et le relevé dont elle provient.
+
+### Règles de classement
+
+- **FR40** — L'utilisateur peut définir des règles qui rangent automatiquement dans un poste tout libellé contenant un motif donné.
+- **FR41** — Une règle s'applique à l'ingestion, par-dessus la catégorisation automatique, et l'écrase.
+- **FR42** — L'utilisateur peut consulter, pour chaque règle, le nombre de transactions déjà en base qu'elle couvre.
+
+*Ajoutées le 2026-09-05, après mesure. Elles ne figuraient pas au cadrage : c'est la première ingestion réelle qui les a rendues nécessaires. Sur quatre occurrences d'un même libellé (`VIR INST SOCIETEX`, les remboursements de compte courant de la SASU de l'utilisateur), le modèle en avait classé trois en repli et une ailleurs — non par faiblesse, mais parce que rien ne pouvait lui apprendre ce que ce libellé désigne. Les libellés bancaires étant très répétitifs, une règle écrite une fois vaut pour toutes leurs occurrences futures, sans token et sans hasard. Effet mesuré : le taux de repli passe de 13,0 % à 10,1 %.*
+
+*Le motif est une sous-chaîne, jamais une expression régulière : dans un outil personnel, une regex échoue silencieusement et se débogue mal, pour un gain nul sur des libellés qui sont des chaînes fixes.*
 
 ### Phase 2 — Croissance
 

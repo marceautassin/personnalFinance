@@ -21,9 +21,10 @@
  * Sur erreur après l'étape 8 : `deletePdfByHash(hash)` rollback FS.
  * Sur erreur avant l'étape 8 : rien à rollback (pas de side-effect persistant encore).
  */
-import { eq, and, lte, gte } from 'drizzle-orm'
+import { eq, and, lte, gte, asc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { bankStatements, transactions, categoryItems, categoryGroups } from '~~/server/db/schema'
+import { bankStatements, transactions, categoryItems, categoryGroups, classificationRules } from '~~/server/db/schema'
+import { applyRules } from '~~/server/services/rule-matcher'
 import { extractStatement } from '~~/server/services/pdf-extractor'
 import {
   categorizeStatement,
@@ -215,6 +216,24 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
   // 8. Sauvegarde PDF sur disque (point de rollback FS si la suite échoue)
   await savePdfByHash(pdfBuffer, hash)
   step('pdf-saved', { hash })
+
+  // 8bis. Règles de classement déterministes, appliquées APRÈS le modèle et par-dessus lui.
+  //
+  // Les libellés bancaires étant très répétitifs, une règle écrite une fois vaut pour toutes
+  // les occurrences futures — là où le modèle, lui, redécide à chaque relevé et peut classer
+  // deux libellés identiques de deux façons différentes (constaté le 2026-09-05 sur `VIR INST
+  // SOCIETEX`). L'écrasement est inconditionnel : une règle est une connaissance que l'utilisateur
+  // possède et que le modèle n'a pas.
+  //
+  // Tri par `id` : à motifs de longueur égale, c'est la règle la plus ancienne qui l'emporte,
+  // et ce départage doit être stable d'une ingestion à l'autre.
+  const rules = await db
+    .select({ pattern: classificationRules.pattern, categoryItemCode: classificationRules.categoryItemCode })
+    .from(classificationRules)
+    .orderBy(asc(classificationRules.id))
+  const ruled = applyRules(extracted, rules)
+  extracted = ruled.transactions
+  step('rules_applied', { overriddenCount: ruled.overriddenCount })
 
   // 9. Réconciliation (les amountCents extraits sont déjà en integer cents — cast brand-only)
   const reconciliation = reconcile({

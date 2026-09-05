@@ -29,6 +29,10 @@ export const ApiErrorCode = {
   GroupNotEmpty: 'group_not_empty',
   /** `groupCode` inconnu à la création d'un poste. */
   GroupNotFound: 'group_not_found',
+
+  // Domaine — Règles de classement
+  /** Un motif identique existe déjà : deux règles concurrentes seraient indéchiffrables. */
+  RuleAlreadyExists: 'rule_already_exists',
 } as const
 
 export type ApiErrorCodeValue = (typeof ApiErrorCode)[keyof typeof ApiErrorCode]
