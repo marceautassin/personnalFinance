@@ -10,6 +10,7 @@ const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStar
 
 const items: NavItem[] = [
   { label: 'Analyse', href: '/analyse' },
+  { label: 'Évolution', href: '/evolution' },
   { label: 'Import', href: '/import' },
   { label: 'Transactions', href: `/transactions/${currentPeriod}` },
   { label: 'Catégories', href: '/categories' },

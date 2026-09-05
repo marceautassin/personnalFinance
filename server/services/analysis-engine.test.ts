@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { analyze, type AnalysisItemRef, type AnalysisTransaction } from './analysis-engine'
+import { analyze, categorySeries, type AnalysisItemRef, type AnalysisTransaction } from './analysis-engine'
 
 /**
  * NFR3 impose, pour chaque fonction de calcul, un cas nominal et au moins deux cas limites.
@@ -345,5 +345,68 @@ describe('analyze — invariants de somme', () => {
     expect(r.series).toHaveLength(2)
     expect(r.series.at(-1)!.resultCents).toBe(-50_000)
     expect(r.indicators.resultCents).toBe(-80_000)
+  })
+})
+
+/**
+ * Trajectoire d'une rubrique ou d'un poste (FR31) — la question qui a fait construire ce
+ * produit, et à laquelle une courbe de résultat global ne répond pas.
+ */
+describe('categorySeries', () => {
+  const BUCKETS = ['2026-01', '2026-02', '2026-03']
+  const spread = [
+    tx('2026-01-10', -30_000, 'alimentation-courses'),
+    tx('2026-01-15', -10_000, 'alimentation-restaurant'),
+    tx('2026-03-10', -50_000, 'alimentation-courses'),
+    tx('2026-03-12', -20_000, 'voyages-restaurant'),
+    tx('2026-02-05', 250_000, 'revenus-salaire'),
+  ]
+
+  const run = (target: Parameters<typeof categorySeries>[3]) =>
+    categorySeries(spread, REF, 'month', target, BUCKETS)
+
+  it('suit un poste précis dans le temps', () => {
+    const s = run({ kind: 'item', code: 'alimentation-courses' })
+    expect(s.map(p => p.totalCents)).toEqual([-30_000, 0, -50_000])
+    expect(s.map(p => p.transactionCount)).toEqual([1, 0, 1])
+  })
+
+  it('suit une rubrique entière, tous postes confondus', () => {
+    const s = run({ kind: 'group', code: 'alimentation' })
+    expect(s.map(p => p.totalCents)).toEqual([-40_000, 0, -50_000])
+  })
+
+  /**
+   * Une tranche sans mouvement vaut zéro, elle n'est pas omise : une série trouée se lirait
+   * comme une accélération, et la disparition d'un poste est précisément une information.
+   */
+  it('rend zéro sur une tranche sans mouvement, sans la supprimer', () => {
+    const s = run({ kind: 'item', code: 'alimentation-courses' })
+    expect(s).toHaveLength(3)
+    expect(s[1]).toMatchObject({ bucket: '2026-02', totalCents: 0, transactionCount: 0 })
+  })
+
+  it('ne confond pas deux postes homonymes de rubriques différentes (FR19)', () => {
+    expect(run({ kind: 'item', code: 'alimentation-restaurant' }).map(p => p.totalCents))
+      .toEqual([-10_000, 0, 0])
+    expect(run({ kind: 'item', code: 'voyages-restaurant' }).map(p => p.totalCents))
+      .toEqual([0, 0, -20_000])
+  })
+
+  it('rend une série de zéros sur une cible inconnue, sans lever', () => {
+    expect(run({ kind: 'item', code: 'poste-fantome' }).map(p => p.totalCents)).toEqual([0, 0, 0])
+  })
+
+  it('porte les libellés de tranche, pour l\'axe du graphique', () => {
+    expect(run({ kind: 'group', code: 'alimentation' }).map(p => p.label))
+      .toEqual(['janvier 2026', 'février 2026', 'mars 2026'])
+  })
+
+  it('somme algébriquement, remboursements compris (D28)', () => {
+    const withRefund = categorySeries(
+      [tx('2026-01-10', -30_000, 'alimentation-courses'), tx('2026-01-20', 12_000, 'alimentation-courses')],
+      REF, 'month', { kind: 'item', code: 'alimentation-courses' }, BUCKETS,
+    )
+    expect(withRefund[0]!.totalCents).toBe(-18_000)
   })
 })

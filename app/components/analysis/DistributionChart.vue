@@ -11,6 +11,8 @@ type GroupNode = NatureNode['groups'][number]
 const props = defineProps<{
   nature: NatureNode
   title: string
+  /** Libellé de la période de comparaison — « février 2026 », jamais « précédente ». */
+  previousLabel?: string | null
   /** Lignes déjà chargées, par code de poste. Le composant ne va jamais les chercher lui-même. */
   transactionsByItem: Record<string, RangeTransaction[]>
   loadingItems: string[]
@@ -129,6 +131,24 @@ function isDeltaAlarming(value: number): boolean {
       </h3>
       <strong class="dist__total">{{ formatEuros(nature.totalCents as Cents) }}</strong>
     </header>
+
+    <!--
+      En-têtes de colonnes. Sans eux, la dernière colonne affichait un montant coloré dont
+      rien ne disait à quoi il se comparait (recette du 2026-09-05) — et le nom de la période
+      de comparaison lève l'ambiguïté mieux que « période précédente ».
+    -->
+    <div
+      v-if="nature.groups.length > 0"
+      class="dist__row dist__row--head"
+      aria-hidden="true"
+    >
+      <span />
+      <span>Rubrique</span>
+      <span />
+      <span class="dist__share">Part</span>
+      <span class="dist__amount">Montant</span>
+      <span class="dist__delta">{{ previousLabel ? `vs ${previousLabel}` : 'vs précédent' }}</span>
+    </div>
 
     <p
       v-if="nature.groups.length === 0"
@@ -269,6 +289,21 @@ function isDeltaAlarming(value: number): boolean {
     </ul>
 
     <p
+      v-if="nature.groups.length > 0"
+      class="dist__note"
+    >
+      <template v-if="nature.nature === 'expense'">
+        Une dépense en hausse est en rouge, en baisse en vert.
+      </template>
+      <template v-else-if="nature.nature === 'income'">
+        Une recette en baisse est en rouge, en hausse en vert.
+      </template>
+      <template v-else>
+        Sur les mouvements internes, un écart n'a pas de sens favorable ou défavorable.
+      </template>
+    </p>
+
+    <p
       v-if="nature.groups.some(isInverted)"
       class="dist__note"
     >
@@ -299,7 +334,15 @@ function isDeltaAlarming(value: number): boolean {
   cursor: pointer;
   border-radius: var(--radius-sm);
 }
-.dist__row { grid-template-columns: 1rem minmax(7rem, 12rem) 1fr 3.5rem 6rem 6rem; }
+.dist__row { grid-template-columns: 1rem minmax(7rem, 12rem) 1fr 3.5rem 6rem 8rem; }
+.dist__row--head {
+  cursor: default;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-1);
+}
+.dist__row--head:hover { background: none; }
 .dist__item { grid-template-columns: 1rem minmax(7rem, 1fr) 4rem 6rem; padding-left: var(--space-4); }
 .dist__item[disabled] { cursor: default; opacity: 0.65; }
 .dist__item[disabled]:hover { background: none; }
@@ -336,6 +379,9 @@ function isDeltaAlarming(value: number): boolean {
 }
 .dist__share, .dist__count { color: var(--color-text-muted); }
 .dist__delta { color: var(--color-success); }
+.dist__row--head .dist__delta,
+.dist__row--head .dist__share,
+.dist__row--head .dist__amount { color: var(--color-text-muted); }
 .dist__delta--up { color: var(--color-danger); }
 .dist__delta--neutral { color: var(--color-text-muted); }
 .dist__caret { color: var(--color-text-muted); }

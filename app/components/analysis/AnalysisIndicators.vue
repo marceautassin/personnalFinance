@@ -12,6 +12,12 @@ const props = defineProps<{
   to: string
 }>()
 
+/**
+ * La carte « Trésorerie cumulée » a été retirée le 2026-09-05 : elle portait sur douze
+ * tranches alors que toutes les autres décrivent la période choisie. Une même page annonçait
+ * ainsi deux portées différentes sans le dire. Le cumul vit désormais sur `/evolution`.
+ */
+
 /** FR33 — le déficit doit se voir sans lire les chiffres. */
 const isDeficit = computed(() => props.indicators.resultCents < 0)
 
@@ -68,12 +74,6 @@ const balanceIsOffset = computed(() =>
       <span class="indic__label">Taux d'épargne</span>
       <strong class="indic__value">{{ formatRatio(indicators.savingsRate) }}</strong>
       <span class="indic__hint">des recettes conservées</span>
-    </div>
-
-    <div class="indic__card">
-      <span class="indic__label">Trésorerie cumulée</span>
-      <strong class="indic__value">{{ formatEuros(indicators.cumulativeResultCents as Cents) }}</strong>
-      <span class="indic__hint">sur la série affichée</span>
     </div>
 
     <div class="indic__card indic__card--aside">

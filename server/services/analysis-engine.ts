@@ -239,6 +239,61 @@ function computeIndicators(
   }
 }
 
+/** Cible d'un suivi dans le temps : une rubrique entière, ou un poste précis. */
+export interface SeriesTarget {
+  kind: 'group' | 'item'
+  code: string
+}
+
+export interface CategorySeriesPoint {
+  bucket: string
+  label: string
+  totalCents: Cents
+  transactionCount: number
+}
+
+/**
+ * Trajectoire d'UNE rubrique ou d'UN poste dans le temps (FR31).
+ *
+ * C'est la question qui a fait construire ce produit — « est-ce que mon Alimentation
+ * dérive ? » — et à laquelle une courbe de résultat global ne répond pas.
+ *
+ * Les tranches sans mouvement sur la cible sont rendues à zéro plutôt qu'omises : un poste qui
+ * disparaît un mois est une information, et une série trouée se lirait comme une accélération.
+ * L'appelant fournit donc les tranches attendues.
+ */
+export function categorySeries(
+  transactions: readonly AnalysisTransaction[],
+  referential: readonly AnalysisItemRef[],
+  granularity: Granularity,
+  target: SeriesTarget,
+  buckets: readonly string[],
+): CategorySeriesPoint[] {
+  const byCode = new Map(referential.map(r => [r.code, r]))
+  const matches = (code: string) => {
+    const ref = byCode.get(code)
+    if (!ref) return false
+    return target.kind === 'item' ? ref.code === target.code : ref.groupCode === target.code
+  }
+
+  const totals = new Map<string, { cents: number, count: number }>()
+  for (const tx of transactions) {
+    if (!matches(tx.categoryItemCode)) continue
+    const key = bucketOf(tx.transactionDate, granularity)
+    const entry = totals.get(key) ?? { cents: 0, count: 0 }
+    entry.cents += tx.amountCents
+    entry.count++
+    totals.set(key, entry)
+  }
+
+  return buckets.map(bucket => ({
+    bucket,
+    label: bucketLabel(bucket, granularity),
+    totalCents: cents(totals.get(bucket)?.cents ?? 0),
+    transactionCount: totals.get(bucket)?.count ?? 0,
+  }))
+}
+
 /**
  * Série temporelle découpée selon la granularité.
  *

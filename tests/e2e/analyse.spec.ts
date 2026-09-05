@@ -12,7 +12,9 @@ test.describe('Analyse — période et états vides', () => {
     await page.goto('/analyse?p=2026-03&g=month')
     await expect(page.getByRole('heading', { name: 'Analyse' })).toBeVisible()
 
-    for (const label of ['Trésorerie de la période', 'Taux de dépense', 'Taux d\'épargne', 'Trésorerie cumulée']) {
+    // « Trésorerie cumulée » a quitté cette page le 2026-09-05 : elle portait sur douze
+    // tranches alors que tout le reste décrit la période choisie. Elle vit sur `/evolution`.
+    for (const label of ['Trésorerie de la période', 'Taux de dépense', 'Taux d\'épargne', 'Solde bancaire']) {
       await expect(page.getByText(label, { exact: true })).toBeVisible()
     }
 
@@ -34,29 +36,31 @@ test.describe('Analyse — période et états vides', () => {
 
   test('navigue entre les périodes et reflète la sélection dans l\'URL', async ({ page }) => {
     await page.goto('/analyse?p=2026-03&g=month')
-    await expect(page.getByText('mars 2026')).toBeVisible()
+    const selected = page.locator('.analyse__label')
+    await expect(selected).toHaveText('mars 2026')
 
     await page.getByRole('button', { name: 'Période précédente' }).click()
-    await expect(page.getByText('février 2026')).toBeVisible()
+    await expect(selected).toHaveText('février 2026')
     await expect(page).toHaveURL(/p=2026-02/)
 
     await page.getByRole('button', { name: 'Période suivante' }).click()
-    await expect(page.getByText('mars 2026')).toBeVisible()
+    await expect(selected).toHaveText('mars 2026')
   })
 
   /** Changer de granularité doit rester sur la même date, pas sauter au début de l'historique. */
   test('change de granularité en restant sur la même date', async ({ page }) => {
     await page.goto('/analyse?p=2026-03&g=month')
+    const selected = page.locator('.analyse__label')
     await page.getByLabel('Granularité').selectOption('quarter')
-    await expect(page.getByText('T1 2026')).toBeVisible()
+    await expect(selected).toHaveText('T1 2026')
     await expect(page).toHaveURL(/g=quarter/)
 
     await page.getByLabel('Granularité').selectOption('year')
-    await expect(page.getByText('2026', { exact: true })).toBeVisible()
+    await expect(selected).toHaveText('2026')
   })
 
   test('rouvre exactement la période portée par l\'URL', async ({ page }) => {
     await page.goto('/analyse?p=2025-T4&g=quarter')
-    await expect(page.getByText('T4 2025')).toBeVisible()
+    await expect(page.locator('.analyse__label')).toHaveText('T4 2025')
   })
 })

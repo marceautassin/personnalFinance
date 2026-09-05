@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAnalysis } from '~/composables/useAnalysis'
 import { useApiError } from '~/composables/useApiError'
-import { GRANULARITIES, type Granularity } from '~~/shared/types/granularity'
+import { GRANULARITIES, type Granularity, bucketLabel, shiftBucket } from '~~/shared/types/granularity'
 import { isDegraded } from '~~/shared/types/statement-reliability'
 import type { MovementNature } from '~~/shared/types/movement-nature'
 import type { AnalysisResponse } from '~/composables/useAnalysis'
@@ -50,6 +50,11 @@ function natureOr(nature: MovementNature): AnalysisNature {
   return data.value?.natures.find(n => n.nature === nature)
     ?? { nature, totalCents: 0 as Cents, previousTotalCents: null, groups: [] }
 }
+
+/** Nom de la période à laquelle les écarts se comparent — jamais « la précédente ». */
+const previousLabel = computed(() =>
+  bucketLabel(shiftBucket(bucket.value, granularity.value, -1), granularity.value),
+)
 
 const income = computed(() => natureOr('income'))
 const expense = computed(() => natureOr('expense'))
@@ -171,11 +176,18 @@ watch(bounds, () => itemTransactions.reset())
         :to="data.to"
       />
 
-      <EvolutionChart :series="data.series" />
+      <p class="analyse__scope">
+        <!-- Le texte est un seul nœud : en éléments séparés, le flex détachait la ponctuation. -->
+        <span>Tout ce qui suit décrit <strong>{{ label }}</strong>.</span>
+        <NuxtLink :to="`/evolution?p=${bucket}&g=${granularity}`">
+          Voir l'évolution sur douze tranches
+        </NuxtLink>
+      </p>
 
       <div class="analyse__columns">
         <DistributionChart
           :nature="expense"
+          :previous-label="previousLabel"
           :transactions-by-item="itemTransactions.byItem.value"
           :loading-items="itemTransactions.loading.value"
           :failed-items="itemTransactions.failed.value"
@@ -184,6 +196,7 @@ watch(bounds, () => itemTransactions.reset())
         />
         <DistributionChart
           :nature="income"
+          :previous-label="previousLabel"
           :transactions-by-item="itemTransactions.byItem.value"
           :loading-items="itemTransactions.loading.value"
           :failed-items="itemTransactions.failed.value"
@@ -198,6 +211,7 @@ watch(bounds, () => itemTransactions.reset())
       -->
       <DistributionChart
         :nature="internal"
+        :previous-label="previousLabel"
         :transactions-by-item="itemTransactions.byItem.value"
         :loading-items="itemTransactions.loading.value"
         :failed-items="itemTransactions.failed.value"
@@ -245,6 +259,16 @@ watch(bounds, () => itemTransactions.reset())
   background: var(--color-bg-elevated);
 }
 .analyse__pending { color: var(--color-text-muted); }
+/* La portée est écrite noir sur blanc : la page mélangeait auparavant la période choisie et
+   une fenêtre de douze tranches, sans que rien ne le dise (recette du 2026-09-05). */
+.analyse__scope {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
 .analyse__columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
