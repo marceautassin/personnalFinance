@@ -68,6 +68,11 @@ export const DEFAULT_REFERENTIAL: ReadonlyArray<DefaultCategoryGroup> = [
       { code: 'internes-virement-epargne', label: 'Virement épargne', nature: 'internal_transfer' },
       { code: 'internes-virement-comptes', label: 'Virement entre comptes', nature: 'internal_transfer' },
       { code: 'internes-retrait-especes', label: 'Retrait d\'espèces', nature: 'internal_transfer' },
+      // Remboursement de compte courant d'associé : de l'argent prêté à sa propre société qui
+      // revient. Ce n'est pas un gain — le compter en recette gonflerait le taux d'épargne
+      // d'un mois où rien n'a été gagné. Juridiquement la SASU est un tiers ; économiquement
+      // c'est du capital qui rentre, d'où le classement en mouvement interne.
+      { code: 'internes-remboursement-cca', label: 'Remboursement CCA', nature: 'internal_transfer' },
     ],
   },
   {
