@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { formatEuros, type Cents } from '~~/shared/types/money'
+import { formatDate } from '~/utils/dates'
+import type { RangeTransaction } from '~/composables/useItemTransactions'
 import { formatRatio, ratio, type Ratio } from '~~/shared/types/ratio'
 import type { AnalysisResponse } from '~/composables/useAnalysis'
 
@@ -9,9 +11,13 @@ type GroupNode = NatureNode['groups'][number]
 const props = defineProps<{
   nature: NatureNode
   title: string
+  /** Lignes déjà chargées, par code de poste. Le composant ne va jamais les chercher lui-même. */
+  transactionsByItem: Record<string, RangeTransaction[]>
+  loadingItems: string[]
+  failedItems: string[]
 }>()
 
-const emit = defineEmits<{ drill: [itemCode: string, label: string] }>()
+const emit = defineEmits<{ expandItem: [itemCode: string] }>()
 
 const expanded = ref<Set<string>>(new Set())
 function toggle(code: string) {
@@ -19,6 +25,29 @@ function toggle(code: string) {
   if (next.has(code)) next.delete(code)
   else next.add(code)
   expanded.value = next
+}
+
+/**
+ * Postes dépliés — indépendants des rubriques : on peut en ouvrir plusieurs à la fois pour
+ * comparer, et replier une rubrique ne doit pas faire oublier ce qu'on avait ouvert dedans.
+ */
+const expandedItems = ref<Set<string>>(new Set())
+function toggleItem(code: string) {
+  const next = new Set(expandedItems.value)
+  if (next.has(code)) {
+    next.delete(code)
+  }
+  else {
+    next.add(code)
+    // Le chargement est demandé au parent : un composant ne fait pas d'appel réseau.
+    emit('expandItem', code)
+  }
+  expandedItems.value = next
+}
+
+/** Somme des lignes affichées — elle doit retomber sur le total du poste (NFR2). */
+function loadedTotal(itemCode: string): number {
+  return (props.transactionsByItem[itemCode] ?? []).reduce((sum, t) => sum + t.amountCents, 0)
 }
 
 /**
@@ -168,17 +197,72 @@ function isDeltaAlarming(value: number): boolean {
           <li
             v-for="item in [...group.items].sort((a, b) => orientedCents(b.totalCents) - orientedCents(a.totalCents))"
             :key="item.itemCode"
+            :data-testid="`dist-item-${item.itemCode}`"
           >
             <button
               type="button"
               class="dist__item"
-              :aria-label="`Voir les ${item.transactionCount} transaction(s) de ${item.label}`"
-              @click="emit('drill', item.itemCode, `${group.label} · ${item.label}`)"
+              :aria-expanded="expandedItems.has(item.itemCode)"
+              :aria-label="`${expandedItems.has(item.itemCode) ? 'Replier' : 'Déplier'} les ${item.transactionCount} transaction(s) de ${item.label}`"
+              :disabled="item.transactionCount === 0"
+              @click="toggleItem(item.itemCode)"
             >
+              <span
+                class="dist__caret"
+                aria-hidden="true"
+              >{{ item.transactionCount === 0 ? '' : expandedItems.has(item.itemCode) ? '▾' : '▸' }}</span>
               <span class="dist__name">{{ item.label }}</span>
               <span class="dist__count">{{ item.transactionCount }} tx</span>
               <span class="dist__amount">{{ formatEuros(item.totalCents as Cents) }}</span>
             </button>
+
+            <!--
+              Les lignes sources, dépliées EN PLACE sous leur poste. La hiérarchie reste
+              continue — rubrique, poste, transaction — au lieu de renvoyer vers un panneau
+              en bas de page qui faisait perdre l'endroit d'où l'on venait.
+            -->
+            <div
+              v-if="expandedItems.has(item.itemCode)"
+              class="dist__tx"
+            >
+              <p
+                v-if="failedItems.includes(item.itemCode)"
+                class="dist__tx-state dist__tx-state--error"
+                role="alert"
+              >
+                Impossible de charger les lignes de ce poste.
+              </p>
+              <p
+                v-else-if="loadingItems.includes(item.itemCode)"
+                class="dist__tx-state"
+              >
+                Chargement…
+              </p>
+              <template v-else>
+                <ol class="dist__tx-list">
+                  <li
+                    v-for="tx in transactionsByItem[item.itemCode] ?? []"
+                    :key="tx.id"
+                    class="dist__tx-row"
+                  >
+                    <span class="dist__tx-date">{{ formatDate(tx.transactionDate) }}</span>
+                    <span class="dist__tx-label">{{ tx.label }}</span>
+                    <span class="dist__tx-amount">{{ formatEuros(tx.amountCents as Cents) }}</span>
+                    <NuxtLink
+                      :to="`/reconciliation/${tx.statementHash}`"
+                      class="dist__tx-source"
+                      :aria-label="`Relevé d'origine de ${tx.label}`"
+                    >
+                      relevé
+                    </NuxtLink>
+                  </li>
+                </ol>
+                <p class="dist__tx-state">
+                  {{ (transactionsByItem[item.itemCode] ?? []).length }} ligne(s),
+                  total {{ formatEuros(loadedTotal(item.itemCode) as Cents) }}
+                </p>
+              </template>
+            </div>
           </li>
         </ul>
       </li>
@@ -216,7 +300,31 @@ function isDeltaAlarming(value: number): boolean {
   border-radius: var(--radius-sm);
 }
 .dist__row { grid-template-columns: 1rem minmax(7rem, 12rem) 1fr 3.5rem 6rem 6rem; }
-.dist__item { grid-template-columns: minmax(7rem, 1fr) 4rem 6rem; padding-left: var(--space-6, 3rem); }
+.dist__item { grid-template-columns: 1rem minmax(7rem, 1fr) 4rem 6rem; padding-left: var(--space-4); }
+.dist__item[disabled] { cursor: default; opacity: 0.65; }
+.dist__item[disabled]:hover { background: none; }
+
+/* Les lignes vivent sous leur poste, décalées et bornées en hauteur : un poste à 300 lignes
+   ne doit pas rendre le reste de la page inatteignable. */
+.dist__tx {
+  margin: 0 0 var(--space-2) var(--space-6, 3rem);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-border);
+}
+.dist__tx-list { list-style: none; margin: 0; padding: 0; max-height: 22rem; overflow-y: auto; }
+.dist__tx-row {
+  display: grid;
+  grid-template-columns: 6rem 1fr 6rem 4rem;
+  gap: var(--space-2);
+  padding: 2px 0;
+  font-size: var(--font-size-xs);
+}
+.dist__tx-date, .dist__tx-source { color: var(--color-text-muted); }
+.dist__tx-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dist__tx-amount { text-align: right; font-variant-numeric: tabular-nums; }
+.dist__tx-source { text-align: right; }
+.dist__tx-state { margin: var(--space-1) 0 0; color: var(--color-text-muted); font-size: var(--font-size-xs); }
+.dist__tx-state--error { color: var(--color-danger); }
 .dist__row:hover, .dist__item:hover { background: var(--color-neutral-100); }
 .dist__bar { width: 100%; height: 8px; }
 .dist__fill { fill: var(--color-accent); }

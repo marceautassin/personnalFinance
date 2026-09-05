@@ -3,10 +3,8 @@ import { useAnalysis } from '~/composables/useAnalysis'
 import { useApiError } from '~/composables/useApiError'
 import { GRANULARITIES, type Granularity } from '~~/shared/types/granularity'
 import { isDegraded } from '~~/shared/types/statement-reliability'
-import { formatEuros, type Cents } from '~~/shared/types/money'
 import type { MovementNature } from '~~/shared/types/movement-nature'
 import type { AnalysisResponse } from '~/composables/useAnalysis'
-import { formatDate } from '~/utils/dates'
 
 type AnalysisNature = AnalysisResponse['natures'][number]
 
@@ -58,35 +56,21 @@ const expense = computed(() => natureOr('expense'))
 const internal = computed(() => natureOr('internal_transfer'))
 
 /**
- * Descente vers les lignes sources (FR35, NFR2).
+ * Descente vers les lignes sources, EN PLACE sous chaque poste (FR35, NFR2).
  *
- * L'arbre ne transporte aucune transaction : le poste et les bornes suffisent à les demander.
- * C'est ce qui rend n'importe quel montant affiché vérifiable sans alourdir chaque changement
- * de période.
+ * L'arbre ne transporte aucune transaction : le poste et les bornes suffisent à les demander,
+ * au moment où l'utilisateur les demande. C'est ce qui rend n'importe quel montant vérifiable
+ * sans alourdir chaque changement de période.
  */
-const drill = ref<{ itemCode: string, label: string } | null>(null)
-const drillState = useTransactionsRange()
+const itemTransactions = useItemTransactions()
 
-async function onDrill(itemCode: string, itemLabel: string) {
-  drill.value = { itemCode, label: itemLabel }
-  await drillState.load(bounds.value, itemCode)
+function onExpandItem(itemCode: string) {
+  void itemTransactions.load(itemCode, bounds.value)
 }
 
-function closeDrill() {
-  drill.value = null
-  drillState.reset()
-}
-
-// Changer de période referme la descente : garder à l'écran les lignes d'un autre mois sous
-// un titre qui a changé serait pire que de ne rien montrer.
-watch(bounds, () => {
-  if (drill.value) closeDrill()
-})
-
-/** Somme des lignes affichées : elle doit retomber sur le montant du nœud d'où l'on vient. */
-const drillTotal = computed(() =>
-  drillState.data.value.transactions.reduce((sum, t) => sum + t.amountCents, 0) as Cents,
-)
+// Changer de période vide le cache : des lignes d'un autre mois affichées sous un total qui a
+// changé seraient pire que pas de lignes du tout.
+watch(bounds, () => itemTransactions.reset())
 </script>
 
 <template>
@@ -192,13 +176,19 @@ const drillTotal = computed(() =>
       <div class="analyse__columns">
         <DistributionChart
           :nature="expense"
+          :transactions-by-item="itemTransactions.byItem.value"
+          :loading-items="itemTransactions.loading.value"
+          :failed-items="itemTransactions.failed.value"
           title="Dépenses"
-          @drill="onDrill"
+          @expand-item="onExpandItem"
         />
         <DistributionChart
           :nature="income"
+          :transactions-by-item="itemTransactions.byItem.value"
+          :loading-items="itemTransactions.loading.value"
+          :failed-items="itemTransactions.failed.value"
           title="Recettes"
-          @drill="onDrill"
+          @expand-item="onExpandItem"
         />
       </div>
 
@@ -208,49 +198,12 @@ const drillTotal = computed(() =>
       -->
       <DistributionChart
         :nature="internal"
+        :transactions-by-item="itemTransactions.byItem.value"
+        :loading-items="itemTransactions.loading.value"
+        :failed-items="itemTransactions.failed.value"
         title="Mouvements internes"
-        @drill="onDrill"
+        @expand-item="onExpandItem"
       />
-
-      <section
-        v-if="drill"
-        class="analyse__drill"
-        aria-labelledby="drill-heading"
-      >
-        <header class="analyse__drill-header">
-          <h3
-            id="drill-heading"
-            class="analyse__drill-title"
-          >
-            {{ drill.label }}
-          </h3>
-          <span class="analyse__drill-total">{{ formatEuros(drillTotal) }}</span>
-          <button
-            type="button"
-            class="analyse__drill-close"
-            @click="closeDrill"
-          >
-            Fermer
-          </button>
-        </header>
-        <ul class="analyse__drill-list">
-          <li
-            v-for="tx in drillState.data.value.transactions"
-            :key="tx.id"
-            class="analyse__drill-row"
-          >
-            <span>{{ formatDate(tx.transactionDate) }}</span>
-            <span class="analyse__drill-label">{{ tx.label }}</span>
-            <span class="analyse__drill-amount">{{ formatEuros(tx.amountCents as Cents) }}</span>
-            <NuxtLink
-              :to="`/reconciliation/${tx.statementHash}`"
-              class="analyse__drill-source"
-            >
-              relevé
-            </NuxtLink>
-          </li>
-        </ul>
-      </section>
     </template>
   </section>
 </template>
@@ -297,25 +250,4 @@ const drillTotal = computed(() =>
   grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
   gap: var(--space-4);
 }
-.analyse__drill {
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-}
-.analyse__drill-header { display: flex; align-items: baseline; gap: var(--space-3); }
-.analyse__drill-title { margin: 0; font-size: var(--font-size-lg); }
-.analyse__drill-total { font-variant-numeric: tabular-nums; margin-left: auto; }
-.analyse__drill-close { border: none; background: none; font: inherit; color: var(--color-accent); cursor: pointer; }
-.analyse__drill-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
-.analyse__drill-row {
-  display: grid;
-  grid-template-columns: 6rem 1fr 7rem 4rem;
-  gap: var(--space-2);
-  padding: var(--space-1) 0;
-  border-bottom: 1px solid var(--color-border);
-  font-size: var(--font-size-sm);
-}
-.analyse__drill-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.analyse__drill-amount { text-align: right; font-variant-numeric: tabular-nums; }
-.analyse__drill-source { text-align: right; }
 </style>
