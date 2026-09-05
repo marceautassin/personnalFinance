@@ -64,25 +64,23 @@ const internal = computed(() => natureOr('internal_transfer'))
  * de période.
  */
 const drill = ref<{ itemCode: string, label: string } | null>(null)
-const drillState = useFetch<{ transactions: Array<{ id: number, transactionDate: string, label: string, amountCents: number, statementHash: string }> }>(
-  '/api/transactions',
-  {
-    key: 'analysis-drill',
-    server: false,
-    immediate: false,
-    default: () => ({ transactions: [] }),
-    query: computed(() => ({
-      from: bounds.value.from,
-      to: bounds.value.to,
-      item: drill.value?.itemCode ?? '',
-    })),
-  },
-)
+const drillState = useTransactionsRange()
 
 async function onDrill(itemCode: string, itemLabel: string) {
   drill.value = { itemCode, label: itemLabel }
-  await drillState.refresh()
+  await drillState.load(bounds.value, itemCode)
 }
+
+function closeDrill() {
+  drill.value = null
+  drillState.reset()
+}
+
+// Changer de période referme la descente : garder à l'écran les lignes d'un autre mois sous
+// un titre qui a changé serait pire que de ne rien montrer.
+watch(bounds, () => {
+  if (drill.value) closeDrill()
+})
 
 /** Somme des lignes affichées : elle doit retomber sur le montant du nœud d'où l'on vient. */
 const drillTotal = computed(() =>
@@ -184,6 +182,8 @@ const drillTotal = computed(() =>
       <AnalysisIndicators
         :indicators="data.indicators"
         :bank-balance="data.bankBalance"
+        :from="data.from"
+        :to="data.to"
       />
 
       <EvolutionChart :series="data.series" />
@@ -227,7 +227,7 @@ const drillTotal = computed(() =>
           <button
             type="button"
             class="analyse__drill-close"
-            @click="drill = null"
+            @click="closeDrill"
           >
             Fermer
           </button>

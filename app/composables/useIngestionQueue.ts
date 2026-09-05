@@ -101,9 +101,16 @@ export function useIngestionQueue() {
     return true
   }
 
-  /** Reprend la file au premier élément non traité. */
+  /**
+   * Reprend la file au premier élément non traité.
+   *
+   * La garde porte AUSSI sur `awaiting` : un dépôt survenant pendant un arbitrage lancerait
+   * sinon un upload en parallèle de la boucle, et `cancelCurrent()` — qui ne connaît qu'un
+   * seul `AbortController` — annulerait le mauvais fichier. L'invariant de FR6 tenait jusqu'ici
+   * par le `v-if` de la page, donc par l'UI et non par la file (revue du 2026-09-05).
+   */
   async function drain() {
-    if (running.value) return
+    if (running.value || awaiting.value) return
     running.value = true
     try {
       for (;;) {

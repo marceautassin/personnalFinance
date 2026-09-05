@@ -18,7 +18,7 @@ interface Resp {
   to: string
   reliability: string
   unreliableStatements: Array<{ hash: string, gapCents: number }>
-  bankBalance: { openingCents: number, closingCents: number } | null
+  bankBalance: { openingCents: number, closingCents: number, from: string, to: string } | null
   indicators: {
     incomeCents: number
     expenseCents: number
@@ -129,7 +129,7 @@ describe('GET /api/analysis — agrégation', () => {
     const r = await handler(query(MARCH))
     expect(r.indicators.resultCents).toBe(195_000)
     expect(r.indicators.internalCents).toBe(-50_000)
-    expect(r.bankBalance).toEqual({ openingCents: 47_841, closingCents: 102_398 })
+    expect(r.bankBalance).toMatchObject({ openingCents: 47_841, closingCents: 102_398 })
     expect(r.indicators.resultCents + r.indicators.internalCents).toBe(145_000)
   })
 
@@ -195,7 +195,7 @@ describe('GET /api/analysis — solde bancaire (D25)', () => {
     seedStatement({ hash: 'a', periodStart: '2026-03-01', periodEnd: '2026-03-15', opening: 1000, closing: 2000 })
     seedStatement({ hash: 'b', periodStart: '2026-03-16', periodEnd: '2026-03-31', opening: 2000, closing: 6000 })
     const r = await handler(query(MARCH))
-    expect(r.bankBalance).toEqual({ openingCents: 1000, closingCents: 6000 })
+    expect(r.bankBalance).toMatchObject({ openingCents: 1000, closingCents: 6000 })
   })
 })
 
@@ -259,5 +259,34 @@ describe('GET /api/analysis — fenêtre d\'évolution', () => {
   it('annonce la première tranche couverte', async () => {
     const r = await handler(query(MARCH)) as unknown as { seriesFrom: string }
     expect(r.seriesFrom).toBe('2025-04-01')
+  })
+})
+
+describe('GET /api/analysis — solde bancaire, débordement', () => {
+  /**
+   * Cycle bancaire 26→25 : les relevés couvrent mars sans lui correspondre. Le solde reste
+   * exploitable, mais il DOIT annoncer ce qu'il couvre — sinon l'écran affiche une variation
+   * sur deux mois sous le titre « mars ».
+   */
+  it('annonce la période réellement couverte quand les relevés débordent', async () => {
+    seedStatement({ hash: 'a', periodStart: '2026-02-26', periodEnd: '2026-03-25', opening: 1000, closing: 2000 })
+    seedStatement({ hash: 'b', periodStart: '2026-03-26', periodEnd: '2026-04-25', opening: 2000, closing: 9000 })
+    const r = await handler(query(MARCH))
+    expect(r.bankBalance).toEqual({
+      openingCents: 1000,
+      closingCents: 9000,
+      from: '2026-02-26',
+      to: '2026-04-25',
+    })
+  })
+
+  /**
+   * Le cas réel : un relevé Boursobank court du 28/02 au 31/03. Exiger une coïncidence exacte
+   * avec les bornes du mois rendait `null` sur TOUTES les données réelles.
+   */
+  it('accepte un relevé bancaire décalé du calendrier', async () => {
+    seedStatement({ hash: 'bourso', periodStart: '2026-02-28', periodEnd: '2026-03-31', opening: 47_841, closing: 102_398 })
+    const r = await handler(query(MARCH))
+    expect(r.bankBalance).toMatchObject({ openingCents: 47_841, closingCents: 102_398, from: '2026-02-28' })
   })
 })

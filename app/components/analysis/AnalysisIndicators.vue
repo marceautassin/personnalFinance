@@ -6,6 +6,9 @@ import type { AnalysisResponse } from '~/composables/useAnalysis'
 const props = defineProps<{
   indicators: AnalysisResponse['indicators']
   bankBalance: AnalysisResponse['bankBalance']
+  /** Bornes demandées, pour dire quand le solde couvre autre chose. */
+  from: string
+  to: string
 }>()
 
 /** FR33 — le déficit doit se voir sans lire les chiffres. */
@@ -23,6 +26,15 @@ const bankDelta = computed(() => {
   if (!props.bankBalance) return null
   return (props.bankBalance.closingCents - props.bankBalance.openingCents) as Cents
 })
+
+/**
+ * Un relevé bancaire ne coïncide presque jamais avec le calendrier : chez Boursobank il court
+ * du 28/02 au 31/03. Le solde reste utile, mais il faut dire ce qu'il couvre — sinon l'écran
+ * affiche une variation sur une autre période sous le titre du mois demandé.
+ */
+const balanceIsOffset = computed(() =>
+  props.bankBalance !== null && (props.bankBalance.from !== props.from || props.bankBalance.to !== props.to),
+)
 </script>
 
 <template>
@@ -68,6 +80,9 @@ const bankDelta = computed(() => {
       <strong class="indic__value">{{ bankDelta === null ? '—' : formatEuros(bankDelta) }}</strong>
       <span class="indic__hint">
         <template v-if="bankDelta === null">Historique incomplet sur la période</template>
+        <template v-else-if="balanceIsOffset">
+          Du {{ bankBalance?.from }} au {{ bankBalance?.to }}, mouvements internes compris
+        </template>
         <template v-else>Mouvements internes compris : {{ formatEuros(indicators.internalCents as Cents) }}</template>
       </span>
     </div>

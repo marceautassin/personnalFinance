@@ -244,3 +244,24 @@ describe('reconstruction en colonnes', () => {
     expect(rows).toBe(`1 234,56 ${DEBIT_MARKER}`)
   })
 })
+
+/**
+ * Report du séparateur sur les pages de continuation.
+ *
+ * Une page qui ne réimprime pas l'en-tête « Débit / Crédit » sortait sans marqueur, et le
+ * prompt renvoyait alors le modèle à la déduction du signe — la panne d'origine, sur une
+ * partie du relevé (revue du 2026-09-05).
+ */
+describe('report du séparateur entre pages', () => {
+  const item = (text: string, x: number, y: number, width = 20): PositionedItem =>
+    ({ text, x, right: x + width, y })
+
+  it('applique le séparateur d\'une page à celles qui n\'ont pas d\'en-tête', () => {
+    const headers = [item('Débit', 442, 427, 23), item('Crédit', 506, 427, 27)]
+    const separator = findDebitCreditSeparator(headers)!
+
+    // Page de continuation : un montant au débit, aucun en-tête.
+    const continuation = renderRows([item('CARTE CARREFOUR', 95, 300, 100), item('42,37', 455, 300, 25)], separator)
+    expect(continuation).toContain(DEBIT_MARKER)
+  })
+})

@@ -19,6 +19,10 @@ const pendingDelete = ref<ClassificationRuleWithLabels | null>(null)
 const fetchErrorMessage = computed(() => (error.value ? mapError(error.value) : null))
 
 async function onSubmit() {
+  // `aria-disabled` signale l'indisponibilité sans bloquer le clic (NFR18) : la garde de
+  // ré-entrance doit donc être ici, sinon un double-clic part deux fois et le second remonte
+  // un 409 affiché comme une erreur.
+  if (saving.value) return
   actionError.value = null
   const trimmed = pattern.value.trim()
   if (trimmed.length < 2) {

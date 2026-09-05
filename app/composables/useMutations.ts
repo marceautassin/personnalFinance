@@ -27,7 +27,7 @@ export function useMutations(refresh: () => Promise<unknown>) {
     }
     await refresh()
     if (afterRefresh) await afterRefresh()
-    invalidate.invalidateAnalysis()
+    await invalidate.invalidateAnalysis()
     return { ok: true }
   }
 }

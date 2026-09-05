@@ -259,3 +259,91 @@ describe('analyze — lignes orphelines', () => {
     expect(run(NOMINAL).orphanCount).toBe(0)
   })
 })
+
+/**
+ * Cohérence des indicateurs — invariants vérifiés comme PROPRIÉTÉS et non par valeurs
+ * littérales, pour protéger contre une régression de structure et non d'un seul chiffre.
+ */
+describe('analyze — invariants de somme', () => {
+  const cases: Array<[string, AnalysisTransaction[]]> = [
+    ['cas nominal', NOMINAL],
+    ['période vide', []],
+    ['recettes nulles', [tx('2026-03-10', -80_000, 'alimentation-courses')]],
+    ['dépense au net inversé', [
+      tx('2026-03-10', -10_000, 'alimentation-courses'),
+      tx('2026-03-15', 25_000, 'alimentation-courses'),
+      tx('2026-03-05', 250_000, 'revenus-salaire'),
+    ]],
+    ['plusieurs mois et plusieurs rubriques', [
+      tx('2026-01-05', 100_000, 'revenus-salaire'),
+      tx('2026-01-20', -30_000, 'alimentation-courses'),
+      tx('2026-02-05', 120_000, 'revenus-primes'),
+      tx('2026-02-20', -60_000, 'voyages-restaurant'),
+      tx('2026-02-25', -75_000, 'internes-virement-epargne'),
+    ]],
+  ]
+
+  it.each(cases)('%s : la somme des postes vaut la rubrique', (_name, transactions) => {
+    for (const nature of run(transactions).natures) {
+      for (const group of nature.groups) {
+        expect(group.items.reduce((s, i) => s + i.totalCents, 0)).toBe(group.totalCents)
+        expect(group.items.reduce((s, i) => s + i.transactionCount, 0)).toBe(group.transactionCount)
+      }
+    }
+  })
+
+  it.each(cases)('%s : la somme des rubriques vaut la nature', (_name, transactions) => {
+    for (const nature of run(transactions).natures) {
+      expect(nature.groups.reduce((s, g) => s + g.totalCents, 0)).toBe(nature.totalCents)
+    }
+  })
+
+  it.each(cases)('%s : les indicateurs dérivent exactement de l\'arbre', (_name, transactions) => {
+    const r = run(transactions)
+    const totalOf = (n: string) => r.natures.find(x => x.nature === n)?.totalCents ?? 0
+    expect(r.indicators.incomeCents).toBe(totalOf('income'))
+    expect(r.indicators.expenseCents).toBe(totalOf('expense'))
+    expect(r.indicators.internalCents).toBe(totalOf('internal_transfer'))
+    expect(r.indicators.resultCents).toBe(totalOf('income') + totalOf('expense'))
+  })
+
+  /**
+   * Les deux taux partagent le même dénominateur et partitionnent les recettes : leur somme
+   * vaut 1 dès que ce dénominateur existe. C'est cet invariant que `Math.abs` cassait sur une
+   * nature `expense` au net positif.
+   */
+  it.each(cases)('%s : spendRate + savingsRate valent 1 quand ils sont définis', (_name, transactions) => {
+    const { spendRate, savingsRate } = run(transactions).indicators
+    if (spendRate === null || savingsRate === null) {
+      expect(spendRate).toBeNull()
+      expect(savingsRate).toBeNull()
+      return
+    }
+    expect(spendRate + savingsRate).toBeCloseTo(1, 10)
+  })
+
+  it('reste cohérent quand les remboursements dépassent les achats du mois', () => {
+    const r = run([
+      tx('2026-03-05', 250_000, 'revenus-salaire'),
+      tx('2026-03-10', -10_000, 'alimentation-courses'),
+      tx('2026-03-15', 25_000, 'alimentation-courses'),
+    ])
+    expect(r.indicators.expenseCents).toBe(15_000)
+    expect(r.indicators.spendRate).toBeCloseTo(-0.06, 5)
+    expect(r.indicators.savingsRate).toBeCloseTo(1.06, 5)
+  })
+
+  /**
+   * Bornes non alignées sur la tranche : la série ne couvre que ce qu'on lui donne, la période
+   * peut en déborder. Le comportement est voulu — on le fige pour qu'il ne dérive pas.
+   */
+  it('n\'aligne pas la dernière tranche de la série sur la période quand les bornes sont libres', () => {
+    const r = run([
+      tx('2026-01-20', -30_000, 'alimentation-courses'),
+      tx('2026-02-10', -50_000, 'alimentation-courses'),
+    ])
+    expect(r.series).toHaveLength(2)
+    expect(r.series.at(-1)!.resultCents).toBe(-50_000)
+    expect(r.indicators.resultCents).toBe(-80_000)
+  })
+})

@@ -16,10 +16,13 @@ const period = computed(() => route.params.period as string)
 const mutationError = ref<string | null>(null)
 
 const { data, pending, mutateCategory, ruleSuggestion, dismissSuggestion } = useTransactions(period)
-const { addRule } = useRules()
+const { addRule, previewRule } = useRules()
 const { data: groups } = useCategories()
 
 const savingRule = ref(false)
+
+/** Au-delà, une règle mérite d'être relue avant d'être créée. Seuil d'attention, pas de blocage. */
+const WIDE_RULE_THRESHOLD = 25
 
 /**
  * Motif éditable avant création.
@@ -30,8 +33,25 @@ const savingRule = ref(false)
  * qu'une fois — l'inverse du but.
  */
 const editablePattern = ref('')
-watch(ruleSuggestion, (suggestion) => {
+
+/**
+ * Nombre de lignes déjà en base que le motif couvrirait. `null` tant qu'il est inconnu.
+ *
+ * C'est le garde-fou : une règle « DUPONT Jean », a priori évidente, couvrait 106 lignes
+ * dont 7 604 € de remboursement d'emprunt qu'elle aurait sortis des dépenses. Le compteur ne
+ * s'affichait alors que sur `/regles`, après coup (revue du 2026-09-05).
+ */
+const suggestionReach = ref<number | null>(null)
+
+watch(ruleSuggestion, async (suggestion) => {
   editablePattern.value = suggestion?.pattern ?? ''
+  suggestionReach.value = suggestion ? await previewRule(suggestion.pattern) : null
+})
+
+// Le motif est éditable : sa portée doit suivre ce que l'utilisateur tape, sinon le chiffre
+// affiché décrirait une règle qui n'est plus celle qu'il s'apprête à créer.
+watch(editablePattern, async (pattern) => {
+  if (ruleSuggestion.value) suggestionReach.value = await previewRule(pattern)
 })
 
 /** Libellé lisible du poste visé par la proposition — un code ne dit rien à personne. */
@@ -62,7 +82,10 @@ async function onAcceptSuggestion() {
   const outcome = await addRule({ pattern, categoryItemCode: suggestion.categoryItemCode })
   savingRule.value = false
   if (outcome.error) mutationError.value = outcome.error
-  else dismissSuggestion()
+  else {
+    dismissSuggestion()
+    suggestionReach.value = null
+  }
 }
 
 const monthFormatter = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
@@ -175,6 +198,17 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
         dans
         <strong>{{ suggestionTarget ? `${suggestionTarget.groupLabel} · ${suggestionTarget.label}` : ruleSuggestion.categoryItemCode }}</strong> ?
       </span>
+      <!--
+        La portée s'affiche AVANT la création, pas après : c'est elle qui permet de repérer un
+        motif trop large, et un chiffre vu trop tard ne sert à rien.
+      -->
+      <span
+        class="tx-page__suggestion-reach"
+        :class="{ 'tx-page__suggestion-reach--wide': (suggestionReach ?? 0) > WIDE_RULE_THRESHOLD }"
+      >
+        <template v-if="suggestionReach === null">portée inconnue</template>
+        <template v-else>couvrira {{ suggestionReach }} ligne(s) déjà en base</template>
+      </span>
       <button
         type="button"
         class="tx-page__suggestion-accept"
@@ -234,6 +268,8 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
   cursor: pointer;
 }
 .tx-page__suggestion-accept[aria-disabled='true'] { opacity: 0.6; cursor: default; }
+.tx-page__suggestion-reach { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+.tx-page__suggestion-reach--wide { color: var(--color-danger); font-weight: 600; }
 .tx-page__suggestion-dismiss {
   border: none;
   background: none;

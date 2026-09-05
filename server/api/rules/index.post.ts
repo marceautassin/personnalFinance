@@ -1,7 +1,7 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { eq } from 'drizzle-orm'
+import { eq, sql, like } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { classificationRules, categoryItems, categoryGroups } from '~~/server/db/schema'
+import { classificationRules, categoryItems, categoryGroups, transactions } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { assertCategoryItemExists } from '~~/server/utils/category-fk'
 import { domainError } from '~~/server/utils/errors'
@@ -55,11 +55,25 @@ export default defineEventHandler(async (event): Promise<ClassificationRuleWithL
     .where(eq(categoryItems.code, body.categoryItemCode))
     .get()
 
+  // Le VRAI nombre de lignes couvertes, jamais zéro en dur : c'est le seul garde-fou contre
+  // une règle trop large, et une valeur fausse serait pire que pas de valeur. Une règle
+  // « DUPONT Jean » — évidente en apparence — couvrait 106 lignes dont 7 604 € de
+  // remboursement d'emprunt qu'elle aurait sortis des dépenses (constaté le 2026-09-05).
   setResponseStatus(event, 201)
   return {
     ...inserted,
     itemLabel: item?.itemLabel ?? body.categoryItemCode,
     groupLabel: item?.groupLabel ?? '',
-    matchCount: 0,
+    matchCount: countMatching(pattern),
   }
 })
+
+/** Transactions déjà en base dont le libellé contient le motif, à la casse près. */
+function countMatching(pattern: string): number {
+  const row = db
+    .select({ cnt: sql<number>`count(*)` })
+    .from(transactions)
+    .where(like(sql`LOWER(${transactions.label})`, `%${pattern}%`))
+    .get()
+  return Number(row?.cnt ?? 0)
+}

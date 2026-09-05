@@ -227,7 +227,14 @@ function computeIndicators(
     cumulativeResultCents: series.at(-1)?.cumulativeResultCents ?? resultCents,
     // Dénominateur nul → `null`, jamais zéro : un mois sans recette n'a pas un taux
     // d'épargne nul, il n'en a pas (AR10).
-    spendRate: ratio(Math.abs(expenseCents), incomeCents),
+    //
+    // `-expenseCents` et NON `Math.abs` : D28 interdit la valeur absolue dans le moteur, et
+    // pour une raison qui se voit ici. Quand les remboursements d'un mois dépassent les achats,
+    // la nature `expense` a un net POSITIF ; la valeur absolue affichait alors « 6 % des
+    // recettes consommées » là où rien n'avait été consommé, et les deux taux ne totalisaient
+    // plus 1. La négation conserve le signe algébrique : `spendRate + savingsRate === 1` reste
+    // vrai dans tous les cas, y compris inversé.
+    spendRate: ratio(-expenseCents, incomeCents),
     savingsRate: ratio(resultCents, incomeCents),
   }
 }

@@ -35,7 +35,13 @@ export interface AnalysisResponse extends AnalysisResult {
    * Il coexiste avec le résultat sans s'y substituer : le solde inclut les mouvements
    * internes, le résultat les exclut (NFR4). Deux chiffres, deux questions.
    */
-  bankBalance: { openingCents: Cents, closingCents: Cents } | null
+  bankBalance: {
+    openingCents: Cents
+    closingCents: Cents
+    /** Période RÉELLEMENT couverte par les relevés, qui déborde souvent de celle demandée. */
+    from: string
+    to: string
+  } | null
   /** Première tranche couverte par la série d'évolution. */
   seriesFrom: string
 }
@@ -111,11 +117,17 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
 })
 
 /**
- * Solde d'ouverture et de clôture encadrant la période.
+ * Solde d'ouverture et de clôture encadrant la période, ET la période qu'ils couvrent vraiment.
  *
  * Rend `null` dès que les relevés ne couvrent pas la période de bout en bout sans trou : le
- * solde de clôture d'un mois n'a de sens que si l'on connaît tout ce qui l'a précédé dans la
- * fenêtre. Mieux vaut ne rien afficher qu'un chiffre qu'on croirait exact (D25).
+ * solde de clôture n'a de sens que si l'on connaît tout ce qui l'a précédé dans la fenêtre.
+ * Mieux vaut ne rien afficher qu'un chiffre qu'on croirait exact (D25).
+ *
+ * En revanche il ne peut pas exiger une coïncidence EXACTE avec les bornes demandées : un
+ * relevé Boursobank court du 28/02 au 31/03, jamais du 1er au 31. Une première version stricte
+ * rendait donc `null` sur toutes les données réelles. Le débordement est plutôt ASSUMÉ et
+ * annoncé — `from` et `to` disent ce que le solde couvre — pour que l'écran cesse de laisser
+ * croire qu'il décrit la période demandée (revue du 2026-09-05).
  */
 async function bankBalanceFor(from: string, to: string) {
   const covering = await db
@@ -133,6 +145,9 @@ async function bankBalanceFor(from: string, to: string) {
 
   const first = covering[0]!
   const last = covering.at(-1)!
+
+  // La période doit être entièrement couverte : un relevé qui commence après `from` laisse
+  // un début de période sans solde connu.
   if (first.periodStart > from || last.periodEnd < to) return null
 
   // Contiguïté : chaque relevé doit reprendre là où le précédent s'est arrêté, au jour près.
@@ -143,6 +158,8 @@ async function bankBalanceFor(from: string, to: string) {
   return {
     openingCents: first.openingBalanceCents as Cents,
     closingCents: last.closingBalanceCents as Cents,
+    from: first.periodStart,
+    to: last.periodEnd,
   }
 }
 

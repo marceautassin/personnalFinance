@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formatEuros, type Cents } from '~~/shared/types/money'
-import { formatRatio } from '~~/shared/types/ratio'
+import { formatRatio, ratio, type Ratio } from '~~/shared/types/ratio'
 import type { AnalysisResponse } from '~/composables/useAnalysis'
 
 type NatureNode = AnalysisResponse['natures'][number]
@@ -56,9 +56,8 @@ const sortedGroups = computed(() =>
   [...props.nature.groups].sort((a, b) => orientedCents(b.totalCents) - orientedCents(a.totalCents)),
 )
 
-function share(totalCents: number): number | null {
-  const value = Math.max(0, orientedCents(totalCents))
-  return base.value === 0 ? null : value / base.value
+function share(totalCents: number): Ratio | null {
+  return ratio(Math.max(0, orientedCents(totalCents)), base.value)
 }
 
 /** Largeur de barre en pourcentage de la plus grosse rubrique — pas de la base. */
@@ -77,6 +76,20 @@ function delta(node: { totalCents: number, previousTotalCents: number | null }):
 
 /** Sur les mouvements internes, la part d'un total qui peut changer de sens n'a pas de sens. */
 const showsShare = computed(() => sign.value !== 0)
+
+/**
+ * Un écart n'est alarmant que sur les DÉPENSES.
+ *
+ * La couleur était calculée sur la valeur orientée sans regarder la nature : un salaire en
+ * hausse de 200 € s'affichait en rouge, comme une alerte (revue du 2026-09-05). Sur les
+ * recettes, c'est la BAISSE qui mérite d'être signalée ; sur les mouvements internes, ni l'un
+ * ni l'autre ne veut dire quoi que ce soit.
+ */
+function isDeltaAlarming(value: number): boolean {
+  if (props.nature.nature === 'expense') return value > 0
+  if (props.nature.nature === 'income') return value < 0
+  return false
+}
 </script>
 
 <template>
@@ -136,12 +149,15 @@ const showsShare = computed(() => sign.value !== 0)
               :class="isInverted(group) ? 'dist__fill dist__fill--inverted' : 'dist__fill'"
             />
           </svg>
-          <span class="dist__share">{{ !showsShare || isInverted(group) ? '—' : formatRatio(share(group.totalCents) as never) }}</span>
+          <span class="dist__share">{{ !showsShare || isInverted(group) ? '—' : formatRatio(share(group.totalCents)) }}</span>
           <span class="dist__amount">{{ formatEuros(group.totalCents as Cents) }}</span>
           <span
             v-if="delta(group) !== null"
             class="dist__delta"
-            :class="{ 'dist__delta--up': (delta(group) ?? 0) > 0 }"
+            :class="{
+              'dist__delta--up': isDeltaAlarming(delta(group) ?? 0),
+              'dist__delta--neutral': nature.nature === 'internal_transfer',
+            }"
           >{{ (delta(group) ?? 0) > 0 ? '+' : '' }}{{ formatEuros(delta(group) as Cents) }}</span>
         </button>
 
@@ -213,5 +229,6 @@ const showsShare = computed(() => sign.value !== 0)
 .dist__share, .dist__count { color: var(--color-text-muted); }
 .dist__delta { color: var(--color-success); }
 .dist__delta--up { color: var(--color-danger); }
+.dist__delta--neutral { color: var(--color-text-muted); }
 .dist__caret { color: var(--color-text-muted); }
 </style>

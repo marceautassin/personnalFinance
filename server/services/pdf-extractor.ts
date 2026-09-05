@@ -97,16 +97,23 @@ async function extractPositionalText(pdfBuffer: Buffer): Promise<string | null> 
     return null
   }
 
-  const rendered: string[] = []
-  let anyColumnFound = false
+  // Le séparateur est cherché page par page, mais REPORTÉ sur celles qui n'ont pas d'en-tête.
+  //
+  // Une page de continuation ne réimprime pas « Débit / Crédit » : ses montants sortaient donc
+  // sans marqueur, et la règle du prompt renvoyait le modèle à la déduction — la panne
+  // d'origine, sur une partie du relevé. La géométrie des colonnes ne change pas d'une page à
+  // l'autre dans un même document : le report est sûr (revue du 2026-09-05).
+  const separators = pages.map(findDebitCreditSeparator)
+  const known = separators.find(s => s !== null) ?? null
+  if (known === null) return null
 
-  for (const items of pages) {
-    const separator = findDebitCreditSeparator(items)
-    if (separator !== null) anyColumnFound = true
-    rendered.push(renderRows(items, separator))
-  }
-
-  return anyColumnFound ? rendered.join('\n') : null
+  let current = known
+  return pages
+    .map((items, index) => {
+      current = separators[index] ?? current
+      return renderRows(items, current)
+    })
+    .join('\n')
 }
 
 async function readPositionedPages(pdfBuffer: Buffer): Promise<PositionedItem[][]> {

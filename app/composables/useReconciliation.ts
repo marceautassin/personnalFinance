@@ -76,7 +76,7 @@ export function useReconciliation() {
       await $fetch(`/api/reconciliation/${hash}`, { method: 'POST', body })
       // Story 3.3 — propager la nouvelle fiabilité sur /import (cache `statements-list`)
       await invalidate.invalidateStatementsList()
-      invalidate.invalidateAnalysis()
+      await invalidate.invalidateAnalysis()
       return { ok: true }
     }
     catch (err) {

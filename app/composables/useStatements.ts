@@ -76,7 +76,7 @@ export function useStatements() {
         headers: opts.confirmReplace ? { 'X-Confirm-Replace': 'true' } : undefined,
         signal: opts.signal,
       })
-      invalidate.invalidateAnalysis()
+      await invalidate.invalidateAnalysis()
       return { result }
     }
     catch (err) {

@@ -73,7 +73,7 @@ export function useTransactions(month: Ref<string>) {
     ruleSuggestion.value = response?.ruleSuggestion ?? null
     await fetchState.refresh()
     if (afterRefresh) await afterRefresh()
-    invalidate.invalidateAnalysis()
+    await invalidate.invalidateAnalysis()
     return { ok: true }
   }
 

@@ -38,6 +38,25 @@ export function useRules() {
   const addRule = (input: NewClassificationRuleInput) =>
     mutate('/api/rules', { method: 'POST', body: input })
 
+  /**
+   * Portée qu'aurait une règle, AVANT de la créer.
+   *
+   * Sans cet aperçu, une proposition se créait en un clic sans montrer combien de lignes elle
+   * allait rafler : le compteur n'apparaissait que sur `/regles`, donc après coup.
+   */
+  async function previewRule(pattern: string): Promise<number | null> {
+    if (pattern.trim().length < 2) return null
+    try {
+      const res = await $fetch<{ matchCount: number }>('/api/rules/preview', { query: { pattern } })
+      return res.matchCount
+    }
+    catch {
+      // L'aperçu est une aide, pas un prérequis : son échec ne doit pas empêcher de créer
+      // une règle. On rend `null`, que l'appelant affiche comme « portée inconnue ».
+      return null
+    }
+  }
+
   const deleteRule = (id: number) =>
     mutate(`/api/rules/${id}`, { method: 'DELETE' })
 
@@ -47,6 +66,7 @@ export function useRules() {
     error: fetchState.error,
     refresh: fetchState.refresh,
     addRule,
+    previewRule,
     deleteRule,
   }
 }
