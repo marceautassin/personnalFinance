@@ -351,3 +351,10 @@ development_status:
   # Vérifications : 525 tests unitaires, 20 E2E, lint et typecheck propres.
   18-9-etat-d-application-d-une-regle: review
   18-10-ecran-des-non-categorises: review
+  # Née de l'usage réel, 2026-09-06 : le bloc des mouvements internes ne dit pas le SENS des
+  # flux, et son net les cache — « Virement entre comptes » affiche -651,40 € sur 2026 quand
+  # 4 512 € sont sortis et 3 861 € rentrés. Le code couleur n'est pas la réponse : ailleurs il
+  # signale la VARIATION, pas le sens. Arbitrage : flux bruts par nœud ET phrase de lecture.
+  18-11-sens-des-mouvements-internes: review
+  # Demandée le 2026-09-06 : ouvrir l'analyse d'une tranche depuis le tableau d'évolution.
+  18-12-descente-evolution-vers-analyse: review

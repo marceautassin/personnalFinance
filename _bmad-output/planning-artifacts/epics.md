@@ -1521,3 +1521,82 @@ en premier
 **Given** la liste des règles
 **When** elle est affichée
 **Then** un lien mène à cet écran
+
+### Story 18.11: Sens des mouvements internes — flux bruts et phrase de lecture
+
+> **Née de l'usage réel, 2026-09-06.** « Dans le bloc mouvement interne il n'y a pas de code
+> couleur sur les débits et crédits, du coup je ne comprends pas bien comment je dois lire cette
+> analyse. En 2026 comment je dois interpréter la ligne virement épargne ? »
+>
+> **Le code couleur n'est PAS la réponse.** Sur les dépenses et les recettes, la couleur signale
+> la VARIATION contre la période précédente, pas le sens du flux. L'étendre aux mouvements
+> internes laisserait croire qu'un virement est favorable ou défavorable, ce qu'il n'est
+> précisément pas. Ce qui manque, c'est la DIRECTION.
+>
+> **Et le net la cache.** Sur 2026, « Virement entre comptes » affiche −651,40 € alors que
+> 4 512 € sont sortis et 3 861 € rentrés : le net ne dit rien des flux qui le composent.
+> « Virement épargne » affiche +3 784 €, qui sont en réalité 3 902 € tirés du livret contre
+> 80 € versés dedans — l'épargne a été puisée, pas alimentée, et l'écran ne le disait pas.
+
+En tant qu'utilisateur,
+je veux voir ce qui est sorti et ce qui est rentré sur chaque poste de mouvement interne, et
+lire en une phrase ce que le bloc raconte,
+afin de comprendre comment j'ai bouclé la période sans reconstituer les flux de tête.
+
+**Acceptance Criteria:**
+
+**Given** un nœud d'analyse, poste ou rubrique
+**When** il est agrégé
+**Then** il porte la somme de ses montants NÉGATIFS et celle de ses montants POSITIFS, en plus
+de son net — les trois restant cohérents entre eux
+
+**Given** un poste sans aucun montant dans un sens
+**When** ses flux sont rendus
+**Then** le sens vide vaut zéro, et l'affichage le distingue d'un montant
+
+**Given** le bloc des mouvements internes
+**When** il est affiché
+**Then** chaque ligne montre sorties, entrées et net, et l'orientation de chaque colonne est
+annoncée pour un lecteur d'écran
+
+**Given** un bloc de mouvements internes dont le net est positif
+**When** il est affiché
+**Then** une phrase dit que cet argent est revenu sur le compte courant depuis les autres
+comptes ; net négatif, elle dit l'inverse ; net nul, elle ne conclut rien
+
+**Given** les blocs de dépenses et de recettes
+**When** ils sont affichés
+**Then** ils ne changent pas — les flux bruts n'y ajoutent rien, la nature du poste y disant
+déjà le sens attendu
+
+**Note d'implémentation.** Les deux sommes sont calculées par le moteur pour TOUS les nœuds, sans
+distinction de nature : une fonction de calcul n'a pas à savoir ce que l'écran affichera (NFR22).
+C'est l'UI qui choisit de ne montrer les colonnes que sur les mouvements internes. NFR3
+s'applique : cas nominal, poste à sens unique, poste vide.
+
+### Story 18.12: Descente de l'évolution vers l'analyse d'une tranche
+
+> **Demandée le 2026-09-06 :** « rendre cliquable les lignes du tableau période, qui renvoie
+> vers la page analyse sur le mois cliqué ».
+
+En tant qu'utilisateur,
+je veux ouvrir l'analyse d'une tranche depuis la ligne correspondante du tableau d'évolution,
+afin d'aller voir ce qui explique un mois qui sort du lot, sans le resélectionner à la main.
+
+**Acceptance Criteria:**
+
+**Given** une ligne du tableau d'évolution
+**When** elle est activée, n'importe où sur sa largeur
+**Then** l'analyse s'ouvre sur cette tranche, au pas de la série
+
+**Given** cette même ligne
+**When** elle est atteinte au clavier
+**Then** elle est focalisable et s'active comme un lien — ouverture dans un onglet comprise
+
+**Given** le tableau de la cible suivie
+**When** il est affiché
+**Then** ses lignes mènent au même endroit
+
+**Note d'implémentation.** UN SEUL lien par ligne, étiré sur la rangée par un `::after`. Un
+gestionnaire de clic sur la `<tr>` donnerait la même zone de clic mais pas un lien : ni focus,
+ni ouverture dans un onglet, ni annonce par un lecteur d'écran.
