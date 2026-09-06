@@ -8,6 +8,12 @@ import { extractText, getDocumentProxy } from 'unpdf'
 import { eurosToCents, type Cents } from '~~/shared/types/money'
 
 /** Marqueurs de colonne ajoutés aux montants. Consommés par le prompt de catégorisation. */
+/**
+ * Un montant au format français, séparateurs de milliers compris (espace ASCII, insécable,
+ * fine, ou point). Partagé par la lecture des soldes et la coupe du texte plat.
+ */
+const FR_AMOUNT_TOKEN = /-?\d{1,3}(?:[\s\u00a0\u202f.]\d{3})*,\d{2}|-?\d+[.,]\d{2}/gu
+
 export const DEBIT_MARKER = '[DÉBIT]'
 export const CREDIT_MARKER = '[CRÉDIT]'
 
@@ -47,12 +53,65 @@ export async function extractStatement(pdfBuffer: Buffer): Promise<RawStatement>
   const balances = extractBalances(flatText)
 
   return {
-    rawText: (await extractPositionalText(pdfBuffer)) ?? flatText,
+    rawText: redactIdentity((await extractPositionalText(pdfBuffer)) ?? cutBeforeOperations(flatText)),
     periodStart: period.start,
     periodEnd: period.end,
     openingBalanceCents: balances.openingCents,
     closingBalanceCents: balances.closingCents,
   }
+}
+
+/**
+ * Remplace les identifiants bancaires par un marqueur neutre (NFR6, story 17.1).
+ *
+ * **Filet de sécurité, pas ligne de défense principale.** La coupe géométrique
+ * (`operationRows`) retire déjà le bloc d'identité sur les relevés dont les colonnes sont
+ * reconnues. Cette passe couvre ce qu'elle ne peut pas atteindre : une page sans en-tête, un
+ * pied de page, un gabarit inconnu tombé sur le repli texte plat.
+ *
+ * **Portée assumée.** Le nom du titulaire figure DANS les libellés bancaires eux-mêmes
+ * (`VIR SEPA DUPONT Jean charges`) : il est indissociable de la donnée métier et reste
+ * transmis. Expurger ici le bloc d'identité, pas les libellés (cf. story 17.1, note de portée).
+ */
+export function redactIdentity(text: string): string {
+  return text
+    // IBAN : deux lettres, deux chiffres, puis des groupes alphanumériques éventuellement
+    // espacés. Un libellé bancaire en majuscules ne prend pas cette forme.
+    .replace(/\b[A-Z]{2}\d{2}(?:[ \u00a0\u202f]?[A-Z0-9]{2,4}){3,8}\b/gu, '[IBAN]')
+    // BIC : ancré sur son intitulé, car huit majuscules isolées peuvent être un marchand.
+    .replace(/\b(BIC|SWIFT)\s*:?\s*[A-Z0-9]{8,11}\b/gu, '$1 : [BIC]')
+}
+
+/**
+ * Ne garde que les tableaux d'opérations d'un texte plat (NFR6, story 17.1).
+ *
+ * Repli du repli : quand la géométrie des colonnes n'est pas reconnue, on ne peut pas couper
+ * par ordonnée, mais l'intitulé du tableau reste un point d'ancrage textuel fiable.
+ *
+ * **Chaque** occurrence de l'ancre est traitée, pas seulement la première (revue du
+ * 2026-09-06) : un relevé multipage aplati réimprime son bloc d'identité en tête de chaque
+ * page, et ne couper qu'en tête de document laissait passer les blocs des pages 2 à N.
+ *
+ * Chaque tranche est en outre TRONQUÉE APRÈS SON DERNIER MONTANT. Sans cela, la tranche
+ * courant jusqu'à l'ancre suivante réavalait précisément le bloc d'identité qu'on cherche à
+ * écarter — il se trouve entre la fin d'un tableau et l'en-tête de la page suivante. Le
+ * dernier montant est une borne déterministe : au-delà, il n'y a plus d'opérations.
+ *
+ * Sans ancre, le texte est rendu inchangé — l'expurgation par motif reste la seule garde.
+ */
+export function cutBeforeOperations(flatText: string): string {
+  const anchor = /Date\s+op[ée]ration[^\n]{0,40}?Cr[ée]dit|D[ée]bit\s+Cr[ée]dit/gu
+  const starts = [...flatText.matchAll(anchor)].map(m => m.index)
+  if (starts.length === 0) return flatText
+
+  return starts
+    .map((start, i) => {
+      const slice = flatText.slice(start, starts[i + 1] ?? flatText.length)
+      const amounts = [...slice.matchAll(FR_AMOUNT_TOKEN)]
+      const last = amounts.at(-1)
+      return last ? slice.slice(0, last.index + last[0].length) : slice
+    })
+    .join('\n')
 }
 
 /** Un fragment de texte du PDF, avec sa position. `right` est le bord droit. */
@@ -103,15 +162,18 @@ async function extractPositionalText(pdfBuffer: Buffer): Promise<string | null> 
   // sans marqueur, et la règle du prompt renvoyait le modèle à la déduction — la panne
   // d'origine, sur une partie du relevé. La géométrie des colonnes ne change pas d'une page à
   // l'autre dans un même document : le report est sûr (revue du 2026-09-05).
-  const separators = pages.map(findDebitCreditSeparator)
-  const known = separators.find(s => s !== null) ?? null
-  if (known === null) return null
+  const headers = pages.map(findDebitCreditHeader)
+  const known = headers.find(h => h !== null) ?? null
+  if (!known) return null
 
-  let current = known
+  let current = known.separator
   return pages
     .map((items, index) => {
-      current = separators[index] ?? current
-      return renderRows(items, current)
+      const header = headers[index]
+      if (header) current = header.separator
+      // Coupe du bloc d'identité : voir `operationRows` (NFR6). Une page sans en-tête ne peut
+      // pas être coupée géométriquement — l'expurgation par motif prend alors le relais.
+      return renderRows(operationRows(items, header ?? null), current)
     })
     .join('\n')
 }
@@ -142,6 +204,18 @@ async function readPositionedPages(pdfBuffer: Buffer): Promise<PositionedItem[][
  * classait mal les montants les plus larges.
  */
 export function findDebitCreditSeparator(items: PositionedItem[]): number | null {
+  return findDebitCreditHeader(items)?.separator ?? null
+}
+
+/** L'en-tête de colonnes : son abscisse de séparation et l'ordonnée de sa ligne. */
+export interface ColumnHeader {
+  /** Abscisse qui sépare la colonne Débit de la colonne Crédit. */
+  separator: number
+  /** Ordonnée de la ligne d'en-tête. Tout ce qui est au-dessus n'est pas une opération. */
+  y: number
+}
+
+export function findDebitCreditHeader(items: PositionedItem[]): ColumnHeader | null {
   const center = (i: PositionedItem) => (i.x + i.right) / 2
   const debit = items.find(i => /^d[ée]bit$/iu.test(i.text))
   const credit = items.find(i => /^cr[ée]dit$/iu.test(i.text))
@@ -150,7 +224,23 @@ export function findDebitCreditSeparator(items: PositionedItem[]): number | null
   // chose qu'un tableau d'opérations et le seuil n'aurait aucun sens.
   if (Math.abs(debit.y - credit.y) > ROW_TOLERANCE) return null
   if (center(debit) >= center(credit)) return null
-  return (center(debit) + center(credit)) / 2
+  return { separator: (center(debit) + center(credit)) / 2, y: debit.y }
+}
+
+/**
+ * Garde les fragments situés sur la ligne d'en-tête ou EN DESSOUS (NFR6, story 17.1).
+ *
+ * **Pourquoi.** Le bloc situé au-dessus de l'en-tête de colonnes n'est pas un tableau
+ * d'opérations : c'est l'identité — IBAN, numéro de compte, nom et adresse du titulaire.
+ * Vérifié sur les relevés réels du 2026-09-06 : l'IBAN `FR76…` s'y trouve sur les cinq pages,
+ * toujours au-dessus de l'en-tête. Comme le texte transmis au fournisseur est construit ici,
+ * c'est ici que la coupe doit avoir lieu — pas plus loin.
+ *
+ * Les ordonnées PDF croissent vers le haut : « en dessous » signifie `y` inférieur.
+ */
+export function operationRows(items: PositionedItem[], header: ColumnHeader | null): PositionedItem[] {
+  if (header === null) return items
+  return items.filter(i => i.y <= header.y + ROW_TOLERANCE)
 }
 
 /** Regroupe les fragments par ligne (y décroissant), puis par abscisse croissante. */
@@ -227,37 +317,46 @@ interface BalancesResult {
  *               où <m2> est le solde, <m3> les frais (souvent 0,00).
  *
  * Fallbacks préservés pour formats Boursorama legacy / autres banques.
+ *
+ * **Correctif du 2026-09-06 (story 17.2).** Les captures étaient paresseuses et s'arrêtaient à
+ * la première espace : `SOLDE AU : 31/12/2024 2 817,46` rendait `"2"`, soit 2,00 € au lieu de
+ * 2 817,46 €. Le défaut ne se voyait pas parce qu'`unpdf` aplatit sans séparateur de milliers ;
+ * un changement de version l'aurait réveillé en silence, avec des écarts de plusieurs milliers
+ * d'euros. On ancre désormais sur l'intitulé, puis on lit des MONTANTS ENTIERS derrière lui.
  */
-function extractBalances(rawText: string): BalancesResult {
+export function extractBalances(rawText: string): BalancesResult {
   const opening
-    = matchFirstAmount(rawText, /SOLDE\s+AU\s*:\s*\d{2}\/\d{2}\/\d{4}\s+(-?[\d   .,]+?)\s/i)
-      ?? matchFirstAmount(rawText, /[Ss]olde\s+pr[ée]c[ée]dent[^\d-]{0,30}(-?[\d   .,]+?)\s/)
-      ?? matchFirstAmount(rawText, /[Aa]ncien\s+solde[^\d-]{0,30}(-?[\d   .,]+?)\s/)
+    = amountsAfter(rawText, /SOLDE\s+AU\s*:\s*\d{2}\/\d{2}\/\d{4}/i)[0]
+      ?? amountsAfter(rawText, /[Ss]olde\s+pr[ée]c[ée]dent/)[0]
+      ?? amountsAfter(rawText, /[Aa]ncien\s+solde/)[0]
 
+  // Le récapitulatif aplatit trois montants : total, SOLDE, frais. C'est le deuxième.
   const closing
-    = matchClosingBoursobank(rawText)
-      ?? matchFirstAmount(rawText, /[Nn]ouveau\s+solde[^\d-]{0,30}(-?[\d   .,]+?)\s/)
+    = amountsAfter(rawText, /Nouveau\s+solde\s+en\s+EUR\s*:\s*Montant\s+frais\s+bancaires\*?\s*:/i, 3)[1]
+      ?? amountsAfter(rawText, /[Nn]ouveau\s+solde/)[0]
 
-  return { openingCents: opening, closingCents: closing }
-}
-
-function matchFirstAmount(rawText: string, re: RegExp): Cents | null {
-  const m = rawText.match(re)
-  if (m && m[1]) return parseFrAmount(m[1])
-  return null
+  return { openingCents: opening ?? null, closingCents: closing ?? null }
 }
 
 /**
- * Boursobank aplatit le tableau récap en : "Nouveau solde en EUR : Montant frais bancaires* : <m1> <m2> <m3>".
- * Le solde de clôture est le **2e** des 3 montants (m1=total, m2=solde, m3=frais).
+ * Montants français lus juste après un intitulé.
+ *
+ * Le jeton accepte les séparateurs de milliers — espace ASCII, insécable, fine, ou point — ce
+ * qui lève le défaut de la story 17.2. L'ambiguïté résiduelle (`2 817,46` peut se lire « 2 »
+ * puis « 817,46 ») est tranchée en faveur du groupement : sur un relevé bancaire, tout montant
+ * porte ses deux décimales, et un montant isolé de « 3 » n'existe pas.
  */
-function matchClosingBoursobank(rawText: string): Cents | null {
-  // Charset inclut U+00A0 (NBSP) et U+202F (NNBSP) — séparateurs de milliers
-  // typographiques FR — mais PAS l'espace ASCII, qui sépare les 3 montants.
-  const re = /Nouveau\s+solde\s+en\s+EUR\s*:\s*Montant\s+frais\s+bancaires\*?\s*:\s*(-?[\d  .,]+)\s+(-?[\d  .,]+)\s+(-?[\d  .,]+)/i
-  const m = rawText.match(re)
-  if (m && m[2]) return parseFrAmount(m[2])
-  return null
+function amountsAfter(rawText: string, anchor: RegExp, count = 1): Array<Cents | null> {
+  const m = anchor.exec(rawText)
+  if (!m) return []
+  // Fenêtre courte : au-delà, on lirait des montants d'opérations, pas le solde annoncé.
+  // Les dates sont neutralisées d'abord : sur `Ancien solde 31.12.2024 1 500,00`, le jeton
+  // aurait lu `31.12` comme un montant de 31,12 € (revue du 2026-09-06).
+  const window = rawText
+    .slice(m.index + m[0].length, m.index + m[0].length + 60)
+    .replace(/\d{2}[./-]\d{2}[./-]\d{2,4}/gu, ' ')
+  const found = window.match(FR_AMOUNT_TOKEN) ?? []
+  return found.slice(0, count).map(parseFrAmount)
 }
 
 /**
