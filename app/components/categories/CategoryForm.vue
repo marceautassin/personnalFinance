@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MovementNature } from '~~/shared/types/movement-nature'
-import { MOVEMENT_NATURES } from '~~/shared/types/movement-nature'
+import { NATURE_OPTIONS } from '~~/shared/types/movement-nature'
 
 /**
  * Formulaire d'ajout, utilisé pour les rubriques comme pour les postes.
@@ -28,13 +28,6 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   add: [input: { label: string, nature: MovementNature }]
 }>()
-
-const NATURE_LABELS: Record<MovementNature, string> = {
-  income: 'Recette',
-  expense: 'Dépense',
-  internal_transfer: 'Mouvement interne',
-}
-const NATURE_OPTIONS = MOVEMENT_NATURES.map(n => [n, NATURE_LABELS[n]] as const)
 
 const labelInput = ref('')
 const nature = ref<MovementNature>('expense')

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CategoryItemWithCount } from '~/composables/useCategories'
 import type { MovementNature } from '~~/shared/types/movement-nature'
+import { NATURE_OPTIONS } from '~~/shared/types/movement-nature'
 import { isProtectedItem } from '~~/shared/constants/protected-categories'
 import { useInlineRename } from '~/composables/useInlineRename'
 
@@ -29,13 +30,6 @@ const {
   code => props.savingCode === code,
   (code, label) => emit('rename', code, label),
 )
-
-const NATURE_LABELS: Record<MovementNature, string> = {
-  income: 'Recette',
-  expense: 'Dépense',
-  internal_transfer: 'Mouvement interne',
-}
-const NATURE_OPTIONS = Object.entries(NATURE_LABELS) as [MovementNature, string][]
 
 /**
  * `aria-disabled` plutôt que `disabled` (recette du 2026-09-04) — deux raisons :

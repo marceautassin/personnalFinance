@@ -26,6 +26,23 @@ export const NATURE_EXPECTED_SIGN: Record<MovementNature, 1 | -1 | 0> = {
   internal_transfer: 0,
 }
 
+/**
+ * Libellés FR des natures — vocabulaire d'écran, à un seul endroit.
+ *
+ * Ils étaient recopiés dans trois composants ; le quatrième usage (filtres de la story 18.1)
+ * a franchi le seuil de la règle des trois occurrences. Le code reste anglais, l'affichage
+ * français : c'est la frontière posée par CLAUDE.md.
+ */
+export const NATURE_LABELS: Record<MovementNature, string> = {
+  income: 'Recette',
+  expense: 'Dépense',
+  internal_transfer: 'Mouvement interne',
+}
+
+/** Les natures et leur libellé, dans l'ordre déclaré — pour peupler un sélecteur. */
+export const NATURE_OPTIONS: ReadonlyArray<readonly [MovementNature, string]>
+  = MOVEMENT_NATURES.map(n => [n, NATURE_LABELS[n]] as const)
+
 export function isMovementNature(value: string): value is MovementNature {
   return (MOVEMENT_NATURES as readonly string[]).includes(value)
 }

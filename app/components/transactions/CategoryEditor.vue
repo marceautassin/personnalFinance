@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MovementNature } from '~~/shared/types/movement-nature'
+import { NATURE_LABELS } from '~~/shared/types/movement-nature'
 
 const props = defineProps<{
   currentCode: string
@@ -48,12 +48,6 @@ const current = computed(() => flatItems.value.find(i => i.code === props.curren
 const currentLabel = computed(() =>
   current.value ? `${current.value.groupLabel} · ${current.value.label}` : props.currentCode,
 )
-
-const NATURE_LABELS: Record<MovementNature, string> = {
-  income: 'Recette',
-  expense: 'Dépense',
-  internal_transfer: 'Mouvement interne',
-}
 
 /** Rubriques non vides seulement : une rubrique sans poste n'offre rien à choisir. */
 const groupsWithItems = computed(() => groups.value.filter(g => g.items.length > 0))
