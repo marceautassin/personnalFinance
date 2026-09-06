@@ -1644,3 +1644,68 @@ afin de répondre à « qu'est-ce qui a dérapé, et depuis quand » sans quitte
 **Note d'implémentation.** La répartition est orientée comme la valeur qu'elle détaille : sur
 une cible de dépense, la courbe monte quand on dépense, et ses postes doivent suivre le même
 sens. Mélanger les deux rendrait l'infobulle illisible.
+
+### Story 18.14: Voir si le patrimoine monte ou baisse
+
+> **Le manque de fond, formulé le 2026-09-06 :** « Je crois que je sais enfin ce qu'il me manque
+> comme info : est-ce que mon patrimoine financier a augmenté ou baissé. Ici il a clairement
+> baissé mais il faut que je puisse le voir clairement. Les mouvements de renflouement depuis
+> mon épargne sont un signe d'appauvrissement. Je consomme sans recharger. »
+>
+> **Le chiffre EXISTAIT déjà, mal nommé.** Recettes plus dépenses, mouvements internes exclus,
+> c'est très exactement la variation du patrimoine — les virements entre comptes de
+> l'utilisateur ne créent ni ne détruisent rien. L'app l'appelait « Trésorerie de la période »,
+> vocabulaire comptable dans lequel l'utilisateur ne reconnaissait pas sa question.
+>
+> **Et le solde bancaire masquait la baisse.** Sur l'historique réel : le compte courant perd
+> 2 646 € quand le patrimoine perd 10 412 €. L'écart, 7 766 €, est ce qui a été tiré de
+> l'épargne pour tenir le compte à flot.
+
+En tant qu'utilisateur,
+je veux voir si mon patrimoine monte ou baisse, et par quoi un déficit a été comblé,
+afin de savoir si je consomme mon épargne au lieu de la reconstituer.
+
+**Acceptance Criteria:**
+
+**Given** une période
+**When** ses indicateurs sont affichés
+**Then** la variation du patrimoine est nommée comme telle, et non en termes comptables
+
+**Given** une période déficitaire comblée par des mouvements internes
+**When** l'indicateur est affiché
+**Then** il dit de combien le déficit a été comblé depuis les autres comptes
+
+**Given** la courbe de patrimoine
+**When** elle est affichée
+**Then** elle cumule depuis le DÉBUT de l'historique, pas depuis le début de la fenêtre
+
+**Given** une fenêtre qui ne commence pas à l'origine de l'historique
+**When** la courbe est affichée
+**Then** le patrimoine acquis avant elle est annoncé, plutôt que laissé croire nul
+
+**Given** la courbe de patrimoine
+**When** elle est calculée
+**Then** les mouvements internes en sont exclus (NFR4)
+
+**Réserve à porter au PRD.** L'app ne voit que le compte courant. Un mouvement classé
+« interne » est SUPPOSÉ neutre pour le patrimoine ; s'il s'agissait d'une dépense mal rangée,
+le chiffre serait faux d'autant. Le classement de l'utilisateur décide.
+
+### Story 18.15: Transactions d'une tranche groupées par poste
+
+> **Demandée le 2026-09-06 :** « c'est top d'avoir les transactions sous les mois mais il
+> faudrait les classer ou regrouper par sous-catégories ».
+
+En tant qu'utilisateur,
+je veux que les lignes d'une tranche soient rassemblées sous leur poste,
+afin de voir la composition d'un mois sans trier cinquante lignes de tête.
+
+**Acceptance Criteria:**
+
+**Given** une tranche ouverte sur une cible qui est une rubrique
+**When** ses lignes s'affichent
+**Then** elles sont groupées par poste, chaque groupe annonçant son nombre de lignes et son total
+
+**Given** ces groupes
+**When** ils sont ordonnés
+**Then** le plus lourd vient en premier, au poids et non au signe

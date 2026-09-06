@@ -365,3 +365,10 @@ development_status:
   # donne la répartition par poste. Son tableau ne redirige PLUS vers l'analyse (18-12 amendée).
   # Ferme au passage la story 16-5, en backlog depuis l'epic 16.
   18-13-suivi-de-cible-au-coeur-de-l-evolution: review
+  # LE manque de fond, formule le 2026-09-06 : « est-ce que mon patrimoine a augmente ou
+  # baisse ». Le chiffre existait deja - recettes + depenses, internes exclus - sous le nom
+  # comptable « Tresorerie de la periode », dans lequel l'utilisateur ne reconnaissait pas sa
+  # question. Sur l'historique reel : compte courant -2 646 EUR, patrimoine -10 412 EUR.
+  # L'ecart, 7 766 EUR, est ce qui a ete tire de l'epargne pour tenir le compte a flot.
+  18-14-variation-du-patrimoine: review
+  18-15-transactions-groupees-par-poste: review
