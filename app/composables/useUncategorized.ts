@@ -1,6 +1,7 @@
 import { apiMutate } from '~/utils/api-mutate'
 import { useApiError } from '~/composables/useApiError'
 import { useInvalidate } from '~/composables/useInvalidate'
+import { usePeriodBounds } from '~/composables/usePeriodBounds'
 import type { RangeTransaction } from '~/composables/useItemTransactions'
 import { FALLBACK_ITEM_CODE } from '~~/shared/constants/default-referential'
 import { cents, type Cents } from '~~/shared/types/money'
@@ -41,11 +42,7 @@ export function useUncategorized() {
   const { mapError, mapMutationError } = useApiError()
   const invalidate = useInvalidate()
 
-  const bounds = useFetch<{ firstDate: string | null, lastDate: string | null }>('/api/periods', {
-    key: 'periods',
-    default: () => ({ firstDate: null, lastDate: null }),
-    server: false,
-  })
+  const bounds = usePeriodBounds()
 
   const range = computed(() => ({
     from: bounds.data.value.firstDate ?? '1970-01-01',
