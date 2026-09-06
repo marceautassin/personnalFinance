@@ -271,11 +271,29 @@ export interface SeriesTarget {
   code: string
 }
 
+/** Part d'un poste dans la tranche d'une rubrique suivie. */
+export interface CategorySeriesBreakdown {
+  itemCode: string
+  label: string
+  totalCents: Cents
+}
+
 export interface CategorySeriesPoint {
   bucket: string
   label: string
   totalCents: Cents
   transactionCount: number
+  /**
+   * Répartition par poste, sur une cible qui est une RUBRIQUE (demande du 2026-09-06).
+   *
+   * Une courbe d'Alimentation qui monte ne dit pas si ce sont les courses ou les restaurants :
+   * la même question que la répartition résout sur une période, posée sur une trajectoire.
+   * Vide sur une cible qui est déjà un poste — il n'y a rien à répartir.
+   *
+   * Triée par poids décroissant dans le sens du nœud : le poste qui explique la tranche vient
+   * en premier.
+   */
+  breakdown: CategorySeriesBreakdown[]
 }
 
 /**
@@ -303,6 +321,9 @@ export function categorySeries(
   }
 
   const totals = new Map<string, { cents: number, count: number }>()
+  /** Répartition par poste, par tranche. Peuplée uniquement sur une cible de type rubrique. */
+  const byItem = new Map<string, Map<string, number>>()
+
   for (const tx of transactions) {
     if (!matches(tx.categoryItemCode)) continue
     const key = bucketOf(tx.transactionDate, granularity)
@@ -310,14 +331,33 @@ export function categorySeries(
     entry.cents += tx.amountCents
     entry.count++
     totals.set(key, entry)
+
+    if (target.kind === 'group') {
+      const items = byItem.get(key) ?? new Map<string, number>()
+      items.set(tx.categoryItemCode, (items.get(tx.categoryItemCode) ?? 0) + tx.amountCents)
+      byItem.set(key, items)
+    }
   }
 
-  return buckets.map(bucket => ({
-    bucket,
-    label: bucketLabel(bucket, granularity),
-    totalCents: cents(totals.get(bucket)?.cents ?? 0),
-    transactionCount: totals.get(bucket)?.count ?? 0,
-  }))
+  return buckets.map((bucket) => {
+    const items = byItem.get(bucket)
+    return {
+      bucket,
+      label: bucketLabel(bucket, granularity),
+      totalCents: cents(totals.get(bucket)?.cents ?? 0),
+      transactionCount: totals.get(bucket)?.count ?? 0,
+      // Tri par MAGNITUDE : sur une rubrique de dépense les montants sont négatifs, et un tri
+      // décroissant brut remonterait le poste le plus faible. On classe par poids, sans
+      // toucher au signe (D28).
+      breakdown: [...(items ?? new Map())]
+        .map(([itemCode, value]) => ({
+          itemCode,
+          label: byCode.get(itemCode)?.label ?? itemCode,
+          totalCents: cents(value),
+        }))
+        .sort((a, b) => Math.abs(b.totalCents) - Math.abs(a.totalCents)),
+    }
+  })
 }
 
 /**

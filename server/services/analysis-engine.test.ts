@@ -464,6 +464,53 @@ describe('categorySeries', () => {
    * Une tranche sans mouvement vaut zéro, elle n'est pas omise : une série trouée se lirait
    * comme une accélération, et la disparition d'un poste est précisément une information.
    */
+  /**
+   * Répartition par poste — demande du 2026-09-06. Une courbe d'Alimentation qui monte ne dit
+   * pas si ce sont les courses ou les restaurants ; c'est la question que résout la
+   * répartition sur une période, posée ici sur une trajectoire.
+   */
+  describe('répartition par poste', () => {
+    it('détaille les postes d\'une rubrique, du plus lourd au plus léger', () => {
+      const janvier = run({ kind: 'group', code: 'alimentation' })[0]!
+
+      expect(janvier.breakdown.map(b => [b.itemCode, b.totalCents])).toEqual([
+        ['alimentation-courses', -30_000],
+        ['alimentation-restaurant', -10_000],
+      ])
+    })
+
+    it('classe par POIDS, sans se laisser tromper par le signe', () => {
+      const s = categorySeries(
+        [tx('2026-01-10', -30_000, 'alimentation-courses'), tx('2026-01-15', 5_000, 'alimentation-restaurant')],
+        REF, 'month', { kind: 'group', code: 'alimentation' }, ['2026-01'],
+      )
+      // Un tri décroissant brut aurait remonté +5 000 devant −30 000.
+      expect(s[0]!.breakdown.map(b => b.itemCode)).toEqual([
+        'alimentation-courses',
+        'alimentation-restaurant',
+      ])
+    })
+
+    it('somme à la valeur du point', () => {
+      for (const point of run({ kind: 'group', code: 'alimentation' })) {
+        const somme = point.breakdown.reduce((n, b) => n + b.totalCents, 0)
+        expect(somme).toBe(point.totalCents)
+      }
+    })
+
+    /** Cas limite — une cible qui EST un poste n'a rien à répartir. */
+    it('ne répartit rien sur une cible qui est déjà un poste', () => {
+      for (const point of run({ kind: 'item', code: 'alimentation-courses' })) {
+        expect(point.breakdown).toEqual([])
+      }
+    })
+
+    /** Cas limite — une tranche sans mouvement a une répartition vide, pas absente. */
+    it('rend une répartition vide sur une tranche sans mouvement', () => {
+      expect(run({ kind: 'group', code: 'alimentation' })[1]!.breakdown).toEqual([])
+    })
+  })
+
   it('rend zéro sur une tranche sans mouvement, sans la supprimer', () => {
     const s = run({ kind: 'item', code: 'alimentation-courses' })
     expect(s).toHaveLength(3)
