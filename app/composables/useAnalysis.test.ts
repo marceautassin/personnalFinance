@@ -6,7 +6,10 @@ vi.stubGlobal('computed', computed)
 vi.stubGlobal('watch', watch)
 
 /** Données de `/api/periods`, pilotées par le test pour rejouer un refetch. */
-const periodsData = ref<{ lastDate: string | null }>({ lastDate: null })
+const periodsData = ref<{ firstDate: string | null, lastDate: string | null }>({
+  firstDate: null,
+  lastDate: null,
+})
 
 vi.stubGlobal('useFetch', (url: string) => {
   if (url === '/api/periods') return { data: periodsData }
@@ -16,7 +19,7 @@ vi.stubGlobal('useFetch', (url: string) => {
 const { useAnalysis } = await import('./useAnalysis')
 
 beforeEach(() => {
-  periodsData.value = { lastDate: null }
+  periodsData.value = { firstDate: null, lastDate: null }
 })
 
 /**
@@ -31,7 +34,7 @@ describe('useAnalysis — repli sur la dernière période', () => {
 
   it('ouvre sur la dernière période connue quand l\'URL n\'en porte pas', async () => {
     const analysis = useAnalysis(undefined, 'month')
-    periodsData.value = { lastDate: '2026-08-31' }
+    periodsData.value = { firstDate: '2025-01-02', lastDate: '2026-08-31' }
     await flush()
 
     expect(analysis.bucket.value).toBe('2026-08')
@@ -39,14 +42,40 @@ describe('useAnalysis — repli sur la dernière période', () => {
 
   it('NE revient PAS sur la dernière période quand /api/periods est refetché', async () => {
     const analysis = useAnalysis(undefined, 'month')
-    periodsData.value = { lastDate: '2026-08-31' }
+    periodsData.value = { firstDate: '2025-01-02', lastDate: '2026-08-31' }
     await flush()
 
     // L'utilisateur remonte à juin, puis une correction invalide les vues.
     analysis.shift(-2)
     expect(analysis.bucket.value).toBe('2026-06')
 
-    periodsData.value = { lastDate: '2026-08-31' }
+    periodsData.value = { firstDate: '2025-01-02', lastDate: '2026-08-31' }
+    await flush()
+
+    expect(analysis.bucket.value).toBe('2026-06')
+  })
+
+  /**
+   * Cas du SECOND passage sur la page : `/api/periods` a déjà sa donnée en cache, donc le
+   * callback `immediate` part pendant l'appel à `watch()`. Référencer le handle du watcher à
+   * cet instant levait une `ReferenceError` et cassait la navigation (recette du 2026-09-06).
+   */
+  it('se cale sans erreur quand la période est déjà chargée au montage', async () => {
+    periodsData.value = { firstDate: '2025-01-02', lastDate: '2026-08-31' }
+
+    const analysis = useAnalysis(undefined, 'month')
+    await flush()
+
+    expect(analysis.bucket.value).toBe('2026-08')
+  })
+
+  it('ne se ré-applique pas non plus après un montage sur donnée déjà chargée', async () => {
+    periodsData.value = { firstDate: '2025-01-02', lastDate: '2026-08-31' }
+    const analysis = useAnalysis(undefined, 'month')
+    await flush()
+
+    analysis.shift(-2)
+    periodsData.value = { firstDate: '2025-01-02', lastDate: '2026-08-31' }
     await flush()
 
     expect(analysis.bucket.value).toBe('2026-06')
@@ -54,7 +83,7 @@ describe('useAnalysis — repli sur la dernière période', () => {
 
   it('ignore le repli quand l\'URL porte déjà une période', async () => {
     const analysis = useAnalysis('2026-03', 'month')
-    periodsData.value = { lastDate: '2026-08-31' }
+    periodsData.value = { firstDate: '2025-01-02', lastDate: '2026-08-31' }
     await flush()
 
     expect(analysis.bucket.value).toBe('2026-03')

@@ -1,6 +1,7 @@
 import type { EvolutionResponse } from '~~/server/api/evolution.get'
 import type { Granularity } from '~~/shared/types/granularity'
 import { bucketOf, shiftBucket, bucketLabel } from '~~/shared/types/granularity'
+import { usePeriodBounds } from '~/composables/usePeriodBounds'
 
 export type { EvolutionResponse }
 
@@ -29,15 +30,16 @@ export function useEvolution(initialBucket?: string, initialGranularity: Granula
    * période résolue, elle appartient à l'utilisateur.
    */
   if (!initialBucket) {
-    const periods = useFetch<{ lastDate: string | null }>('/api/periods', {
-      key: 'periods',
-      server: false,
-      default: () => ({ lastDate: null }),
-    })
-    const stop = watch(periods.data, (value) => {
-      if (!value?.lastDate) return
+    const periods = usePeriodBounds()
+    // Un drapeau, et non le handle du watcher : avec `immediate: true`, le callback part
+    // pendant l'appel à `watch()`, donc AVANT que la constante qui le reçoit ne soit
+    // initialisée. Y toucher lève une `ReferenceError` — ce qui arrivait dès le second passage
+    // sur la page, quand `/api/periods` avait déjà sa donnée en cache (recette du 2026-09-06).
+    let resolved = false
+    watch(periods.data, (value) => {
+      if (resolved || !value?.lastDate) return
+      resolved = true
       bucket.value = bucketOf(value.lastDate, granularity.value)
-      stop()
     }, { immediate: true })
   }
 
