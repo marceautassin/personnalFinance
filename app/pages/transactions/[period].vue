@@ -6,10 +6,22 @@ import { ratio, formatRatio } from '~~/shared/types/ratio'
 import { cents, formatEuros } from '~~/shared/types/money'
 import { type MovementNature, NATURE_OPTIONS } from '~~/shared/types/movement-nature'
 import { flattenReferential } from '~/composables/useCategories'
+import {
+  GRANULARITIES,
+  bucketLabel,
+  bucketOf,
+  bucketBounds,
+  shiftBucket,
+  type Granularity,
+} from '~~/shared/types/granularity'
 
 // Validation du paramètre dynamique : Nuxt rejoue la guard à chaque navigation
 // (re-mount ou réutilisation du composant), évitant le bypass d'un throw top-level setup.
-const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+//
+// Trois formes acceptées depuis le 2026-09-06 — `2026`, `2026-T3`, `2026-08` — pour que la
+// page couvre l'année autant que le mois. C'est la FORME du paramètre qui porte l'échelle :
+// pas de second paramètre à tenir cohérent avec le premier.
+const PERIOD_RE = /^\d{4}(?:-(?:0[1-9]|1[0-2])|-T[1-4])?$/
 definePageMeta({
   validate: route => typeof route.params.period === 'string' && PERIOD_RE.test(route.params.period),
 })
@@ -18,9 +30,17 @@ const route = useRoute()
 const router = useRouter()
 
 const period = computed(() => route.params.period as string)
+
+/** L'échelle se lit sur la forme de la tranche : `2026` une année, `2026-T3` un trimestre. */
+const granularity = computed<Granularity>(() => {
+  if (period.value.length === 4) return 'year'
+  return period.value.includes('-T') ? 'quarter' : 'month'
+})
+
 const mutationError = ref<string | null>(null)
 
-const { data, pending, error, mutateCategory, ruleSuggestion, dismissSuggestion } = useTransactions(period)
+const { data, pending, error, mutateCategory, ruleSuggestion, dismissSuggestion }
+  = useTransactions(period, granularity)
 const { addRule, previewRule, applyRuleToHistory } = useRules()
 const { data: groups } = useCategories()
 const groupsWithItems = computed(() => groups.value.filter(g => g.items.length > 0))
@@ -129,18 +149,42 @@ async function onAcceptSuggestion(applyToHistory = false) {
   suggestionReach.value = null
 }
 
-const monthFormatter = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
-const monthLabel = computed(() => {
-  const [y, m] = period.value.split('-').map(Number)
-  const label = monthFormatter.format(new Date(y!, m! - 1, 1))
+const periodLabel = computed(() => {
+  const label = bucketLabel(period.value, granularity.value)
   return label.charAt(0).toUpperCase() + label.slice(1)
 })
 
+/** Nom des unités, pour que le pas et le sélecteur disent la même chose que ce qu'ils font. */
+const GRANULARITY_LABELS: Record<Granularity, string> = {
+  month: 'Mois',
+  quarter: 'Trimestre',
+  year: 'Année',
+}
+/**
+ * Libellés du pas, écrits en toutes lettres plutôt que composés.
+ *
+ * « Année » est féminin : concaténer « précédent » donnait « année précédent » dans le nom
+ * accessible, lu tel quel par un lecteur d'écran.
+ */
+const STEP_LABELS: Record<Granularity, { previous: string, next: string }> = {
+  month: { previous: 'Mois précédent', next: 'Mois suivant' },
+  quarter: { previous: 'Trimestre précédent', next: 'Trimestre suivant' },
+  year: { previous: 'Année précédente', next: 'Année suivante' },
+}
+const stepLabels = computed(() => STEP_LABELS[granularity.value])
+
 function navigate(delta: number) {
-  const [y, m] = period.value.split('-').map(Number)
-  const d = new Date(y!, m! - 1 + delta, 1)
-  const newPeriod = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  router.push(`/transactions/${newPeriod}`)
+  router.push(`/transactions/${shiftBucket(period.value, granularity.value, delta)}`)
+}
+
+/**
+ * Change d'échelle en RESTANT sur la même date — même règle que l'écran d'analyse.
+ *
+ * Passer d'août 2026 à l'année doit donner 2026, et non la première tranche de l'historique.
+ * On repart de la borne de début, seule information commune aux deux découpages.
+ */
+function setGranularity(next: Granularity) {
+  router.push(`/transactions/${bucketOf(bucketBounds(period.value, granularity.value).from, next)}`)
 }
 
 async function onCategoryChange(transactionId: number, categoryItemCode: string) {
@@ -150,8 +194,8 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
 }
 
 /**
- * Filtre par libellé — la liste fait une centaine de lignes par mois, et rien ne permettait
- * d'en atteindre une sans la dérouler entièrement (epic 16).
+ * Filtre par libellé — la liste fait une centaine de lignes par mois et plus de mille par
+ * année, et rien ne permettait d'en atteindre une sans la dérouler entièrement (epic 16).
  *
  * Le filtrage est CLIENT : les lignes du mois sont déjà toutes chargées, un aller-retour
  * serveur par frappe n'apporterait rien et ferait clignoter la liste.
@@ -202,7 +246,7 @@ function clearFilters() {
 }
 
 /**
- * Compteurs BORNÉS AU MOIS affiché — la barre d'application porte, elle, les mêmes grandeurs
+ * Compteurs BORNÉS À LA PÉRIODE affichée — la barre d'application porte, elle, les mêmes grandeurs
  * sur toute la base. Chaque libellé dit sa portée : « 1,1 % sur ce relevé » à côté de
  * « 0,2 % » se lirait autrement comme une contradiction.
  */
@@ -223,21 +267,38 @@ const periodCorrectionRate = computed(() =>
         <button
           type="button"
           class="stepper__btn"
-          aria-label="Mois précédent"
+          :aria-label="stepLabels.previous"
           @click="navigate(-1)"
         >
           ‹
         </button>
-        <strong class="stepper__label tx-page__title">{{ monthLabel }}</strong>
+        <strong class="stepper__label tx-page__title">{{ periodLabel }}</strong>
         <button
           type="button"
           class="stepper__btn"
-          aria-label="Mois suivant"
+          :aria-label="stepLabels.next"
           @click="navigate(1)"
         >
           ›
         </button>
       </div>
+
+      <label class="tx-page__scale">
+        <span class="tx-page__filter-label">Échelle</span>
+        <select
+          class="input input--sm"
+          :value="granularity"
+          @change="setGranularity(($event.target as HTMLSelectElement).value as Granularity)"
+        >
+          <option
+            v-for="g in GRANULARITIES"
+            :key="g"
+            :value="g"
+          >
+            {{ GRANULARITY_LABELS[g] }}
+          </option>
+        </select>
+      </label>
 
       <ReliabilityBadge
         v-if="data.reliability"
@@ -246,7 +307,7 @@ const periodCorrectionRate = computed(() =>
 
       <div class="page-head__meta">
         <span><strong>{{ data.transactions.length }}</strong> lignes</span>
-        <span><strong>{{ formatRatio(periodCorrectionRate) }}</strong> corrigé sur ce relevé</span>
+        <span><strong>{{ formatRatio(periodCorrectionRate) }}</strong> corrigé sur la période</span>
       </div>
     </header>
 
@@ -257,7 +318,7 @@ const periodCorrectionRate = computed(() =>
     >
       {{
         data.reliability === 'gap_accepted'
-          ? 'Un écart a été assumé sur ce mois.'
+          ? 'Un écart a été assumé sur cette période.'
           : 'La réconciliation laisse un écart, encore inexaminé.'
       }}
     </div>
@@ -477,6 +538,7 @@ const periodCorrectionRate = computed(() =>
 .tx-page { display: flex; flex-direction: column; gap: var(--space-3); }
 .tx-page__title { min-width: 10rem; }
 .tx-page__pending { color: var(--color-text-muted); }
+.tx-page__scale { display: flex; align-items: center; gap: var(--space-2); }
 
 .tx-page__tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .tx-page__filter { display: flex; align-items: center; gap: var(--space-2); }

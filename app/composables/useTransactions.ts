@@ -3,6 +3,7 @@ import type { Cents } from '~~/shared/types/money'
 import type { MutationOutcome } from './useApiError'
 import { useInvalidate } from './useInvalidate'
 import type { StatementReliability } from '~~/shared/types/statement-reliability'
+import { bucketBounds, type Granularity } from '~~/shared/types/granularity'
 
 /** Règle que le serveur propose après une correction manuelle (FR43). */
 export interface RuleSuggestion {
@@ -28,15 +29,21 @@ export interface TransactionsResponse {
 const EMPTY_RESPONSE: TransactionsResponse = { transactions: [], reliability: null }
 
 /**
- * Liste des transactions d'un mois (`YYYY-MM`) + reliability agrégée du/des statement(s).
- * `month` est un `Ref` réactif : changer sa valeur déclenche un refetch via la `key` calculée.
+ * Liste des transactions d'une TRANCHE + fiabilité agrégée des relevés qui la couvrent.
+ *
+ * La tranche est une clé de `granularity` — `2026`, `2026-T3` ou `2026-08` — et non plus un
+ * mois seul (demande du 2026-09-06 : « toutes les transactions de l'année, pas seulement du
+ * mois »). Les bornes en sont dérivées, comme sur l'écran d'analyse : c'est la tranche que
+ * l'utilisateur manipule, les bornes sont ce qu'on envoie à l'API.
+ *
+ * `bucket` et `granularity` sont réactifs : les changer déclenche un refetch via la `key`.
  * Pas de cache Pinia — la source de vérité est l'API (cf. CLAUDE.md anti-patterns).
  */
-
-export function useTransactions(month: Ref<string>) {
-  const key = computed(() => `transactions-${month.value}`)
+export function useTransactions(bucket: Ref<string>, granularity: Ref<Granularity>) {
+  const bounds = computed(() => bucketBounds(bucket.value, granularity.value))
+  const key = computed(() => `transactions-${bucket.value}`)
   const fetchState = useFetch<TransactionsResponse>('/api/transactions', {
-    query: { month },
+    query: computed(() => ({ from: bounds.value.from, to: bounds.value.to })),
     key,
     default: () => EMPTY_RESPONSE,
     server: false,
