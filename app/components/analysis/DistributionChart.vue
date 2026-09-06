@@ -22,6 +22,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   expandItem: [itemCode: string]
+  collapseItem: [itemCode: string]
   recategorize: [transaction: RangeTransaction, categoryItemCode: string]
 }>()
 
@@ -76,6 +77,9 @@ function toggleItem(code: string) {
   const next = new Set(expandedItems.value)
   if (next.has(code)) {
     next.delete(code)
+    // Le parent vide le cache du poste : le rouvrir redemandera des lignes fraîches, plutôt
+    // que d'en réafficher d'anciennes (story 17.6).
+    emit('collapseItem', code)
   }
   else {
     next.add(code)

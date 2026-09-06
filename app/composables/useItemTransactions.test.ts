@@ -91,15 +91,88 @@ describe('useItemTransactions', () => {
     expect(s.byItem.value['alimentation-courses']).toHaveLength(1)
   })
 
-  /** Changer de période vide le cache : des lignes d'un autre mois sous un total qui a changé. */
-  it('oublie tout au changement de période', async () => {
-    fetchMock.mockResolvedValueOnce({ transactions: [tx(1)] })
-    const s = useItemTransactions()
-    await s.load('alimentation-courses', RANGE)
-    s.reset()
+  /**
+   * Story 17.6 — changer de période RECHARGE les postes ouverts.
+   *
+   * Les vider sans les recharger laissait un poste déplié afficher « 0 ligne(s), total
+   * 0,00 € » sous un montant non nul : le mensonge exact que NFR2 interdit.
+   */
+  describe('changement de période (story 17.6)', () => {
+    const NEXT = { from: '2026-04-01', to: '2026-04-30' }
 
-    expect(s.byItem.value).toEqual({})
-    expect(s.failed.value).toEqual([])
+    it('recharge les postes ouverts sur la nouvelle période', async () => {
+      fetchMock.mockResolvedValueOnce({ transactions: [tx(1)] })
+      const s = useItemTransactions()
+      await s.load('alimentation-courses', RANGE)
+
+      fetchMock.mockResolvedValueOnce({ transactions: [tx(42)] })
+      await s.setRange(NEXT)
+
+      expect(s.byItem.value['alimentation-courses']!.map(t => t.id)).toEqual([42])
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/transactions', {
+        query: { from: NEXT.from, to: NEXT.to, item: 'alimentation-courses' },
+      })
+    })
+
+    it('ne recharge rien quand aucun poste n\'est ouvert', async () => {
+      const s = useItemTransactions()
+      await s.setRange(NEXT)
+
+      expect(s.byItem.value).toEqual({})
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('ignore la réponse d\'un chargement lancé sur la période précédente', async () => {
+      const s = useItemTransactions()
+      let releaseStale: (v: unknown) => void = () => {}
+      fetchMock.mockReturnValueOnce(new Promise((resolve) => {
+        releaseStale = resolve
+      }))
+      const stale = s.load('alimentation-courses', RANGE)
+
+      // La période change AVANT que la réponse de mars n'arrive.
+      await s.setRange(NEXT)
+      releaseStale({ transactions: [tx(1)] })
+      await stale
+
+      expect(s.byItem.value).toEqual({})
+      expect(s.loading.value).toEqual([])
+    })
+
+    /**
+     * Défaut trouvé en revue le 2026-09-06 : les postes à recharger étaient déduits de
+     * `byItem`, que `setRange` vide AVANT l'arrivée des réponses. Un second changement de
+     * période lisait donc un cache vide et ne rechargeait plus rien — le poste restait déplié
+     * sur « 0 ligne(s) », définitivement. Deux clics rapides sur le stepper suffisaient.
+     */
+    it('recharge encore après DEUX changements de période rapprochés', async () => {
+      fetchMock.mockResolvedValueOnce({ transactions: [tx(1)] })
+      const s = useItemTransactions()
+      await s.load('alimentation-courses', RANGE)
+
+      // La réponse d'avril reste en vol quand mai arrive.
+      fetchMock.mockReturnValueOnce(new Promise(() => {}))
+      const toApril = s.setRange(NEXT)
+
+      fetchMock.mockResolvedValueOnce({ transactions: [tx(77)] })
+      await s.setRange({ from: '2026-05-01', to: '2026-05-31' })
+
+      expect(s.byItem.value['alimentation-courses']!.map(t => t.id)).toEqual([77])
+      void toApril
+    })
+
+    it('oublie un poste replié, pour que sa réouverture redemande des lignes', async () => {
+      fetchMock.mockResolvedValueOnce({ transactions: [tx(1)] })
+      const s = useItemTransactions()
+      await s.load('alimentation-courses', RANGE)
+      s.forget('alimentation-courses')
+
+      expect(s.byItem.value).toEqual({})
+
+      fetchMock.mockResolvedValueOnce({ transactions: [tx(2)] })
+      await s.load('alimentation-courses', RANGE)
+      expect(s.byItem.value['alimentation-courses']!.map(t => t.id)).toEqual([2])
+    })
   })
 })
 
@@ -111,7 +184,13 @@ describe('useItemTransactions', () => {
  * l'écran des totaux recalculés par le serveur — exactement ce que NFR2 interdit.
  */
 describe('useItemTransactions — reclassement', () => {
-  it('retire la ligne de son ancien poste et oublie le nouveau', async () => {
+  /**
+   * Story 17.6 — le poste d'ARRIVÉE est rechargé, pas seulement oublié.
+   *
+   * L'oublier laissait l'utilisateur devant « 0 ligne(s) » sous un total qui venait justement
+   * d'augmenter de la ligne déplacée.
+   */
+  it('retire la ligne de son ancien poste et recharge le nouveau', async () => {
     fetchMock.mockResolvedValueOnce({ transactions: [tx(1), tx(2)] })
     fetchMock.mockResolvedValueOnce({ transactions: [tx(9)] })
     const s = useItemTransactions()
@@ -119,12 +198,26 @@ describe('useItemTransactions — reclassement', () => {
     await s.load('transport-carburant', RANGE)
 
     fetchMock.mockResolvedValueOnce({})
+    fetchMock.mockResolvedValueOnce({ transactions: [tx(9), tx(1)] })
     const outcome = await s.recategorize(tx(1), 'transport-carburant')
 
     expect(outcome).toEqual({ ok: true })
     expect(s.byItem.value['alimentation-courses']!.map(t => t.id)).toEqual([2])
-    expect(s.byItem.value).not.toHaveProperty('transport-carburant')
+    expect(s.byItem.value['transport-carburant']!.map(t => t.id)).toEqual([9, 1])
     expect(refreshMock).toHaveBeenCalled()
+  })
+
+  /** Un poste d'arrivée FERMÉ n'est pas chargé pour rien : il le sera à son ouverture. */
+  it('ne charge pas un poste d\'arrivée qui n\'était pas ouvert', async () => {
+    fetchMock.mockResolvedValueOnce({ transactions: [tx(1)] })
+    const s = useItemTransactions()
+    await s.load('alimentation-courses', RANGE)
+
+    fetchMock.mockResolvedValueOnce({})
+    await s.recategorize(tx(1), 'transport-carburant')
+
+    expect(s.byItem.value).not.toHaveProperty('transport-carburant')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   /** Les postes non concernés ne bougent pas : un reclassement n'invalide pas tout le cache. */

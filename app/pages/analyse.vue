@@ -74,6 +74,11 @@ function onExpandItem(itemCode: string) {
   void itemTransactions.load(itemCode, bounds.value)
 }
 
+/** Replier un poste le sort du cache : le rouvrir redemandera des lignes fraîches. */
+function onCollapseItem(itemCode: string) {
+  itemTransactions.forget(itemCode)
+}
+
 /** Dernier échec de reclassement — une correction qui échoue en silence est un mensonge. */
 const recategorizeError = ref<string | null>(null)
 
@@ -82,9 +87,9 @@ async function onRecategorize(transaction: RangeTransaction, categoryItemCode: s
   recategorizeError.value = 'error' in outcome ? outcome.error : null
 }
 
-// Changer de période vide le cache : des lignes d'un autre mois affichées sous un total qui a
-// changé seraient pire que pas de lignes du tout.
-watch(bounds, () => itemTransactions.reset())
+// Changer de période vide le cache ET recharge les postes restés ouverts (story 17.6). Les
+// vider sans les recharger affichait « 0 ligne(s), total 0,00 € » sous un montant non nul.
+watch(bounds, newBounds => void itemTransactions.setRange(newBounds))
 </script>
 
 <template>
@@ -217,6 +222,7 @@ watch(bounds, () => itemTransactions.reset())
           :failed-items="itemTransactions.failed.value"
           title="Dépenses"
           @expand-item="onExpandItem"
+          @collapse-item="onCollapseItem"
           @recategorize="onRecategorize"
         />
         <DistributionChart
@@ -227,6 +233,7 @@ watch(bounds, () => itemTransactions.reset())
           :failed-items="itemTransactions.failed.value"
           title="Recettes"
           @expand-item="onExpandItem"
+          @collapse-item="onCollapseItem"
           @recategorize="onRecategorize"
         />
       </div>
@@ -243,6 +250,7 @@ watch(bounds, () => itemTransactions.reset())
         :failed-items="itemTransactions.failed.value"
         title="Mouvements internes"
         @expand-item="onExpandItem"
+        @collapse-item="onCollapseItem"
         @recategorize="onRecategorize"
       />
     </template>
