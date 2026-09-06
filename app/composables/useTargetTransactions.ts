@@ -1,4 +1,5 @@
 import type { RangeTransaction } from '~/composables/useItemTransactions'
+import { cents, type Cents } from '~~/shared/types/money'
 
 /**
  * Lignes d'une tranche pour la cible suivie, sur `/evolution` (story 16.5).
@@ -11,6 +12,13 @@ import type { RangeTransaction } from '~/composables/useItemTransactions'
  * Une seule tranche est ouverte à la fois : ici on inspecte un point de la courbe, on ne
  * compare pas plusieurs tranches entre elles — c'est le rôle du tableau au-dessus.
  */
+/** Les lignes d'une tranche, rassemblées sous leur poste. */
+export interface TargetTransactionGroup {
+  itemCode: string
+  transactions: RangeTransaction[]
+  totalCents: Cents
+}
+
 export function useTargetTransactions() {
   const openBucket = ref<string | null>(null)
   const transactions = ref<RangeTransaction[]>([])
@@ -70,5 +78,29 @@ export function useTargetTransactions() {
     failed.value = false
   }
 
-  return { openBucket, transactions, loading, failed, toggle, reset }
+  /**
+   * Lignes regroupées par POSTE, du plus lourd au plus léger (demande du 2026-09-06).
+   *
+   * Sur une rubrique comme Alimentation, une tranche peut porter cinquante lignes : les lire à
+   * plat oblige à trier des courses, des restaurants et du fast-food de tête, alors que c'est
+   * justement leur répartition qu'on est venu chercher. Le tri suit la MAGNITUDE : sur des
+   * dépenses, toutes négatives, un tri décroissant brut remonterait le poste le plus faible.
+   */
+  const groups = computed<TargetTransactionGroup[]>(() => {
+    const byItem = new Map<string, RangeTransaction[]>()
+    for (const tx of transactions.value) {
+      const bucket = byItem.get(tx.categoryItemCode)
+      if (bucket) bucket.push(tx)
+      else byItem.set(tx.categoryItemCode, [tx])
+    }
+    return [...byItem.entries()]
+      .map(([itemCode, txs]) => ({
+        itemCode,
+        transactions: txs,
+        totalCents: cents(txs.reduce((sum, t) => sum + t.amountCents, 0)),
+      }))
+      .sort((a, b) => Math.abs(b.totalCents) - Math.abs(a.totalCents))
+  })
+
+  return { openBucket, transactions, groups, loading, failed, toggle, reset }
 }
