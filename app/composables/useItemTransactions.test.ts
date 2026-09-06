@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 import { ref } from 'vue'
+import { cents } from '~~/shared/types/money'
 
 const fetchMock = vi.fn()
 vi.stubGlobal('$fetch', fetchMock)
@@ -21,7 +22,7 @@ const tx = (id: number) => ({
   statementHash: 'h',
   transactionDate: '2026-03-05',
   label: `op-${id}`,
-  amountCents: -100,
+  amountCents: cents(-100),
   categoryItemCode: 'alimentation-courses',
   isManual: false,
 })

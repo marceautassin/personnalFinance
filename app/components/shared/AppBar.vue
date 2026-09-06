@@ -37,6 +37,7 @@ const items = computed<NavItem[]>(() => [
   { label: 'Transactions', href: `/transactions/${latestPeriod.value}`, match: '/transactions' },
   { label: 'Import', href: '/import', match: '/import' },
   { label: 'Catégories', href: '/categories', match: '/categories' },
+  { label: 'À ranger', href: '/a-ranger', match: '/a-ranger' },
   { label: 'Règles', href: '/regles', match: '/regles' },
 ])
 

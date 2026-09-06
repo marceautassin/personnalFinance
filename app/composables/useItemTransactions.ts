@@ -1,3 +1,4 @@
+import type { Cents } from '~~/shared/types/money'
 import { apiMutate } from '~/utils/api-mutate'
 import { useApiError } from '~/composables/useApiError'
 import { useInvalidate } from '~/composables/useInvalidate'
@@ -8,7 +9,7 @@ export interface RangeTransaction {
   statementHash: string
   transactionDate: string
   label: string
-  amountCents: number
+  amountCents: Cents
   categoryItemCode: string
   isManual: boolean
 }
