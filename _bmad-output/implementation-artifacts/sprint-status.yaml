@@ -248,7 +248,9 @@ development_status:
   16-4-refonte-des-six-ecrans: review
   # Conçue et validée, non implémentée : demande une capacité d'API nouvelle (filtre par
   # rubrique sur GET /api/transactions). Signalée plutôt que faite en passant — scope verrouillé.
-  16-5-descente-depuis-la-trajectoire: backlog
+  # Fermée par la story 18-13 le 2026-09-06 : la capacité d'API qui lui manquait — filtrer
+  # `GET /api/transactions` par RUBRIQUE — est livrée avec elle.
+  16-5-descente-depuis-la-trajectoire: review
   epic-16-retrospective: optional
 
   # ─────────────────── AUDIT DU 2026-09-06 (epics 17-18) ───────────────────
@@ -358,3 +360,8 @@ development_status:
   18-11-sens-des-mouvements-internes: review
   # Demandée le 2026-09-06 : ouvrir l'analyse d'une tranche depuis le tableau d'évolution.
   18-12-descente-evolution-vers-analyse: review
+  # Née de l'usage réel : le suivi d'une cible était caché en bas de page et sans issue vers
+  # les lignes. Il passe en tête, ses tranches s'ouvrent sur leurs transactions, et l'infobulle
+  # donne la répartition par poste. Son tableau ne redirige PLUS vers l'analyse (18-12 amendée).
+  # Ferme au passage la story 16-5, en backlog depuis l'epic 16.
+  18-13-suivi-de-cible-au-coeur-de-l-evolution: review

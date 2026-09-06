@@ -1595,8 +1595,52 @@ afin d'aller voir ce qui explique un mois qui sort du lot, sans le resélectionn
 
 **Given** le tableau de la cible suivie
 **When** il est affiché
-**Then** ses lignes mènent au même endroit
+**Then** ses lignes ne mènent PAS à l'analyse — on y suit une cible, et partir sur l'analyse
+générale ferait perdre ce focus (arbitrage du 2026-09-06, à l'usage)
 
 **Note d'implémentation.** UN SEUL lien par ligne, étiré sur la rangée par un `::after`. Un
 gestionnaire de clic sur la `<tr>` donnerait la même zone de clic mais pas un lien : ni focus,
 ni ouverture dans un onglet, ni annonce par un lecteur d'écran.
+
+### Story 18.13: Le suivi d'une cible devient le cœur de la page d'évolution
+
+> **Née de l'usage réel, 2026-09-06.** « C'est un super outil mais il est complètement caché en
+> bas de la page. Quand tu sélectionnes une rubrique ça se déplie en bas sans que tu le voies.
+> Les lignes ne doivent pas rediriger sur analyse car on est sur un focus, par contre il me
+> faudrait le détail des transactions. » Puis : « quand tu prends une catégorie qui se compose
+> de sous-catégories il faudrait le voir sur le graphique, au survol par exemple ».
+
+En tant qu'utilisateur,
+je veux suivre une rubrique sans la chercher, ouvrir n'importe quelle tranche jusqu'aux lignes,
+et voir de quels postes une tranche est faite,
+afin de répondre à « qu'est-ce qui a dérapé, et depuis quand » sans quitter la page.
+
+**Acceptance Criteria:**
+
+**Given** la page d'évolution
+**When** elle s'ouvre
+**Then** le suivi d'une cible est la première section, avant les courbes générales
+
+**Given** une tranche du tableau de la cible
+**When** elle est activée
+**Then** ses transactions s'affichent sous elle, sans quitter la page
+
+**Given** une cible qui est une RUBRIQUE
+**When** ses lignes sont demandées
+**Then** l'endpoint filtre par rubrique, sans que le client agrège lui-même
+
+**Given** une tranche ouverte
+**When** la cible, le pas ou la fenêtre changent
+**Then** elle se referme — ses lignes ne la décrivent plus
+
+**Given** une cible qui est une rubrique composée de plusieurs postes
+**When** un point de la courbe est survolé
+**Then** l'infobulle donne la répartition par poste, du plus lourd au plus léger
+
+**Given** une cible qui est déjà un poste
+**When** un point est survolé
+**Then** aucune répartition n'est proposée — il n'y a rien à répartir
+
+**Note d'implémentation.** La répartition est orientée comme la valeur qu'elle détaille : sur
+une cible de dépense, la courbe monte quand on dépense, et ses postes doivent suivre le même
+sens. Mélanger les deux rendrait l'infobulle illisible.
