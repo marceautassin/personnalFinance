@@ -3,6 +3,7 @@ import type {
   NewClassificationRuleInput,
 } from '~~/shared/schemas/classification-rule.schema'
 import type { MutationOutcome } from './useApiError'
+import type { RuleApplyResult } from '~~/server/api/rules/[id]/apply.post'
 import { useInvalidate } from './useInvalidate'
 
 export type { ClassificationRuleWithLabels }
@@ -10,8 +11,9 @@ export type { ClassificationRuleWithLabels }
 /**
  * Règles de classement déterministes — lecture et mutations.
  *
- * Les règles ne reclassent PAS l'existant : elles s'appliquent à l'ingestion. Une mutation
- * n'a donc rien à invalider côté analyse, seulement la liste elle-même.
+ * Les règles s'appliquent à l'ingestion. Depuis la story 18.2, l'utilisateur peut en outre
+ * demander l'application d'une règle à l'historique déjà en base — c'est la seule opération de
+ * ce composable qui déplace des transactions, et donc la seule dont l'effet dépasse la liste.
  */
 export function useRules() {
   const fetchState = useFetch<ClassificationRuleWithLabels[]>('/api/rules', {
@@ -35,8 +37,26 @@ export function useRules() {
     return { ok: true }
   }
 
-  const addRule = (input: NewClassificationRuleInput) =>
-    mutate('/api/rules', { method: 'POST', body: input })
+  /**
+   * Crée une règle et rend la règle créée.
+   *
+   * Le retour porte la règle, et pas seulement un `ok` : l'appelant a besoin de son `id` pour
+   * enchaîner sur l'application à l'historique sans repasser par la liste (story 18.2).
+   */
+  async function addRule(
+    input: NewClassificationRuleInput,
+  ): Promise<MutationOutcome & { rule?: ClassificationRuleWithLabels }> {
+    let rule: ClassificationRuleWithLabels
+    try {
+      rule = await apiMutate<ClassificationRuleWithLabels>('/api/rules', { method: 'POST', body: input })
+    }
+    catch (err) {
+      return mapMutationError(err)
+    }
+    await fetchState.refresh()
+    await invalidateAnalysis()
+    return { ok: true, rule }
+  }
 
   /**
    * Portée qu'aurait une règle, AVANT de la créer.
@@ -60,6 +80,27 @@ export function useRules() {
   const deleteRule = (id: number) =>
     mutate(`/api/rules/${id}`, { method: 'DELETE' })
 
+  /**
+   * Applique une règle aux transactions déjà en base (story 18.2).
+   *
+   * Rend le rapport plutôt qu'un simple `ok` : l'utilisateur doit savoir combien de lignes ont
+   * bougé, et combien sont restées parce qu'il les avait corrigées à la main.
+   */
+  async function applyRuleToHistory(
+    id: number,
+  ): Promise<{ ok: true, result: RuleApplyResult } | MutationOutcome> {
+    let result: RuleApplyResult
+    try {
+      result = await apiMutate<RuleApplyResult>(`/api/rules/${id}/apply`, { method: 'POST' })
+    }
+    catch (err) {
+      return mapMutationError(err)
+    }
+    await fetchState.refresh()
+    await invalidateAnalysis()
+    return { ok: true, result }
+  }
+
   return {
     data: fetchState.data,
     pending: fetchState.pending,
@@ -68,5 +109,6 @@ export function useRules() {
     addRule,
     previewRule,
     deleteRule,
+    applyRuleToHistory,
   }
 }

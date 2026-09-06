@@ -3,7 +3,7 @@ import { useRules, type ClassificationRuleWithLabels } from '~/composables/useRu
 import { useCategories, flattenReferential } from '~/composables/useCategories'
 import { useApiError } from '~/composables/useApiError'
 
-const { data: rules, pending, error, addRule, deleteRule } = useRules()
+const { data: rules, pending, error, addRule, deleteRule, applyRuleToHistory } = useRules()
 const { data: groups } = useCategories()
 const { mapError } = useApiError()
 
@@ -15,6 +15,13 @@ const categoryItemCode = ref('')
 const saving = ref(false)
 const actionError = ref<string | null>(null)
 const pendingDelete = ref<ClassificationRuleWithLabels | null>(null)
+
+/** Règle dont l'application à l'historique attend confirmation (story 18.2). */
+const pendingApply = ref<ClassificationRuleWithLabels | null>(null)
+/** Règle en cours d'application — une seule à la fois, l'opération écrit en base. */
+const applyingId = ref<number | null>(null)
+/** Compte rendu de la dernière application, affiché tant qu'une autre ne l'a pas remplacé. */
+const applyReport = ref<string | null>(null)
 
 const fetchErrorMessage = computed(() => (error.value ? mapError(error.value) : null))
 
@@ -43,6 +50,36 @@ async function onSubmit() {
   }
 }
 
+async function onConfirmApply() {
+  const rule = pendingApply.value
+  pendingApply.value = null
+  if (!rule || applyingId.value !== null) return
+  actionError.value = null
+  applyReport.value = null
+  applyingId.value = rule.id
+
+  const outcome = await applyRuleToHistory(rule.id)
+  applyingId.value = null
+
+  if (!('result' in outcome)) {
+    actionError.value = outcome.error ?? 'L\'application a échoué.'
+    return
+  }
+
+  const { updatedCount, unchangedCount, skippedManualCount } = outcome.result
+  const parts = [
+    updatedCount === 0
+      ? 'Aucune ligne reclassée'
+      : `${updatedCount} ligne(s) reclassée(s)`,
+  ]
+  if (unchangedCount > 0) parts.push(`${unchangedCount} déjà au bon poste`)
+  // La raison compte autant que le chiffre : sans elle, l'utilisateur croit la règle en panne.
+  if (skippedManualCount > 0) {
+    parts.push(`${skippedManualCount} laissée(s) de côté car corrigée(s) à la main`)
+  }
+  applyReport.value = `${parts.join(' · ')}.`
+}
+
 async function onConfirmDelete() {
   const rule = pendingDelete.value
   pendingDelete.value = null
@@ -61,8 +98,9 @@ async function onConfirmDelete() {
       </h2>
       <p class="rules__lead">
         Une règle range dans un poste tout libellé qui contient son motif. Elle s'applique à
-        l'ingestion, <strong>par-dessus la catégorisation automatique</strong>, et ne modifie
-        pas les relevés déjà importés.
+        l'ingestion, <strong>par-dessus la catégorisation automatique</strong>. « Appliquer »
+        la rejoue sur les relevés déjà importés ; les lignes corrigées à la main n'y sont
+        jamais touchées.
       </p>
     </header>
 
@@ -173,6 +211,19 @@ async function onConfirmDelete() {
             {{ rule.matchCount }}
           </td>
           <td class="rules__actions">
+            <!-- `aria-disabled` et non `disabled` : le bouton reste focalisable et dit
+                 pourquoi il est indisponible (NFR18). -->
+            <button
+              type="button"
+              class="btn btn--sm"
+              :aria-disabled="applyingId !== null || rule.matchCount === 0"
+              :aria-label="rule.matchCount === 0
+                ? `Appliquer la règle ${rule.pattern} à l'historique — indisponible, aucune ligne couverte`
+                : `Appliquer la règle ${rule.pattern} aux ${rule.matchCount} ligne(s) de l'historique`"
+              @click="rule.matchCount > 0 && applyingId === null ? pendingApply = rule : null"
+            >
+              {{ applyingId === rule.id ? 'Application…' : 'Appliquer' }}
+            </button>
             <button
               type="button"
               class="btn btn--danger btn--sm"
@@ -186,6 +237,23 @@ async function onConfirmDelete() {
       </tbody>
     </table>
 
+    <p
+      v-if="applyReport"
+      class="rules__report"
+      role="status"
+    >
+      {{ applyReport }}
+    </p>
+
+    <ConfirmDialog
+      :open="pendingApply !== null"
+      title="Appliquer la règle à l'historique"
+      :message="`Rejouer les règles sur les ${pendingApply?.matchCount} ligne(s) que « ${pendingApply?.pattern} » couvre ? Elles iront dans ${pendingApply?.groupLabel} · ${pendingApply?.itemLabel}, sauf celles qu'une règle plus précise réclame. Les lignes corrigées à la main ne sont pas touchées.`"
+      confirm-label="Appliquer"
+      @confirm="onConfirmApply"
+      @cancel="pendingApply = null"
+    />
+
     <ConfirmDialog
       :open="pendingDelete !== null"
       title="Supprimer la règle"
@@ -198,6 +266,11 @@ async function onConfirmDelete() {
 </template>
 
 <style scoped>
+.rules__report {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
 .rules { display: flex; flex-direction: column; gap: var(--space-3); }
 .rules__lead { margin: 0; color: var(--color-text-muted); max-width: 88ch; font-size: var(--font-size-sm); }
 .rules__form {

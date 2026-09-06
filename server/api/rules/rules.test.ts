@@ -19,6 +19,7 @@ let schema: SchemaModule
 let getHandler: Handler
 let postHandler: Handler
 let deleteHandler: Handler
+let applyHandler: Handler
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sqlite: any
 
@@ -33,6 +34,7 @@ beforeAll(async () => {
   getHandler = (await import('./index.get')).default as Handler
   postHandler = (await import('./index.post')).default as Handler
   deleteHandler = (await import('./[id].delete')).default as Handler
+  applyHandler = (await import('./[id]/apply.post')).default as Handler
 })
 
 afterAll(() => {
@@ -70,16 +72,25 @@ interface Rule {
 const create = (pattern: string, code = 'alimentation-courses') =>
   postHandler(makeEvent({ method: 'POST', body: { pattern, categoryItemCode: code } })) as Promise<Rule>
 
-function seedTransaction(label: string) {
+function seedTransaction(
+  label: string,
+  opts: { code?: string, isManual?: boolean } = {},
+) {
   dbMod.db.insert(schema.bankStatements).values({
     hashSha256: 'h', periodStart: '2026-01-01', periodEnd: '2026-01-31',
     openingBalanceCents: 0, closingBalanceCents: 0,
   }).onConflictDoNothing().run()
   dbMod.db.insert(schema.transactions).values({
     statementHash: 'h', transactionDate: '2026-01-05', label,
-    amountCents: -100, categoryItemCode: 'divers-non-categorise',
+    amountCents: -100,
+    categoryItemCode: opts.code ?? 'divers-non-categorise',
+    isManual: opts.isManual ?? false,
   }).run()
 }
+
+const codesByLabel = () => Object.fromEntries(
+  dbMod.db.select().from(schema.transactions).all().map(t => [t.label, t.categoryItemCode]),
+)
 
 describe('POST /api/rules', () => {
   /**
@@ -131,6 +142,17 @@ describe('GET /api/rules', () => {
    * `matchCount` rend une règle jugeable AVANT qu'elle ne serve : un motif trop large se voit
    * à son compteur.
    */
+  it('compte un libellé accentué que le motif désaccentué couvre', async () => {
+    seedTransaction('CB CRÈCHE LES PETITS EXEMPLES')
+    seedTransaction('VIR SALAIRE ACME')
+    await create('crèche', 'loisirs-sport')
+
+    const rules = (await getHandler(makeEvent({ method: 'GET' }))) as Rule[]
+    // Un compteur à 0 passerait le bouton « Appliquer » en indisponible, sur une règle qui
+    // couvre pourtant une ligne : le chiffre doit dire la même chose que le moteur.
+    expect(rules[0]!.matchCount).toBe(1)
+  })
+
   it('compte les transactions déjà en base que la règle couvre', async () => {
     seedTransaction('CARTE 01/03 CARREFOUR MARKET')
     seedTransaction('CARTE 04/03 carrefour city')
@@ -211,5 +233,125 @@ describe('DELETE /api/rules/[id]', () => {
     await deleteHandler(makeEvent({ method: 'DELETE', id: String(rule.id) }))
     const rows = dbMod.db.select().from(schema.transactions).all()
     expect(rows[0]!.categoryItemCode).toBe('divers-non-categorise')
+  })
+})
+
+/**
+ * Story 18.2 — ré-application d'une règle à l'historique.
+ *
+ * Une règle ne valait que pour les relevés futurs : l'utilisateur devait reprendre à la main
+ * les lignes que sa propre connaissance couvrait déjà. Sur vingt mois, c'est la corvée que le
+ * produit existe pour supprimer.
+ */
+describe('POST /api/rules/:id/apply', () => {
+  const apply = (id: number) =>
+    applyHandler(makeEvent({ method: 'POST', id: String(id) })) as Promise<{
+      updatedCount: number
+      unchangedCount: number
+      skippedManualCount: number
+    }>
+
+  it('reclasse les lignes déjà en base que le motif couvre', async () => {
+    seedTransaction('CARTE 01/03 CARREFOUR MARKET')
+    seedTransaction('CARTE 04/03 carrefour city')
+    seedTransaction('VIR SALAIRE ACME')
+    const rule = await create('carrefour', 'alimentation-courses')
+
+    const result = await apply(rule.id)
+
+    expect(result.updatedCount).toBe(2)
+    const codes = codesByLabel()
+    expect(codes['CARTE 01/03 CARREFOUR MARKET']).toBe('alimentation-courses')
+    expect(codes['CARTE 04/03 carrefour city']).toBe('alimentation-courses')
+    // La ligne hors motif ne bouge pas : une application est bornée à ce que la règle couvre.
+    expect(codes['VIR SALAIRE ACME']).toBe('divers-non-categorise')
+  })
+
+  /**
+   * À l'ingestion, une règle écrase le modèle : connaissance contre supposition. Ici elle
+   * écraserait un choix EXPLICITE de l'utilisateur, ce qui n'est pas la même chose.
+   */
+  it('ne touche pas une ligne corrigée à la main', async () => {
+    seedTransaction('CARTE 01/03 CARREFOUR MARKET', { code: 'loisirs-sport', isManual: true })
+    const rule = await create('carrefour', 'alimentation-courses')
+
+    const result = await apply(rule.id)
+
+    expect(result.updatedCount).toBe(0)
+    expect(result.skippedManualCount).toBe(1)
+    expect(codesByLabel()['CARTE 01/03 CARREFOUR MARKET']).toBe('loisirs-sport')
+  })
+
+  /**
+   * Le départage de l'ingestion — motif le plus long gagne — doit tenir ici aussi, sans quoi le
+   * classement dépendrait de l'ordre des clics.
+   */
+  it('laisse le motif le plus long trancher, comme à l\'ingestion', async () => {
+    seedTransaction('CARTE 01/03 CARREFOUR MARKET')
+    const large = await create('carrefour', 'alimentation-courses')
+    await create('carrefour market', 'style-habillement')
+
+    await apply(large.id)
+
+    expect(codesByLabel()['CARTE 01/03 CARREFOUR MARKET']).toBe('style-habillement')
+  })
+
+  /** Les lignes reclassées ne sont PAS des corrections manuelles (arbitrage du 2026-09-06). */
+  it('ne marque pas les lignes reclassées comme corrigées à la main', async () => {
+    seedTransaction('CARTE 01/03 CARREFOUR MARKET')
+    const rule = await create('carrefour', 'alimentation-courses')
+
+    await apply(rule.id)
+
+    const rows = dbMod.db.select().from(schema.transactions).all()
+    expect(rows.every(r => r.isManual === false)).toBe(true)
+  })
+
+  it('rend un rapport nul quand aucune ligne n\'est couverte', async () => {
+    seedTransaction('VIR SALAIRE ACME')
+    const rule = await create('carrefour')
+
+    await expect(apply(rule.id)).resolves.toEqual({
+      updatedCount: 0,
+      unchangedCount: 0,
+      skippedManualCount: 0,
+    })
+  })
+
+  it('compte à part les lignes déjà au bon poste', async () => {
+    seedTransaction('CARTE 01/03 CARREFOUR MARKET', { code: 'alimentation-courses' })
+    const rule = await create('carrefour', 'alimentation-courses')
+
+    await expect(apply(rule.id)).resolves.toMatchObject({ updatedCount: 0, unchangedCount: 1 })
+  })
+
+  it('traite `_` du motif comme un caractère littéral', async () => {
+    seedTransaction('PRLV SPOTIFY_PREMIUM')
+    seedTransaction('PRLV SPOTIFYXPREMIUM')
+    const rule = await create('spotify_premium', 'abonnements-streaming')
+
+    await expect(apply(rule.id)).resolves.toMatchObject({ updatedCount: 1 })
+    expect(codesByLabel()['PRLV SPOTIFYXPREMIUM']).toBe('divers-non-categorise')
+  })
+
+  /**
+   * Défaut trouvé en revue le 2026-09-06 : la présélection passait par un `LIKE` SQL sur
+   * `LOWER(label)`. Le motif étant stocké SANS accents et `LOWER()` de SQLite étant ASCII,
+   * un motif `creche` ne trouvait jamais `CRÈCHE` — zéro ligne reclassée, en silence.
+   */
+  it('couvre les libellés accentués, que le motif stocké ne porte plus', async () => {
+    seedTransaction('CB CRÈCHE LES PETITS EXEMPLES')
+    seedTransaction('CB PÉAGE AUTOROUTE A00')
+    const creche = await create('crèche', 'loisirs-sport')
+
+    await expect(apply(creche.id)).resolves.toMatchObject({ updatedCount: 1 })
+    expect(codesByLabel()['CB CRÈCHE LES PETITS EXEMPLES']).toBe('loisirs-sport')
+  })
+
+  it('refuse un identifiant inconnu ou invalide', async () => {
+    await expect(apply(9999)).rejects.toMatchObject({ statusCode: 404 })
+    await expect(
+      applyHandler(makeEvent({ method: 'POST', id: 'abc' })),
+    ).rejects.toMatchObject({ statusCode: 422 })
   })
 })
