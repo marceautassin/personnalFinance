@@ -62,25 +62,51 @@ function seedTx(date: string, amountCents: number, code: string) {
   }).run()
 }
 
-const AUGUST = 'to=2026-08&granularity=month'
+/** L'année 2026, découpée en douze mois — la vue par défaut depuis la refonte du 2026-09-07. */
+const YEAR_2026 = 'period=2026'
 
 describe('GET /api/evolution — validation', () => {
   it.each([
-    ['tranche absente', 'granularity=month'],
-    ['granularité inconnue', 'to=2026-08&granularity=week'],
-    ['tranche mal formée', 'to=2026-8&granularity=month'],
-    ['cible mal formée', 'to=2026-08&granularity=month&target=alimentation'],
+    ['période absente', ''],
+    ['période mal formée', 'period=2026-08'],
+    ['période inconnue', 'period=semestre'],
+    ['cible mal formée', 'period=2026&target=alimentation'],
   ])('refuse en 422 : %s', async (_name, qs) => {
     await expect(handler(query(qs))).rejects.toMatchObject({ statusCode: 422 })
   })
 })
 
-describe('GET /api/evolution — fenêtre fixe', () => {
-  it('rend exactement douze tranches, la dernière étant celle demandée', async () => {
-    const r = await handler(query(AUGUST))
+/**
+ * **Refonte du 2026-09-07.** La fenêtre valait douze tranches du PAS choisi, ce qui donnait
+ * douze ANNÉES sur le pas annuel. Elle vaut désormais la PÉRIODE regardée, toujours découpée
+ * en mois : une année en donne douze, un trimestre trois.
+ */
+describe('GET /api/evolution — la période regardée', () => {
+  it('découpe une année en ses douze mois', async () => {
+    const r = await handler(query(YEAR_2026))
     expect(r.buckets).toHaveLength(12)
-    expect(r.buckets.at(-1)).toBe('2026-08')
-    expect(r.buckets[0]).toBe('2025-09')
+    expect(r.buckets[0]).toBe('2026-01')
+    expect(r.buckets.at(-1)).toBe('2026-12')
+  })
+
+  it('découpe un trimestre en ses trois mois', async () => {
+    const r = await handler(query('period=2026-T3'))
+    expect(r.buckets).toEqual(['2026-07', '2026-08', '2026-09'])
+  })
+
+  it('couvre tout l\'historique, mois par mois, du premier au dernier', async () => {
+    seedTx('2025-11-10', -1_000, 'alimentation-courses')
+    seedTx('2026-02-10', -1_000, 'alimentation-courses')
+    const r = await handler(query('period=all'))
+    expect(r.buckets[0]).toBe('2025-11')
+    expect(r.buckets.at(-1)).toBe('2026-02')
+    expect(r.buckets).toHaveLength(4)
+  })
+
+  it('rend une série vide sur un historique vide', async () => {
+    const r = await handler(query('period=all'))
+    expect(r.buckets).toEqual([])
+    expect(r.series).toEqual([])
   })
 
   /**
@@ -89,37 +115,31 @@ describe('GET /api/evolution — fenêtre fixe', () => {
    */
   it('rend les tranches vides à zéro plutôt que de les omettre', async () => {
     seedTx('2026-08-10', -50_000, 'alimentation-courses')
-    const r = await handler(query(AUGUST))
+    const r = await handler(query(YEAR_2026))
     expect(r.series).toHaveLength(12)
-    expect(r.series.slice(0, 11).every(p => p.resultCents === 0)).toBe(true)
-    expect(r.series.at(-1)!.resultCents).toBe(-50_000)
+    expect(r.series.filter(p => p.resultCents === 0)).toHaveLength(11)
+    expect(r.series.find(p => p.bucket === '2026-08')!.resultCents).toBe(-50_000)
   })
 
   it('cumule dans l\'ordre chronologique sur toute la fenêtre', async () => {
     seedTx('2026-06-10', -10_000, 'alimentation-courses')
     seedTx('2026-07-10', -20_000, 'alimentation-courses')
     seedTx('2026-08-10', 5_000, 'revenus-salaire')
-    const r = await handler(query(AUGUST))
-    const cumuls = r.series.map(p => p.cumulativeResultCents)
-    expect(cumuls.at(-3)).toBe(-10_000)
-    expect(cumuls.at(-2)).toBe(-30_000)
-    expect(cumuls.at(-1)).toBe(-25_000)
+    const r = await handler(query(YEAR_2026))
+    const at = (bucket: string) => r.series.find(p => p.bucket === bucket)!.cumulativeResultCents
+    expect(at('2026-06')).toBe(-10_000)
+    expect(at('2026-07')).toBe(-30_000)
+    expect(at('2026-08')).toBe(-25_000)
   })
 
   it('sépare recettes et dépenses, hors mouvements internes', async () => {
     seedTx('2026-08-05', 250_000, 'revenus-salaire')
     seedTx('2026-08-10', -40_000, 'alimentation-courses')
     seedTx('2026-08-20', -99_000, 'internes-virement-epargne')
-    const last = (await handler(query(AUGUST))).series.at(-1)!
+    const last = (await handler(query(YEAR_2026))).series.find(p => p.bucket === '2026-08')!
     expect(last.incomeCents).toBe(250_000)
     expect(last.expenseCents).toBe(-40_000)
     expect(last.resultCents).toBe(210_000)
-  })
-
-  it('remonte au trimestre précédent en granularité trimestre', async () => {
-    const r = await handler(query('to=2026-T3&granularity=quarter'))
-    expect(r.buckets.at(-1)).toBe('2026-T3')
-    expect(r.buckets[0]).toBe('2023-T4')
   })
 })
 
@@ -132,37 +152,38 @@ describe('GET /api/evolution — suivi d\'une cible (FR31)', () => {
   })
 
   it('rend null sans cible demandée', async () => {
-    const r = await handler(query(AUGUST))
+    const r = await handler(query(YEAR_2026))
     expect(r.targetSeries).toBeNull()
     expect(r.targetLabel).toBeNull()
   })
 
   it('suit un poste et le nomme lisiblement', async () => {
-    const r = await handler(query(`${AUGUST}&target=item:alimentation-courses`))
+    const r = await handler(query(`${YEAR_2026}&target=item:alimentation-courses`))
+    const at = (bucket: string) => r.targetSeries!.find(p => p.bucket === bucket)!.totalCents
     expect(r.targetLabel).toBe('Alimentation · Courses')
-    expect(r.targetSeries!.at(-1)!.totalCents).toBe(-50_000)
-    expect(r.targetSeries!.at(-2)!.totalCents).toBe(-30_000)
+    expect(at('2026-08')).toBe(-50_000)
+    expect(at('2026-07')).toBe(-30_000)
   })
 
   it('suit une rubrique entière', async () => {
-    const r = await handler(query(`${AUGUST}&target=group:alimentation`))
+    const r = await handler(query(`${YEAR_2026}&target=group:alimentation`))
     expect(r.targetLabel).toBe('Alimentation')
-    expect(r.targetSeries!.at(-2)!.totalCents).toBe(-40_000)
+    expect(r.targetSeries!.find(p => p.bucket === '2026-07')!.totalCents).toBe(-40_000)
   })
 
   it('aligne la série de la cible sur les mêmes tranches que la vue d\'ensemble', async () => {
-    const r = await handler(query(`${AUGUST}&target=group:alimentation`))
+    const r = await handler(query(`${YEAR_2026}&target=group:alimentation`))
     expect(r.targetSeries!.map(p => p.bucket)).toEqual(r.buckets)
   })
 
   it('rend une série de zéros sur une cible inconnue, sans lever', async () => {
-    const r = await handler(query(`${AUGUST}&target=item:poste-fantome`))
+    const r = await handler(query(`${YEAR_2026}&target=item:poste-fantome`))
     expect(r.targetLabel).toBeNull()
     expect(r.targetSeries!.every(p => p.totalCents === 0)).toBe(true)
   })
 
   it('expose le référentiel pour peupler le sélecteur sans second appel', async () => {
-    const r = await handler(query(AUGUST))
+    const r = await handler(query(YEAR_2026))
     expect(r.groups.find(g => g.code === 'alimentation')!.items.map(i => i.code))
       .toEqual(['alimentation-courses', 'alimentation-restaurant'])
   })
@@ -176,12 +197,12 @@ describe('GET /api/evolution — nature de la cible', () => {
   beforeEach(() => seedTx('2026-08-10', -50_000, 'alimentation-courses'))
 
   it('rend la nature d\'un poste', async () => {
-    const r = await handler(query(`${AUGUST}&target=item:alimentation-courses`)) as unknown as { targetNature: string | null }
+    const r = await handler(query(`${YEAR_2026}&target=item:alimentation-courses`)) as unknown as { targetNature: string | null }
     expect(r.targetNature).toBe('expense')
   })
 
   it('rend la nature d\'une rubrique homogène', async () => {
-    const r = await handler(query(`${AUGUST}&target=group:internes`)) as unknown as { targetNature: string | null }
+    const r = await handler(query(`${YEAR_2026}&target=group:internes`)) as unknown as { targetNature: string | null }
     expect(r.targetNature).toBe('internal_transfer')
   })
 
@@ -191,7 +212,7 @@ describe('GET /api/evolution — nature de la cible', () => {
       code: 'alimentation-remboursement', groupCode: 'alimentation',
       label: 'Remboursement', nature: 'income', position: 9,
     }).run()
-    const r = await handler(query(`${AUGUST}&target=group:alimentation`)) as unknown as { targetNature: string | null }
+    const r = await handler(query(`${YEAR_2026}&target=group:alimentation`)) as unknown as { targetNature: string | null }
     expect(r.targetNature).toBeNull()
     dbMod.db.delete(schema.categoryItems).where(
       (await import('drizzle-orm')).eq(schema.categoryItems.code, 'alimentation-remboursement'),
@@ -199,7 +220,7 @@ describe('GET /api/evolution — nature de la cible', () => {
   })
 
   it('rend null sans cible', async () => {
-    const r = await handler(query(AUGUST)) as unknown as { targetNature: string | null }
+    const r = await handler(query(YEAR_2026)) as unknown as { targetNature: string | null }
     expect(r.targetNature).toBeNull()
   })
 
@@ -217,12 +238,18 @@ describe('GET /api/evolution — nature de la cible', () => {
     }
     const call = async (qs: string) => (await handler(query(qs))) as unknown as Resp
 
+    // Le bloc parent sème ses propres lignes : on repart d'une base vide pour que le report
+    // mesuré soit celui qu'on pose ici, et rien d'autre.
+    beforeEach(() => {
+      dbMod.db.delete(schema.transactions).run()
+    })
+
     it('amorce le cumul avec ce qui précède la fenêtre', async () => {
-      // La fenêtre couvre les douze tranches jusqu'à 2026-04 : mai 2025 en est le début.
+      // La fenêtre est l'année 2026 : tout 2024 lui est antérieur.
       seedTx('2024-01-10', -100_000, 'alimentation-courses')
       seedTx('2026-04-10', -20_000, 'alimentation-courses')
 
-      const r = await call('to=2026-04&granularity=month')
+      const r = await call('period=2026')
 
       expect(r.priorCumulativeCents).toBe(-100_000)
       expect(r.series.at(-1)!.cumulativeResultCents).toBe(-120_000)
@@ -231,7 +258,7 @@ describe('GET /api/evolution — nature de la cible', () => {
     it('ignore les mouvements internes dans ce report', async () => {
       seedTx('2024-01-10', -500_000, 'internes-virement-epargne')
 
-      const r = await call('to=2026-04&granularity=month')
+      const r = await call('period=2026')
 
       expect(r.priorCumulativeCents).toBe(0)
     })
@@ -239,7 +266,7 @@ describe('GET /api/evolution — nature de la cible', () => {
     it('rend zéro quand rien ne précède la fenêtre', async () => {
       seedTx('2026-04-10', -20_000, 'alimentation-courses')
 
-      const r = await call('to=2026-04&granularity=month')
+      const r = await call('period=2026')
 
       expect(r.priorCumulativeCents).toBe(0)
       expect(r.series.at(-1)!.cumulativeResultCents).toBe(-20_000)

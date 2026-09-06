@@ -3,7 +3,7 @@ import { and, gte, lte, lt, ne, eq, asc, sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { transactions, categoryItems, categoryGroups } from '~~/server/db/schema'
 import { validateQuery } from '~~/server/utils/validation'
-import { EvolutionQuerySchema } from '~~/shared/schemas/evolution.schema'
+import { EvolutionQuerySchema, EVOLUTION_ALL } from '~~/shared/schemas/evolution.schema'
 import {
   analyze,
   categorySeries,
@@ -11,7 +11,7 @@ import {
   type AnalysisSeriesPoint,
   type CategorySeriesPoint,
 } from '~~/server/services/analysis-engine'
-import { bucketBounds, shiftBucket, bucketLabel } from '~~/shared/types/granularity'
+import { bucketBounds, shiftBucket, bucketLabel, bucketOf, type Granularity } from '~~/shared/types/granularity'
 import type { MovementNature } from '~~/shared/types/movement-nature'
 
 /**
@@ -25,7 +25,56 @@ import type { MovementNature } from '~~/shared/types/movement-nature'
  * La fenêtre est FIXE à douze tranches. Réglable le jour où l'historique le justifiera ;
  * aujourd'hui, un choix de plus serait un choix sans conséquence.
  */
-export const EVOLUTION_WINDOW = 12
+/**
+ * Mois d'une période regardée — les douze d'une année, les trois d'un trimestre.
+ *
+ * Les tranches sont CALCULÉES et non déduites des données : un mois sans mouvement doit
+ * apparaître à zéro, sinon la série se lirait comme une accélération.
+ */
+function monthsOf(period: string): string[] {
+  const year = period.slice(0, 4)
+  if (period.includes('-T')) {
+    const first = (Number(period.slice(-1)) - 1) * 3 + 1
+    return [0, 1, 2].map(i => `${year}-${String(first + i).padStart(2, '0')}`)
+  }
+  return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
+}
+
+/** Tous les mois portant ou séparant des transactions, du premier au dernier. */
+async function allHistoryBuckets(): Promise<string[]> {
+  const row = await db
+    .select({
+      first: sql<string | null>`min(${transactions.transactionDate})`,
+      last: sql<string | null>`max(${transactions.transactionDate})`,
+    })
+    .from(transactions)
+    .get()
+  if (!row?.first || !row.last) return []
+
+  const out: string[] = []
+  let cursor = bucketOf(row.first, 'month')
+  const end = bucketOf(row.last, 'month')
+  // Borne dure : un historique aberrant ne doit pas produire une série sans fin.
+  while (cursor <= end && out.length < 600) {
+    out.push(cursor)
+    cursor = shiftBucket(cursor, 'month', 1)
+  }
+  return out
+}
+
+function loadReferential(): Promise<AnalysisItemRef[]> {
+  return db
+    .select({
+      code: categoryItems.code,
+      label: categoryItems.label,
+      nature: categoryItems.nature,
+      groupCode: categoryGroups.code,
+      groupLabel: categoryGroups.label,
+    })
+    .from(categoryItems)
+    .innerJoin(categoryGroups, eq(categoryItems.groupCode, categoryGroups.code))
+    .orderBy(asc(categoryGroups.position), asc(categoryItems.position))
+}
 
 export interface EvolutionResponse {
   buckets: string[]
@@ -54,27 +103,34 @@ export interface EvolutionResponse {
 }
 
 export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
-  const { to, granularity, target } = await validateQuery(event, EvolutionQuerySchema)
+  const { period, target } = await validateQuery(event, EvolutionQuerySchema)
+
+  // Le PAS est toujours le mois : c'est la période regardée qui varie, pas le découpage
+  // (refonte du 2026-09-07). Une année se lit en douze mois, un trimestre en trois.
+  const granularity: Granularity = 'month'
 
   // Les tranches attendues sont calculées, pas déduites des données : une tranche sans
   // mouvement doit apparaître à zéro, sinon la série se lit comme une accélération.
-  const buckets = Array.from({ length: EVOLUTION_WINDOW }, (_, i) =>
-    shiftBucket(to, granularity, i - (EVOLUTION_WINDOW - 1)))
+  const buckets = period === EVOLUTION_ALL
+    ? await allHistoryBuckets()
+    : monthsOf(period)
+
+  if (buckets.length === 0) {
+    return {
+      buckets: [],
+      series: [],
+      priorCumulativeCents: 0,
+      targetSeries: null,
+      targetLabel: null,
+      targetNature: null,
+      groups: groupsOf(await loadReferential()),
+    }
+  }
 
   const from = bucketBounds(buckets[0]!, granularity).from
-  const toDate = bucketBounds(to, granularity).to
+  const toDate = bucketBounds(buckets.at(-1)!, granularity).to
 
-  const referential: AnalysisItemRef[] = await db
-    .select({
-      code: categoryItems.code,
-      label: categoryItems.label,
-      nature: categoryItems.nature,
-      groupCode: categoryGroups.code,
-      groupLabel: categoryGroups.label,
-    })
-    .from(categoryItems)
-    .innerJoin(categoryGroups, eq(categoryItems.groupCode, categoryGroups.code))
-    .orderBy(asc(categoryGroups.position), asc(categoryItems.position))
+  const referential = await loadReferential()
 
   const rows = await db
     .select({

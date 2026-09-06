@@ -372,3 +372,6 @@ development_status:
   # L'ecart, 7 766 EUR, est ce qui a ete tire de l'epargne pour tenir le compte a flot.
   18-14-variation-du-patrimoine: review
   18-15-transactions-groupees-par-poste: review
+  # Le selecteur de l'evolution designait le PAS, la fenetre valant douze tranches de ce pas :
+  # « Annee » donnait douze ANNEES. Il designe desormais la PERIODE regardee, decoupee en mois.
+  18-16-evolution-par-periode: review

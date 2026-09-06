@@ -1709,3 +1709,45 @@ afin de voir la composition d'un mois sans trier cinquante lignes de tête.
 **Given** ces groupes
 **When** ils sont ordonnés
 **Then** le plus lourd vient en premier, au poids et non au signe
+
+### Story 18.16: L'évolution regarde une période, pas douze pas
+
+> **Formulé le 2026-09-07 :** « le graphique et le tableau ne se mettent pas bien lorsque je
+> veux une vue sur l'année. Je m'attends à avoir un détail par mois sur toute l'année et pas
+> toutes les années depuis 2014. » Puis, en comprenant le modèle : « ha oui en fait ça se lit
+> jusqu'à ».
+>
+> Le sélecteur désignait le PAS et la fenêtre valait douze tranches de ce pas : « Année »
+> donnait donc douze ANNÉES. Le même mot ne voulait pas dire la même chose que sur l'analyse,
+> où il désigne la période regardée.
+
+En tant qu'utilisateur,
+je veux que le sélecteur de l'évolution désigne ce que je regarde, comme sur l'analyse,
+afin qu'un mot veuille dire la même chose partout.
+
+**Acceptance Criteria:**
+
+**Given** la vue « Année »
+**When** elle est choisie
+**Then** la série donne les douze mois de cette année
+
+**Given** la vue « Trimestre »
+**When** elle est choisie
+**Then** la série donne ses trois mois
+
+**Given** la vue « Tout l'historique »
+**When** elle est choisie
+**Then** la série donne chaque mois du premier au dernier mouvement
+
+**Given** la vue « Tout l'historique »
+**When** elle est affichée
+**Then** le pas de période est indisponible, avec sa raison dans le nom accessible — elle n'a
+pas de voisin
+
+**Given** un changement de vue
+**When** il a lieu
+**Then** la date de référence est conservée, comme sur l'écran d'analyse
+
+**Given** un historique vide
+**When** « Tout l'historique » est demandé
+**Then** la série est vide, et l'écran le dit
