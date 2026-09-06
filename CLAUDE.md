@@ -6,7 +6,7 @@ Instructions opérationnelles pour Claude Code travaillant sur ce projet. Réfé
 
 Web app Nuxt 4 SPA local-first d'**analyse de dépenses personnelles**. Ingère des PDFs Boursorama, catégorise chaque ligne via LLM, et restitue **où part l'argent** — par rubrique et par poste, sur une période choisie, avec l'évolution dans le temps. Mono-utilisateur (Marceau), pas de cloud V1.
 
-> ⚠️ **Pivot du 2026-09-04.** Le cadrage initial (forecast inverse, dividende SAS, dettes, fiscalité) a été invalidé par l'usage réel et **entièrement supprimé du code**. Les documents de l'ancien périmètre sont archivés en `prd-v1-forecast.md` et `epics-v1-forecast.md` : ne pas s'en servir comme référence.
+> ⚠️ **Pivot du 2026-09-04.** Le cadrage initial (forecast inverse, dividende SAS, dettes, fiscalité) a été invalidé par l'usage réel et supprimé du code. Le solde résiduel — suggérateur de charges et sa table, utilitaires de période, composables et utilitaires front orphelins — a été retiré le 2026-09-06 (story 17.9). Les documents de l'ancien périmètre sont archivés en `prd-v1-forecast.md` et `epics-v1-forecast.md` : ne pas s'en servir comme référence.
 
 ## Documents sources (lecture obligatoire avant toute story)
 
@@ -46,7 +46,15 @@ Toute fonctionnalité non listée dans le PRD passe en Growth — ne pas l'ajout
 
 - ❌ **Jamais** de clé API en dur, en logs, en réponse HTTP, en commit. Toujours `process.env.MISTRAL_API_KEY`, `.env` gitignored.
 - ❌ **Jamais** d'upload de PDF brut vers un service tiers. Les PDFs vivent dans `_data/raw/` (gitignored), uniquement.
-- ❌ **Jamais** d'envoi au fournisseur LLM d'autre chose que `{date, libellé, montant}` extraits. Pas d'IBAN, RIB, nom complet, adresse.
+- ❌ **Jamais** d'envoi au fournisseur LLM d'autre chose que le **tableau d'opérations** du
+  relevé. Le bloc d'identité (IBAN, RIB, numéro de compte, adresse) est coupé par
+  `pdf-extractor` — coupe géométrique au-dessus de l'en-tête de colonnes, plus une passe
+  d'expurgation par motif (story 17.1). ⚠️ **Portée réelle, à connaître** : le modèle fait
+  l'EXTRACTION, il reçoit donc les lignes brutes et non `{date, libellé, montant}` déjà
+  structurés ; et le nom du titulaire figure dans les libellés bancaires eux-mêmes
+  (`VIR SEPA DUPONT Jean charges`), où il est indissociable de la donnée métier. Avant le
+  2026-09-06, ce fichier décrivait une garantie que le code n'appliquait pas du tout : le
+  texte INTÉGRAL du PDF partait, IBAN compris.
 - ❌ **Jamais** d'écriture en base hors Drizzle (pas de SQL brut sauf migrations / benchs explicites).
 - ❌ **Jamais** d'auth en V1 — l'app suppose un environnement local de confiance. Si déploiement cloud futur, l'auth est un blocker.
 - ✅ `.gitignore` doit contenir : `_data/`, `.env`, `.output/`, `.nuxt/`, `node_modules/`.
@@ -189,7 +197,12 @@ Les erreurs métier ne sont **pas** des exceptions :
 
 G1 (disclaimer) et G5 (snapshots forecast) **disparaissent avec le pivot du 2026-09-04**. G2 et G3 sont **implémentés** — bootstrap Nitro avec migrations versionnées et `assertSchemaUpToDate()` (D21), extraction de période avec repli sur les dates min/max.
 
-- **G4 — Enforcement de la couverture de tests** : manuel en V1, à formaliser plus tard.
+- **G4 — Enforcement de la couverture de tests** : **toujours ouvert au 2026-09-06.** Ce n'est
+  pas un choix : la mesure elle-même est cassée dans ce dépôt. Avec `v8` comme avec `istanbul`,
+  les onze fichiers du périmètre sont instrumentés puis rapportés à `0/N` statements alors que
+  les 497 tests les traversent et passent. Poser un seuil non nul dessus ferait échouer la CI
+  sur un artefact d'outillage. Les seuils restent à `0`, documentés dans `vitest.config.ts`.
+  La discipline NFR3 est donc tenue *à la lecture*, pas par un garde automatique.
 
 ## Commandes utiles
 
@@ -197,6 +210,7 @@ G1 (disclaimer) et G5 (snapshots forecast) **disparaissent avec le pivot du 2026
 yarn dev                  # Dev avec hot reload
 yarn db:generate          # Génère un fichier de migration (D21 — migrations versionnées)
 yarn apply-migration      # Applique les migrations pending
+yarn db:backup            # Sauvegarde la base + export JSON des corrections (story 17.10)
 yarn db:studio            # Drizzle Studio
 yarn test                 # Vitest watch
 yarn test:run             # Vitest one-shot
