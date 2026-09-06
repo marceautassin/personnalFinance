@@ -151,6 +151,36 @@ function delta(node: { totalCents: number, previousTotalCents: number | null }):
 const showsShare = computed(() => sign.value !== 0)
 
 /**
+ * Les mouvements internes montrent leurs FLUX BRUTS — sorties et entrées — plutôt qu'une part
+ * (story 18.11).
+ *
+ * Sur eux, le net ment par omission : « Virement entre comptes » vaut −651,40 € sur 2026 alors
+ * que 4 512 € sont sortis et 3 861 € rentrés. Et la part n'a de toute façon pas de sens ici,
+ * la nature n'ayant pas de sens attendu : les deux colonnes qu'elle occupait sont libres.
+ */
+const showsFlows = computed(() => props.nature.nature === 'internal_transfer')
+
+/** Un sens jamais emprunté s'affiche « — » : un « 0,00 € » se lirait comme un flux nul mesuré. */
+const flow = (value: number) => (value === 0 ? '—' : formatEuros(value as Cents))
+
+/**
+ * Ce que le bloc raconte, en une phrase, selon le sens de son net.
+ *
+ * Sans elle, l'utilisateur voit un total positif sans savoir s'il a puisé dans son épargne ou
+ * l'a alimentée — la question qui a ouvert cette story.
+ */
+const flowsReading = computed(() => {
+  const net = props.nature.totalCents
+  if (net > 0) {
+    return 'Net revenu sur le compte courant depuis vos autres comptes : de l\'argent que vous y avez repris.'
+  }
+  if (net < 0) {
+    return 'Net parti du compte courant vers vos autres comptes : de l\'argent que vous y avez placé.'
+  }
+  return 'Autant d\'argent est parti du compte courant qu\'il en est revenu.'
+})
+
+/**
  * Un écart n'est alarmant que sur les DÉPENSES.
  *
  * La couleur était calculée sur la valeur orientée sans regarder la nature : un salaire en
@@ -166,13 +196,23 @@ function isDeltaAlarming(value: number): boolean {
 </script>
 
 <template>
-  <section class="dist panel">
+  <section
+    class="dist panel"
+    :class="{ 'dist--flows': showsFlows }"
+  >
     <header class="panel__head">
       <h3 class="panel__title">
         {{ title }}
       </h3>
       <strong class="dist__total num">{{ formatEuros(nature.totalCents as Cents) }}</strong>
     </header>
+
+    <p
+      v-if="showsFlows && nature.groups.length > 0"
+      class="dist__reading"
+    >
+      {{ flowsReading }}
+    </p>
 
     <!--
       En-têtes de colonnes. Sans eux, la dernière colonne affichait un montant coloré dont
@@ -186,8 +226,14 @@ function isDeltaAlarming(value: number): boolean {
     >
       <span />
       <span>Rubrique</span>
-      <span />
-      <span class="dist__share">Part</span>
+      <template v-if="showsFlows">
+        <span class="dist__amount">Sorties</span>
+        <span class="dist__amount">Entrées</span>
+      </template>
+      <template v-else>
+        <span />
+        <span class="dist__share">Part</span>
+      </template>
       <span class="dist__amount">Montant</span>
       <span class="dist__delta">{{ previousLabel ? `vs ${previousLabel}` : 'vs précédent' }}</span>
     </div>
@@ -220,13 +266,17 @@ function isDeltaAlarming(value: number): boolean {
             aria-hidden="true"
           >{{ expanded.has(group.groupCode) ? '▾' : '▸' }}</span>
           <span class="dist__name">{{ group.label }}</span>
+          <template v-if="showsFlows">
+            <span class="dist__amount dist__flow">{{ flow(group.outflowCents) }}</span>
+            <span class="dist__amount dist__flow">{{ flow(group.inflowCents) }}</span>
+          </template>
           <!--
             SVG inline, sans bibliothèque tierce (AR21). Une barre suffit à comparer des
             rubriques ; un camembert rendrait illisibles les petites parts, qui sont
             justement celles qu'on cherche.
           -->
           <svg
-            v-if="showsShare"
+            v-else-if="showsShare"
             class="dist__bar"
             :viewBox="`0 0 100 8`"
             preserveAspectRatio="none"
@@ -242,7 +292,10 @@ function isDeltaAlarming(value: number): boolean {
             />
           </svg>
           <span v-else />
-          <span class="dist__share">{{ !showsShare || isInverted(group) ? '—' : formatRatio(share(group.totalCents)) }}</span>
+          <span
+            v-if="!showsFlows"
+            class="dist__share"
+          >{{ !showsShare || isInverted(group) ? '—' : formatRatio(share(group.totalCents)) }}</span>
           <span class="dist__amount">{{ formatEuros(group.totalCents as Cents) }}</span>
           <span
             v-if="delta(group) !== null"
@@ -277,10 +330,18 @@ function isDeltaAlarming(value: number): boolean {
                 aria-hidden="true"
               >{{ item.transactionCount === 0 ? '' : expandedItems.has(item.itemCode) ? '▾' : '▸' }}</span>
               <span class="dist__name">{{ item.label }}</span>
-              <span />
-              <span class="dist__count">{{ item.transactionCount }} tx</span>
-              <span class="dist__amount">{{ formatEuros(item.totalCents as Cents) }}</span>
-              <span />
+              <template v-if="showsFlows">
+                <span class="dist__amount dist__flow">{{ flow(item.outflowCents) }}</span>
+                <span class="dist__amount dist__flow">{{ flow(item.inflowCents) }}</span>
+                <span class="dist__amount">{{ formatEuros(item.totalCents as Cents) }}</span>
+                <span class="dist__count">{{ item.transactionCount }} tx</span>
+              </template>
+              <template v-else>
+                <span />
+                <span class="dist__count">{{ item.transactionCount }} tx</span>
+                <span class="dist__amount">{{ formatEuros(item.totalCents as Cents) }}</span>
+                <span />
+              </template>
             </button>
 
             <!--
@@ -393,6 +454,17 @@ function isDeltaAlarming(value: number): boolean {
 }
 .dist__row,
 .dist__item { grid-template-columns: 1rem minmax(7rem, 14rem) 1fr 4rem 6.5rem 8rem; }
+/* Mouvements internes : la barre et la part n'ont pas de sens ici, leurs deux colonnes
+   accueillent les flux bruts (story 18.11). */
+.dist--flows .dist__row,
+.dist--flows .dist__item { grid-template-columns: 1rem minmax(7rem, 14rem) 7rem 7rem 6.5rem 6rem; }
+.dist__flow { color: var(--color-text-muted); }
+.dist__reading {
+  padding: 0 var(--space-3) var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  line-height: var(--line-height-normal);
+}
 .dist__row { height: var(--row-height); }
 .dist__row--head {
   height: var(--row-height-sm);
