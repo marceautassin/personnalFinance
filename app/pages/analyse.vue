@@ -12,9 +12,20 @@ type AnalysisNature = AnalysisResponse['natures'][number]
 const route = useRoute()
 const router = useRouter()
 
+/**
+ * L'analyse s'ouvre sur l'ANNÉE, pas sur le mois (demande du 2026-09-06).
+ *
+ * Un mois isolé se lit mal : douze relevés de vacances, de rentrée et de Noël n'ont pas la
+ * même tête, et la question « où part mon argent » se pose sur une échelle où les à-coups se
+ * compensent. Le sélecteur reste là pour descendre au mois quand on cherche une ligne précise,
+ * et l'URL retient le choix.
+ *
+ * La tranche, elle, reste la DERNIÈRE qui contient quelque chose (cf. `useAnalysis`) : ouvrir
+ * sur l'année civile en cours donnerait un écran vide chaque 1er janvier.
+ */
 const initialGranularity = GRANULARITIES.includes(route.query.g as Granularity)
   ? (route.query.g as Granularity)
-  : 'month'
+  : 'year'
 
 const {
   data,
