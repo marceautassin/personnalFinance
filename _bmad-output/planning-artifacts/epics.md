@@ -1304,25 +1304,78 @@ pour environ 13 900 € — devant les courses alimentaires. Tant que ce bloc ex
 l'argent » ne peut pas répondre. Les stories 18.1 et 18.2 attaquent ce bloc ; le reste vient
 après.
 
-### Story 18.1: File de revue des non catégorisés
+### Story 18.1: Filtres de requalification sur la vue mensuelle
+
+> **Arbitré le 2026-09-06.** La proposition initiale était un écran de revue dédié couvrant tout
+> l'historique. L'utilisateur a tranché pour des filtres sur la vue mensuelle existante : un
+> écran de moins, et la requalification se fait mois par mois. Le passage à l'échelle sur les
+> vingt mois est assuré par la story 18.2 — on requalifie une ligne, on écrit la règle, on
+> l'applique à l'historique.
 
 En tant qu'utilisateur,
-je veux voir d'un seul écran toutes mes lignes non catégorisées, groupées par libellé,
-afin de ranger deux ans d'historique en une passe au lieu d'ouvrir vingt mois un par un.
+je veux filtrer les lignes d'un mois par poste, par nature et par libellé, et voir le
+sous-total de ce que je filtre,
+afin d'isoler les lignes non catégorisées et de les ranger sans les chercher à l'œil.
 
-**Valeur :** c'est le chantier qui fait franchir le jalon 14.4 · **Effort :** M · **Origine :**
-nouveau, sert un jalon existant · **Dépend de :** rien, l'endpoint de transactions sait déjà
-filtrer par poste sur une plage.
+**Acceptance Criteria:**
+
+**Given** la vue mensuelle
+**When** l'utilisateur choisit un poste
+**Then** seules les lignes de ce poste restent affichées
+
+**Given** un filtre actif, quel qu'il soit
+**When** les lignes sont affichées
+**Then** leur nombre et leur somme algébrique sont annoncés
+
+**Given** un filtre par nature
+**When** il est combiné au filtre par poste et à la recherche de libellé
+**Then** les trois se cumulent
+
+**Given** un filtre qui ne laisse aucune ligne
+**When** la liste est rendue
+**Then** l'état vide dit que le filtre est en cause, et non que le mois est vide
+
+**Given** une ligne reclassée alors qu'un filtre par poste est actif
+**When** elle quitte le poste filtré
+**Then** elle disparaît de la liste, et les compteurs suivent
 
 ### Story 18.2: Ré-application d'une règle à l'historique
 
+> **Arbitré le 2026-09-06 :** les lignes reclassées par une règle **ne comptent PAS** comme
+> corrections manuelles. Le taux de correction mesure la corvée résiduelle — les lignes reprises
+> une à une. Une règle est précisément l'échappatoire à cette corvée : compter ses lignes ferait
+> exploser l'indicateur du jalon 14.4 sans qu'aucune corvée n'ait eu lieu.
+
 En tant qu'utilisateur,
-je veux appliquer une règle nouvellement écrite aux lignes déjà en base,
+je veux appliquer une règle que je viens d'écrire aux lignes déjà en base,
 afin qu'une connaissance que je viens de formaliser ne serve pas qu'aux relevés futurs.
 
-**Valeur :** haute, complément direct de 18.1 · **Effort :** S · **Origine :** extension de
-FR41, **amendement PRD requis** · **À trancher :** ces lignes comptent-elles comme corrections
-manuelles ? Le taux de correction en dépend.
+**Acceptance Criteria:**
+
+**Given** une règle existante
+**When** l'utilisateur demande son application à l'historique
+**Then** les lignes que son motif couvre sont reclassées, et leur nombre est annoncé
+
+**Given** une ligne déjà corrigée à la main
+**When** une règle la couvre
+**Then** elle n'est PAS touchée — une règle ne défait pas un choix explicite de l'utilisateur
+
+**Given** une ligne couverte par plusieurs règles
+**When** l'application a lieu
+**Then** c'est le même départage qu'à l'ingestion qui tranche — le motif le plus long gagne
+
+**Given** des lignes reclassées par une règle
+**When** le taux de correction manuelle est recalculé
+**Then** il est inchangé : ces lignes ne sont pas des corrections manuelles
+
+**Given** l'application d'une règle
+**When** elle est demandée
+**Then** l'utilisateur en connaît la portée avant de confirmer, et les vues d'analyse sont
+rafraîchies après
+
+**Note d'implémentation.** L'application réutilise `applyRules` du moteur, sur le jeu COMPLET
+des règles restreint aux lignes que le motif couvre. Appliquer la règle seule contredirait le
+départage de l'ingestion et rendrait le classement dépendant de l'ordre des clics.
 
 ### Story 18.3: Rubriques classées par variation
 

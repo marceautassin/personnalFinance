@@ -300,9 +300,28 @@ development_status:
   # Consignées pour arbitrage : plusieurs demandent un amendement du PRD (périmètre verrouillé).
   # Constat qui les ordonne : 311 des 1 855 lignes au poste de repli, ~13 900 €, devant les
   # courses alimentaires. 18-1 et 18-2 attaquent ce bloc, le reste vient après.
-  epic-18: backlog
-  18-1-file-de-revue-des-non-categorises: backlog
-  18-2-reapplication-d-une-regle-a-l-historique: backlog
+  # 18-1 et 18-2 SORTIES du backlog le 2026-09-06, à la demande de l'utilisateur.
+  # Deux arbitrages pris à cette occasion :
+  #   • 18-1 : filtres sur la vue mensuelle existante, PAS d'écran de revue dédié. La
+  #     requalification se fait mois par mois ; le passage à l'échelle vient de 18-2.
+  #   • 18-2 : les lignes reclassées par une règle NE COMPTENT PAS comme corrections manuelles.
+  #     Le taux du jalon 14.4 mesure la corvée résiduelle, et une règle en est l'échappatoire.
+  epic-18: in-progress
+  # REVUE `pr-reviewer` du 2026-09-06 (contexte neuf, validation visuelle Playwright FAITE) :
+  # 2 BLOQUANTS, 2 MAJEURS, 4 mineurs — tous traités.
+  #   • BLOQUANT — `@keyup.enter="onAcceptSuggestion"` passait l'ÉVÉNEMENT clavier comme
+  #     `applyToHistory` : appuyer sur Entrée créait la règle ET l'appliquait à tout
+  #     l'historique, sans confirmation. Seule erreur de `nuxt typecheck`, invisible à
+  #     `tsc --noEmit` qui ne contrôle pas les templates Vue. Leçon : `yarn typecheck`.
+  #   • BLOQUANT — le comptage et la présélection passaient par un `LIKE` SQL sur
+  #     `LOWER(label)`. Le motif est stocké SANS accents et `LOWER()` de SQLite est ASCII :
+  #     un motif `creche` ne trouvait jamais `CRÈCHE`. Faux NÉGATIFS silencieux — moins de
+  #     lignes que le moteur. Les quatre comptages passent en mémoire via `patternCovers`,
+  #     et `server/utils/sql-like.ts` (story 17.8) disparaît, sans consommateur.
+  #   • MAJEURS — le chapeau de `/regles` affirmait encore qu'une règle ne touche pas
+  #     l'existant ; `skippedManualCount` comptait des lignes qu'aucune règle n'aurait bougées.
+  18-1-filtres-de-requalification: review
+  18-2-reapplication-d-une-regle-a-l-historique: review
   18-3-rubriques-classees-par-variation: backlog
   18-4-releve-source-et-fiabilite-partout: backlog
   18-5-comparaison-moyenne-douze-tranches: backlog
