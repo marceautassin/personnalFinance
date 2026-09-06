@@ -41,6 +41,19 @@ export interface AnalysisItemNode {
   /** Même poste sur la période précédente. `null` si cette période n'est pas fournie. */
   previousTotalCents: Cents | null
   transactionCount: number
+  /**
+   * Flux bruts du nœud : somme des montants sortants (négatifs) et entrants (positifs).
+   *
+   * **Pourquoi ils existent (story 18.11).** Le net les cache. Sur 2026, « Virement entre
+   * comptes » vaut −651,40 € alors que 4 512 € sont sortis et 3 861 € rentrés : ce net ne
+   * raconte rien des mouvements qui le composent. Sur les mouvements internes, où aucune
+   * nature n'annonce le sens attendu, c'est la seule façon de lire la ligne.
+   *
+   * Calculés pour TOUS les nœuds, sans distinction de nature : une fonction de calcul n'a pas
+   * à savoir ce que l'écran affichera (NFR22). `outflowCents + inflowCents === totalCents`.
+   */
+  outflowCents: Cents
+  inflowCents: Cents
 }
 
 export interface AnalysisGroupNode {
@@ -49,6 +62,9 @@ export interface AnalysisGroupNode {
   totalCents: Cents
   previousTotalCents: Cents | null
   transactionCount: number
+  /** Cf. `AnalysisItemNode` — somme des flux bruts des postes de la rubrique. */
+  outflowCents: Cents
+  inflowCents: Cents
   items: AnalysisItemNode[]
 }
 
@@ -113,10 +129,14 @@ export interface AnalysisInput {
 
 /** Totaux par code de poste. */
 function totalsByItem(transactions: readonly AnalysisTransaction[]) {
-  const totals = new Map<string, { cents: number, count: number }>()
+  const totals = new Map<string, { cents: number, count: number, out: number, in: number }>()
   for (const tx of transactions) {
-    const entry = totals.get(tx.categoryItemCode) ?? { cents: 0, count: 0 }
+    const entry = totals.get(tx.categoryItemCode) ?? { cents: 0, count: 0, out: 0, in: 0 }
     entry.cents += tx.amountCents
+    // Les deux sens sont sommés SÉPARÉMENT, sans valeur absolue : chacun garde le signe
+    // bancaire, et leur somme redonne le net (D28). Un montant nul ne compte d'aucun côté.
+    if (tx.amountCents < 0) entry.out += tx.amountCents
+    else if (tx.amountCents > 0) entry.in += tx.amountCents
     entry.count++
     totals.set(tx.categoryItemCode, entry)
   }
@@ -164,6 +184,8 @@ export function analyze(input: AnalysisInput): AnalysisResult {
         totalCents: cents(0),
         previousTotalCents: hasPrevious ? cents(0) : null,
         transactionCount: 0,
+        outflowCents: cents(0),
+        inflowCents: cents(0),
         items: [],
       }
       const item: AnalysisItemNode = {
@@ -172,9 +194,13 @@ export function analyze(input: AnalysisInput): AnalysisResult {
         totalCents: cents(cur?.cents ?? 0),
         previousTotalCents: hasPrevious ? cents(pre?.cents ?? 0) : null,
         transactionCount: cur?.count ?? 0,
+        outflowCents: cents(cur?.out ?? 0),
+        inflowCents: cents(cur?.in ?? 0),
       }
       group.items.push(item)
       group.totalCents = cents(group.totalCents + item.totalCents)
+      group.outflowCents = cents(group.outflowCents + item.outflowCents)
+      group.inflowCents = cents(group.inflowCents + item.inflowCents)
       if (group.previousTotalCents !== null && item.previousTotalCents !== null) {
         group.previousTotalCents = cents(group.previousTotalCents + item.previousTotalCents)
       }

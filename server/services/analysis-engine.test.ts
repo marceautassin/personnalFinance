@@ -145,6 +145,90 @@ describe('analyze — cas limite : signe inattendu pour la nature (NFR3, D28)', 
   })
 })
 
+/**
+ * Flux bruts — story 18.11.
+ *
+ * Le net cache les mouvements qui le composent : sur les données réelles de 2026, « Virement
+ * entre comptes » vaut −651,40 € alors que 4 512 € sont sortis et 3 861 € rentrés. Sur les
+ * mouvements internes, où aucune nature n'annonce le sens attendu, c'est la seule lecture
+ * possible de la ligne.
+ */
+describe('analyze — flux bruts par nœud (story 18.11)', () => {
+  const DEUX_SENS = [
+    tx('2026-03-02', -80_00, 'internes-virement-epargne'),
+    tx('2026-03-09', 4_352_00, 'internes-virement-epargne'),
+  ]
+
+  it('sépare les sorties des entrées sur un poste qui va dans les deux sens', () => {
+    const item = run(DEUX_SENS).natures
+      .find(n => n.nature === 'internal_transfer')!.groups[0]!.items[0]!
+
+    expect(item.outflowCents).toBe(-80_00)
+    expect(item.inflowCents).toBe(4_352_00)
+    expect(item.totalCents).toBe(4_272_00)
+  })
+
+  it('garde les trois valeurs cohérentes : sorties + entrées = net', () => {
+    const r = run([...NOMINAL, ...DEUX_SENS])
+    for (const nature of r.natures) {
+      for (const group of nature.groups) {
+        expect(group.outflowCents + group.inflowCents).toBe(group.totalCents)
+        for (const item of group.items) {
+          expect(item.outflowCents + item.inflowCents).toBe(item.totalCents)
+        }
+      }
+    }
+  })
+
+  it('somme les flux des postes au niveau de la rubrique', () => {
+    const group = run([
+      tx('2026-03-02', -80_00, 'internes-virement-epargne'),
+      tx('2026-03-09', 4_352_00, 'internes-virement-epargne'),
+    ]).natures.find(n => n.nature === 'internal_transfer')!.groups[0]!
+
+    expect(group.outflowCents).toBe(-80_00)
+    expect(group.inflowCents).toBe(4_352_00)
+  })
+
+  /** Cas limite NFR3 — un poste à sens unique : l'autre sens vaut zéro, pas `null`. */
+  it('rend zéro sur le sens qu\'un poste n\'emprunte jamais', () => {
+    const item = run([tx('2026-03-05', 250_000, 'revenus-salaire')]).natures
+      .find(n => n.nature === 'income')!.groups[0]!.items[0]!
+
+    expect(item.outflowCents).toBe(0)
+    expect(item.inflowCents).toBe(250_000)
+  })
+
+  /** Cas limite NFR3 — période sans transaction : aucun nœud, donc aucun flux à rendre. */
+  it('ne rend aucun nœud, donc aucun flux, sur une période vide', () => {
+    expect(run([]).natures).toEqual([])
+  })
+
+  /** Cas limite NFR3 — un montant nul ne compte d'aucun côté. */
+  it('ne range un montant nul ni en sortie ni en entrée', () => {
+    const item = run([
+      tx('2026-03-05', 0, 'alimentation-courses'),
+      tx('2026-03-06', -1_000, 'alimentation-courses'),
+    ]).natures.find(n => n.nature === 'expense')!.groups[0]!.items[0]!
+
+    expect(item.outflowCents).toBe(-1_000)
+    expect(item.inflowCents).toBe(0)
+    expect(item.transactionCount).toBe(2)
+  })
+
+  /** D28 — un remboursement sur un poste de dépense apparaît en entrée, sans valeur absolue. */
+  it('range un remboursement en ENTRÉE sur un poste de dépense', () => {
+    const item = run([
+      tx('2026-03-05', -40_000, 'alimentation-courses'),
+      tx('2026-03-06', 12_000, 'alimentation-courses'),
+    ]).natures.find(n => n.nature === 'expense')!.groups[0]!.items[0]!
+
+    expect(item.outflowCents).toBe(-40_000)
+    expect(item.inflowCents).toBe(12_000)
+    expect(item.totalCents).toBe(-28_000)
+  })
+})
+
 describe('analyze — comparaison à la période précédente (D24)', () => {
   const r = run(NOMINAL, {
     previousTransactions: [
