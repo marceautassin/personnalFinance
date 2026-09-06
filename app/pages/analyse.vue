@@ -23,6 +23,11 @@ const router = useRouter()
  * La tranche, elle, reste la DERNIÈRE qui contient quelque chose (cf. `useAnalysis`) : ouvrir
  * sur l'année civile en cours donnerait un écran vide chaque 1er janvier.
  */
+/** Période à ouvrir sur l'évolution : l'année du bucket courant, ou son trimestre. */
+const evolutionPeriod = computed(() =>
+  granularity.value === 'quarter' ? bucket.value : bucket.value.slice(0, 4),
+)
+
 const initialGranularity = GRANULARITIES.includes(route.query.g as Granularity)
   ? (route.query.g as Granularity)
   : 'year'
@@ -148,11 +153,15 @@ watch(bounds, newBounds => void itemTransactions.setRange(newBounds))
           </select>
         </label>
 
+        <!--
+          L'évolution regarde une PÉRIODE découpée en mois (refonte du 2026-09-07) : on lui
+          passe l'année ou le trimestre courant, jamais un mois — un mois y ferait un point.
+        -->
         <NuxtLink
           class="analyse__link"
-          :to="`/evolution?p=${bucket}&g=${granularity}`"
+          :to="`/evolution?p=${evolutionPeriod}`"
         >
-          Voir l'évolution sur douze tranches →
+          Voir l'évolution mois par mois →
         </NuxtLink>
       </div>
     </header>

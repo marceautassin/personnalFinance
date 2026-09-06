@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { useEvolution } from '~/composables/useEvolution'
 import { useApiError } from '~/composables/useApiError'
-import { GRANULARITIES, bucketBounds, type Granularity } from '~~/shared/types/granularity'
+import { bucketBounds } from '~~/shared/types/granularity'
+import { EVOLUTION_VIEW_LABELS, type EvolutionView } from '~/composables/useEvolution'
 import { useTargetTransactions } from '~/composables/useTargetTransactions'
 import { formatDate } from '~/utils/dates'
 import { formatEuros, type Cents } from '~~/shared/types/money'
@@ -9,29 +10,21 @@ import { formatEuros, type Cents } from '~~/shared/types/money'
 const route = useRoute()
 const router = useRouter()
 
-const initialGranularity = GRANULARITIES.includes(route.query.g as Granularity)
-  ? (route.query.g as Granularity)
-  : 'month'
-
-const { data, pending, error, bucket, granularity, target, label, shift, setGranularity }
-  = useEvolution(typeof route.query.p === 'string' ? route.query.p : undefined, initialGranularity)
+const { data, pending, error, period, view, target, label, canShift, shift, setView }
+  = useEvolution(typeof route.query.p === 'string' ? route.query.p : undefined)
 
 if (typeof route.query.t === 'string') target.value = route.query.t
 
 const { mapError } = useApiError()
 const fetchErrorMessage = computed(() => (error.value ? mapError(error.value) : null))
 
-watch([bucket, granularity, target], () => {
+watch([period, target], () => {
   router.replace({
-    query: { p: bucket.value, g: granularity.value, ...(target.value ? { t: target.value } : {}) },
+    query: { p: period.value, ...(target.value ? { t: target.value } : {}) },
   })
 })
 
-const GRANULARITY_LABELS: Record<Granularity, string> = {
-  month: 'Mois',
-  quarter: 'Trimestre',
-  year: 'Année',
-}
+const VIEWS: EvolutionView[] = ['quarter', 'year', 'all']
 
 const cumulativePoints = computed(() =>
   (data.value?.series ?? []).map(p => ({ bucket: p.bucket, label: p.label, value: p.cumulativeResultCents })),
@@ -100,12 +93,13 @@ const itemLabels = computed<Record<string, string>>(() =>
 
 function onToggleBucket(pointBucket: string) {
   if (!target.value) return
-  void targetTx.toggle(pointBucket, bucketBounds(pointBucket, granularity.value), target.value)
+  // Les tranches sont toujours des MOIS depuis la refonte du 2026-09-07.
+  void targetTx.toggle(pointBucket, bucketBounds(pointBucket, 'month'), target.value)
 }
 
 // Changer de cible, de pas ou de fenêtre referme la tranche ouverte : ses lignes ne la
 // décrivent plus.
-watch([target, granularity, bucket], () => targetTx.reset())
+watch([target, period], () => targetTx.reset())
 
 const targetDrift = computed(() => {
   const points = targetPoints.value
@@ -123,11 +117,14 @@ const targetDrift = computed(() => {
       <span class="page-head__sub">Les douze dernières tranches, jusqu'à {{ label }}</span>
 
       <div class="evo-page__period">
+        <!-- Tout l'historique n'a pas de voisin : `aria-disabled` plutôt que `disabled`, avec
+             la raison dans le nom accessible (NFR18). -->
         <div class="stepper">
           <button
             type="button"
             class="stepper__btn"
-            aria-label="Tranche précédente"
+            :aria-disabled="!canShift"
+            :aria-label="canShift ? 'Période précédente' : 'Période précédente — indisponible sur tout l\'historique'"
             @click="shift(-1)"
           >
             ‹
@@ -136,7 +133,8 @@ const targetDrift = computed(() => {
           <button
             type="button"
             class="stepper__btn"
-            aria-label="Tranche suivante"
+            :aria-disabled="!canShift"
+            :aria-label="canShift ? 'Période suivante' : 'Période suivante — indisponible sur tout l\'historique'"
             @click="shift(1)"
           >
             ›
@@ -144,18 +142,18 @@ const targetDrift = computed(() => {
         </div>
 
         <label class="evo-page__field">
-          <span>Pas</span>
+          <span>Vue</span>
           <select
             class="select select--sm"
-            :value="granularity"
-            @change="setGranularity(($event.target as HTMLSelectElement).value as Granularity)"
+            :value="view"
+            @change="setView(($event.target as HTMLSelectElement).value as EvolutionView)"
           >
             <option
-              v-for="g in GRANULARITIES"
-              :key="g"
-              :value="g"
+              v-for="v in VIEWS"
+              :key="v"
+              :value="v"
             >
-              {{ GRANULARITY_LABELS[g] }}
+              {{ EVOLUTION_VIEW_LABELS[v] }}
             </option>
           </select>
         </label>
@@ -406,7 +404,7 @@ const targetDrift = computed(() => {
               <th scope="row">
                 <NuxtLink
                   class="evo-page__jump"
-                  :to="{ path: '/analyse', query: { p: point.bucket, g: granularity } }"
+                  :to="{ path: '/analyse', query: { p: point.bucket, g: 'month' } }"
                   :aria-label="`Analyser ${point.label}`"
                 >{{ point.label }}</NuxtLink>
               </th>
