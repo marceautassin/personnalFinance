@@ -328,3 +328,26 @@ development_status:
   18-6-recherche-plein-texte: backlog
   18-7-export-csv-d-une-periode: backlog
   18-8-objectifs-de-depense-par-rubrique: backlog
+  # Nées du test en situation réelle, le 2026-09-06 au soir.
+  #   • 18-9 : après application, le tableau des règles ne disait pas si une règle était en
+  #     retard sur l'historique. L'utilisateur proposait un interrupteur ; arbitré en ÉTAT
+  #     DÉRIVÉ — un interrupteur promet de défaire ce qu'on ne sait pas défaire, le poste
+  #     d'origine d'une ligne n'étant conservé nulle part.
+  #   • 18-10 : l'arbitrage de 18-1 (filtres plutôt qu'écran dédié) est INVERSÉ à l'usage —
+  #     « pénible de refaire le filtre quand on repasse sur la page ». Les filtres restent.
+  # REVUE `pr-reviewer` du 2026-09-06 (contexte neuf, validation visuelle FAITE) : 0 bloquant,
+  # 5 majeurs, 11 mineurs. Tous les majeurs traités.
+  #   • Le sélecteur de poste s'affichait VIDE : `choice[key]` valant `undefined`, aucune
+  #     option ne correspondait et le placeholder ne s'affichait pas.
+  #   • L'échec d'application d'une règle était AVALÉ — message « règle créée » alors que
+  #     l'historique n'était pas rejoué (règle d'or de CLAUDE.md).
+  #   • La liste n'était pas rechargée après application : les lignes sorties du repli par la
+  #     règle restaient affichées et le compteur mentait.
+  #   • L'invariant « clé de groupe == motif de règle » ne tenait PAS sur le repli : un chèque
+  #     proposait `chq. n.7925088` comme motif, une règle qui ne se déclenche jamais deux fois.
+  #     Le groupe porte désormais un `rulePattern` distinct, nul quand rien n'est exploitable.
+  #   • `formatEuros(tx.amountCents as never)` contournait le type branded : `RangeTransaction`
+  #     porte maintenant `Cents`, et les casts disparaissent en amont.
+  # Vérifications : 525 tests unitaires, 20 E2E, lint et typecheck propres.
+  18-9-etat-d-application-d-une-regle: review
+  18-10-ecran-des-non-categorises: review

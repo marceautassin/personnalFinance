@@ -1444,3 +1444,80 @@ périmètre V1 · **Contrainte :** table dédiée, calcul hors du moteur (NFR22)
   qui n'est pas décidée.
 - **Taux de confiance du modèle** : le fournisseur ne l'expose pas. Le signal exploitable est le
   taux de repli, déjà mesuré.
+
+### Story 18.9: État d'application d'une règle
+
+> **Né de l'usage réel, 2026-09-06.** La 18.2 livrée, l'utilisateur constate : « on appuie sur
+> Appliquer, on a la pop-up, mais après le tableau ne nous dit pas si une règle est en
+> application ou pas ». Il proposait un interrupteur ; l'arbitrage a retenu un **état dérivé**,
+> parce qu'un interrupteur promet de défaire ce qu'on ne sait pas défaire : le poste d'origine
+> d'une ligne n'est conservé nulle part, une fois la règle appliquée.
+
+En tant qu'utilisateur,
+je veux voir, pour chaque règle, si l'historique est déjà rangé conformément à elle,
+afin de savoir laquelle appliquer sans les essayer une par une.
+
+**Acceptance Criteria:**
+
+**Given** une règle dont toutes les lignes couvertes sont déjà au bon poste
+**When** la liste des règles est affichée
+**Then** elle est annoncée « à jour », et son bouton d'application est indisponible
+
+**Given** une règle dont des lignes couvertes iraient ailleurs
+**When** la liste est affichée
+**Then** le nombre de lignes restant à ranger est annoncé, et l'application est disponible
+
+**Given** une règle qui ne couvre aucune ligne
+**When** la liste est affichée
+**Then** elle est distinguée des deux cas précédents — il n'y a rien à ranger, et rien n'est en retard
+
+**Given** une règle qu'on vient d'appliquer
+**When** la liste est rafraîchie
+**Then** son état bascule à « à jour » sans intervention
+
+**Given** une ligne couverte mais corrigée à la main
+**When** l'état est calculé
+**Then** elle ne compte pas comme « à ranger » — l'application ne la toucherait pas
+
+**Note d'implémentation.** L'état est CALCULÉ à chaque lecture, jamais stocké : un drapeau en
+base divergerait de la réalité dès la première ingestion. Le calcul rejoue le départage du
+moteur une seule fois pour toutes les lignes, puis compte par règle.
+
+### Story 18.10: Écran dédié aux lignes non catégorisées
+
+> **Arbitrage du 2026-09-06 INVERSÉ le même jour, à l'usage.** La story 18.1 avait retenu des
+> filtres sur la vue mensuelle plutôt qu'un écran dédié. À l'essai : « c'est assez pénible de
+> refaire le filtre quand on repasse sur la page ». Les filtres restent — ils servent à autre
+> chose — mais la revue du repli obtient l'écran que le cadrage initial proposait.
+
+En tant qu'utilisateur,
+je veux un écran qui rassemble mes lignes non catégorisées sur tout l'historique, groupées par
+libellé,
+afin de vider le poste de repli sans refaire vingt fois le même filtre.
+
+**Acceptance Criteria:**
+
+**Given** un historique portant des lignes au poste de repli
+**When** l'écran est ouvert
+**Then** elles sont toutes présentes, toutes périodes confondues, groupées par libellé normalisé
+
+**Given** un groupe de lignes partageant le même libellé
+**When** il est affiché
+**Then** son nombre de lignes et son total sont annoncés, et les groupes les plus lourds viennent
+en premier
+
+**Given** un groupe rangé dans un poste
+**When** le classement est confirmé
+**Then** toutes ses lignes changent de poste d'un seul geste, et le groupe quitte l'écran
+
+**Given** un groupe que l'on vient de ranger
+**When** son libellé se prête à une règle
+**Then** l'écran propose de la créer, et de l'appliquer à l'historique
+
+**Given** un poste de repli vide
+**When** l'écran est ouvert
+**Then** il le dit, et n'affiche pas une liste vide sans explication
+
+**Given** la liste des règles
+**When** elle est affichée
+**Then** un lien mène à cet écran
