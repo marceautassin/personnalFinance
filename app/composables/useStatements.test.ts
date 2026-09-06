@@ -23,7 +23,15 @@ afterEach(() => vi.clearAllMocks())
 const fakeFile = new File(['hello'], 'releve.pdf', { type: 'application/pdf' })
 
 describe('useStatements.uploadStatement', () => {
-  it('retourne le résultat et invalide les vues sur succès', async () => {
+  /**
+   * Story 17.7 — l'invalidation n'est PLUS déclenchée par fichier.
+   *
+   * Sur un dépôt d'historique de vingt-quatre relevés, une invalidation globale par fichier
+   * provoquait vingt-quatre rechargements complets de toutes les vues montées, pour des états
+   * intermédiaires que personne ne regarde. C'est la file (`useIngestionQueue.drain`) qui
+   * invalide une fois, quand elle se vide.
+   */
+  it('retourne le résultat sans invalider les vues à chaque fichier', async () => {
     const result = {
       hash: 'a'.repeat(64),
       periodStart: '2026-01-01',
@@ -39,7 +47,7 @@ describe('useStatements.uploadStatement', () => {
     expect(out.result).toEqual(result)
     expect(out.error).toBeUndefined()
     expect(out.overlap).toBeUndefined()
-    expect(invalidateAnalysis).toHaveBeenCalledTimes(1)
+    expect(invalidateAnalysis).not.toHaveBeenCalled()
 
     // POST multipart sans header Confirm-Replace par défaut
     const [url, opts] = fetchMock.mock.calls[0]!

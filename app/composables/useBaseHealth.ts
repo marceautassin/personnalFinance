@@ -14,7 +14,7 @@ import type { Cents } from '~~/shared/types/money'
  * exactement ce que D19 interdit.
  */
 export function useBaseHealth() {
-  const { data, pending } = useStatementsList()
+  const { data, pending, error } = useStatementsList()
 
   const statements = computed(() => data.value?.statements ?? [])
 
@@ -59,6 +59,12 @@ export function useBaseHealth() {
 
   return {
     pending,
+    /**
+     * Le chargement a échoué (story 17.7). Sans ce drapeau, les trois compteurs tombaient à
+     * zéro sur une panne : « 0 lignes · 0 relevés » se lit comme une base vide, pas comme un
+     * serveur muet.
+     */
+    failed: computed(() => error.value !== null && error.value !== undefined),
     statementCount,
     transactionCount,
     gapCents,

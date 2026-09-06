@@ -60,7 +60,6 @@ export const isRetryableErrorCode = (code: string | undefined): boolean =>
  */
 export function useStatements() {
   const { mapError } = useApiError()
-  const invalidate = useInvalidate()
 
   async function uploadStatement(
     file: File,
@@ -76,7 +75,10 @@ export function useStatements() {
         headers: opts.confirmReplace ? { 'X-Confirm-Replace': 'true' } : undefined,
         signal: opts.signal,
       })
-      await invalidate.invalidateAnalysis()
+      // Story 17.7 : PLUS d'invalidation globale par fichier. Sur un dépôt d'historique de
+      // vingt-quatre relevés, elle déclenchait vingt-quatre rechargements complets de toutes
+      // les vues montées — pour un état intermédiaire que personne ne regarde. L'appelant
+      // invalide une fois, quand la file est vide (`useIngestionQueue.drain`).
       return { result }
     }
     catch (err) {

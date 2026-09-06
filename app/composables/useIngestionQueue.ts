@@ -1,4 +1,5 @@
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
+import { useInvalidate } from '~/composables/useInvalidate'
 import { useStatements, useStatementsList, type OverlapInfo } from './useStatements'
 
 /**
@@ -39,6 +40,8 @@ export interface QueueItem {
 export function useIngestionQueue() {
   const { uploadStatement } = useStatements()
   const { refresh: refreshList } = useStatementsList()
+  // Capturé en setup, avant tout `await` : voir `useInvalidate`.
+  const invalidate = useInvalidate()
 
   const items = ref<QueueItem[]>([])
   const running = ref(false)
@@ -123,6 +126,9 @@ export function useIngestionQueue() {
     finally {
       running.value = false
       await refreshList()
+      // Une seule invalidation des vues d'analyse pour toute la file (story 17.7), au lieu
+      // d'une par fichier.
+      await invalidate.invalidateAnalysis()
     }
   }
 

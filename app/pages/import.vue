@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { useStatementsList, type StatementListItem } from '~/composables/useStatements'
 import { useIngestionQueue } from '~/composables/useIngestionQueue'
+import { useApiError } from '~/composables/useApiError'
 import { formatRatio } from '~~/shared/types/ratio'
 import type { Cents } from '~~/shared/types/money'
 import { MANUAL_CORRECTION_THRESHOLD } from '~~/shared/constants/quality-thresholds'
 
-const { data: listData } = useStatementsList()
+const { mapError } = useApiError()
+const { data: listData, error: listError } = useStatementsList()
 const {
   items,
   running,
@@ -114,8 +116,21 @@ function periodSlug(periodStart: string): string {
         </h3>
       </header>
 
+      <!-- Story 17.7 : distinguer la panne de l'absence de relevé. -->
+      <div
+        v-if="listError"
+        class="state state--error"
+      >
+        <p class="state__title">
+          Impossible de charger la liste des relevés.
+        </p>
+        <p class="state__hint">
+          {{ mapError(listError) }}
+        </p>
+      </div>
+
       <p
-        v-if="listData.statements.length === 0"
+        v-else-if="listData.statements.length === 0"
         class="statements__empty"
       >
         Aucun relevé ingéré pour le moment.

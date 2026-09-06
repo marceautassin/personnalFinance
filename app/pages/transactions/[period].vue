@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTransactions } from '~/composables/useTransactions'
+import { useApiError } from '~/composables/useApiError'
 import { isDegraded } from '~~/shared/types/statement-reliability'
 import { ratio, formatRatio } from '~~/shared/types/ratio'
 
@@ -16,9 +17,11 @@ const router = useRouter()
 const period = computed(() => route.params.period as string)
 const mutationError = ref<string | null>(null)
 
-const { data, pending, mutateCategory, ruleSuggestion, dismissSuggestion } = useTransactions(period)
+const { data, pending, error, mutateCategory, ruleSuggestion, dismissSuggestion } = useTransactions(period)
 const { addRule, previewRule } = useRules()
 const { data: groups } = useCategories()
+
+const { mapError } = useApiError()
 
 const savingRule = ref(false)
 
@@ -203,6 +206,21 @@ const periodCorrectionRate = computed(() =>
     >
       Chargement…
     </p>
+
+    <!-- Story 17.7 : une panne ne se déguise pas en mois vide. Sur une erreur serveur, cet
+         écran annonçait « Aucune transaction pour ce mois » — l'utilisateur pouvait en
+         conclure que son historique avait disparu. -->
+    <div
+      v-else-if="error"
+      class="panel state state--error"
+    >
+      <p class="state__title">
+        Impossible de charger les transactions de ce mois.
+      </p>
+      <p class="state__hint">
+        {{ mapError(error) }}
+      </p>
+    </div>
 
     <div
       v-else-if="data.transactions.length === 0"

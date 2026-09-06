@@ -83,8 +83,18 @@ function isActive(item: NavItem): boolean {
       en-têtes de page sont, eux, bornés à la période affichée : chaque libellé le dit, sans
       quoi « 0,2 % » ici et « 1,1 % » juste en dessous se liraient comme une contradiction.
     -->
+    <!-- Story 17.7 : sur une panne, les compteurs à zéro se liraient comme une base vide. -->
     <div
-      v-if="!health.pending.value || health.statementCount.value > 0"
+      v-if="health.failed.value"
+      class="bar__stats"
+    >
+      <span class="bar__stat bar__stat--failed">
+        Santé de la base indisponible
+      </span>
+    </div>
+
+    <div
+      v-else-if="!health.pending.value || health.statementCount.value > 0"
       class="bar__stats"
     >
       <span class="bar__stat">
@@ -154,6 +164,7 @@ function isActive(item: NavItem): boolean {
 @media (width < 1200px) {
   .bar__stats { display: none; }
 }
+.bar__stat--failed { color: var(--color-danger); }
 .bar__stat {
   height: 20px;
   padding: 0 var(--space-3);
