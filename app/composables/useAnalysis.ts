@@ -23,6 +23,11 @@ export function useAnalysis(initialBucket?: string, initialGranularity: Granular
    * chose. Se caler sur le mois courant ouvrait l'application sur un écran vide dès que
    * l'historique avait un mois de retard — ce qui est le cas normal, un relevé arrivant en fin
    * de mois (recette du 2026-09-05).
+   *
+   * ⚠️ **Le repli ne joue QU'UNE FOIS** (recette du 2026-09-06). Le watcher restait armé : la
+   * moindre mutation invalide les vues, `/api/periods` est refetché, et l'utilisateur qui
+   * corrigeait des lignes de juin était renvoyé sur août à chaque correction. Une fois la
+   * période résolue, elle appartient à l'utilisateur.
    */
   if (!initialBucket) {
     const periods = useFetch<{ lastDate: string | null }>('/api/periods', {
@@ -30,8 +35,10 @@ export function useAnalysis(initialBucket?: string, initialGranularity: Granular
       server: false,
       default: () => ({ lastDate: null }),
     })
-    watch(periods.data, (value) => {
-      if (value?.lastDate) bucket.value = bucketOf(value.lastDate, granularity.value)
+    const stop = watch(periods.data, (value) => {
+      if (!value?.lastDate) return
+      bucket.value = bucketOf(value.lastDate, granularity.value)
+      stop()
     }, { immediate: true })
   }
 
