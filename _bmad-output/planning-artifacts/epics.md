@@ -1005,3 +1005,389 @@ afin de corriger une catégorie à l'endroit où je la vois déraper, sans chang
 **Given** une ligne affichée dans cette descente
 **When** l'utilisateur la reclasse
 **Then** le geste est le même que sur `/analyse`, et la courbe reflète la correction
+
+---
+
+## Epic 17 — Correctifs de l'audit du 2026-09-06
+
+Audit complet de l'application mené le 2026-09-06 sur quatre axes (services back, front, tests
+et outillage, conformité au PRD), sur la base des **1 855 transactions et 20 relevés réels** en
+base. Le socle est sain — 510 tests verts, lint et typecheck propres, moteur pur, sommes
+algébriques, ratios à `null`, aucune clé en dur. Cet epic corrige ce que l'audit a trouvé.
+
+**Nature de l'epic.** Aucune fonctionnalité nouvelle : ce sont des défauts, une non-conformité
+de sécurité et de la dette. Les *idées* nées de l'audit vivent dans l'epic 18.
+
+**FRs concernés :** aucun nouveau · **NFR :** NFR2, NFR3, NFR6, NFR12, NFR14, NFR23
+
+**Ordre = gravité décroissante.** 17.1 à 17.3 touchent respectivement la confidentialité, la
+justesse des soldes et la justesse des indicateurs : ils passent avant tout le reste.
+
+### Story 17.1: Ne transmettre au fournisseur que le tableau d'opérations
+
+> **Non-conformité NFR6 constatée.** L'orchestrateur envoie `raw.rawText`, c'est-à-dire le
+> texte **intégral** du relevé, en-tête compris. Vérifié sur un relevé réel : le bloc d'en-tête
+> porte un IBAN `FR76…` et l'adresse postale du titulaire. Le PRD (NFR6), l'architecture et
+> `CLAUDE.md` §Sécurité affirment tous trois le contraire. La documentation décrit une garantie
+> que le code n'applique pas.
+
+En tant qu'utilisateur,
+je veux que seules les lignes d'opérations quittent ma machine,
+afin que mon IBAN et mon adresse ne soient jamais transmis à un tiers.
+
+**Acceptance Criteria:**
+
+**Given** un relevé dont la page porte les en-têtes de colonnes Débit et Crédit
+**When** son texte est préparé pour le fournisseur
+**Then** tout ce qui se trouve au-dessus de la ligne d'en-tête est retiré, identité comprise
+
+**Given** un relevé dont la structure de colonnes n'est pas reconnue (repli texte plat)
+**When** son texte est préparé
+**Then** le texte est coupé au début du tableau d'opérations quand ce début est repérable
+
+**Given** un texte préparé, quel que soit le chemin emprunté
+**When** il est inspecté
+**Then** aucun motif d'IBAN ni de BIC n'y subsiste, remplacés par un marqueur neutre
+
+**Given** la fixture de relevé réel du dépôt
+**When** le test de non-régression s'exécute
+**Then** il échoue si un IBAN reparaît dans ce qui part au fournisseur
+
+**Note de portée.** Le nom du titulaire figure **dans les libellés bancaires eux-mêmes**
+(`VIR SEPA DUPONT Jean charges`). Il est indissociable de la donnée métier et reste
+transmis : la story traite le bloc d'identité, pas les libellés. À tracer au PRD.
+
+### Story 17.2: Lecture des soldes robuste aux séparateurs de milliers
+
+> **Défaut latent, à fort rayon.** Les deux expressions régulières de solde capturent en mode
+> paresseux jusqu'à la première espace. Testé : `SOLDE AU : 31/12/2024 2 817,46` capture `"2"`,
+> soit **2,00 €** au lieu de 2 817,46 €. Cela ne se voit pas aujourd'hui parce qu'`unpdf`
+> aplatit `2 817,46` en `2817,46`. Un changement de version ou de gabarit ferait basculer tous
+> les relevés à quatre chiffres en « écart non examiné », avec des écarts de plusieurs milliers
+> d'euros et sans la moindre erreur levée.
+
+En tant qu'utilisateur,
+je veux que les soldes soient lus correctement quel que soit le séparateur de milliers,
+afin qu'une mise à jour de bibliothèque ne fausse pas silencieusement ma réconciliation.
+
+**Acceptance Criteria:**
+
+**Given** un solde écrit `2 817,46` avec une espace, une espace insécable ou une espace fine
+**When** il est lu depuis le texte du relevé
+**Then** la valeur retenue est 364 913 centimes dans les trois cas
+
+**Given** le récapitulatif Boursobank à trois montants sur une même ligne
+**When** ces montants portent des séparateurs de milliers
+**Then** c'est bien le deuxième qui est retenu comme solde de clôture
+
+**Given** les vingt relevés déjà ingérés
+**When** leurs soldes sont relus
+**Then** les valeurs sont identiques à celles en base — aucune régression
+
+### Story 17.3: Un écart accepté ne fausse ni le résultat ni le taux de correction
+
+> **Défaut de justesse.** L'acceptation d'un écart insère une transaction sur
+> `divers-non-categorise`, de nature `expense` et marquée `is_manual`. Deux conséquences :
+> un écart **positif** vient *diminuer* les dépenses de la période, et la ligne compte dans le
+> numérateur du taux de correction — l'indicateur du jalon 14.4. De plus la nature du poste de
+> repli est modifiable par l'utilisateur : un écart accepté peut donc basculer en recette.
+
+En tant qu'utilisateur,
+je veux qu'un écart que j'assume reste une différence inexpliquée,
+afin qu'il n'apparaisse ni comme une dépense, ni comme une recette, ni comme une correction.
+
+**Acceptance Criteria:**
+
+**Given** un relevé dont j'accepte l'écart
+**When** la ligne d'écart est créée
+**Then** elle porte un poste dédié de nature `internal_transfer`, protégé et non supprimable
+
+**Given** une période contenant un écart accepté
+**When** ses indicateurs sont calculés
+**Then** l'écart est absent du résultat et présent dans le solde bancaire (NFR4)
+
+**Given** un relevé portant un écart accepté
+**When** son taux de correction manuelle est calculé
+**Then** la ligne d'écart ne compte ni au numérateur ni au dénominateur
+
+**Given** la base existante, qui porte déjà des écarts acceptés
+**When** la migration s'applique
+**Then** les lignes concernées sont déplacées vers le nouveau poste
+
+### Story 17.4: Dates de transaction bornées à la période du relevé
+
+> Rien ne contraint les dates renvoyées par le modèle. Une ligne du relevé de mars 2026 datée
+> `2025-03-05` par le modèle serait insérée telle quelle : la réconciliation du relevé resterait
+> juste, mais la ligne polluerait l'analyse de mars 2025, et la fiabilité — calculée par période
+> de relevé — ne signalerait rien. Zéro occurrence sur les 1 855 lignes actuelles : le défaut
+> est latent, la garde est bon marché.
+
+En tant qu'utilisateur,
+je veux qu'une ligne ne puisse pas atterrir dans un mois auquel elle n'appartient pas,
+afin qu'une hallucination de date ne contamine pas une période déjà validée.
+
+**Acceptance Criteria:**
+
+**Given** une transaction extraite dont la date sort de la période résolue du relevé
+**When** l'ingestion se poursuit
+**Then** elle est refusée avec un code métier et le détail des lignes fautives
+
+**Given** une période déduite par repli des dates du modèle
+**When** la garde s'applique
+**Then** elle ne rejette rien, la période étant par construction l'enveloppe des dates
+
+### Story 17.5: Relance sur défaillance transitoire, soldes vérifiés avant l'appel
+
+> Deux défauts d'ordonnancement et de robustesse. (1) La relance couvre uniquement la
+> non-conformité de schéma : un JSON tronqué, un timeout, un 5xx ou un 429 remontent en erreur
+> dès la première tentative, alors qu'AR17 annonce une relance. (2) Les soldes obligatoires sont
+> vérifiés **après** l'appel au fournisseur : un relevé sans solde lisible fait payer un appel
+> voué au rejet. (3) Un 401/403 est classé « fournisseur indisponible », message trompeur pour
+> une clé invalide.
+
+En tant qu'utilisateur,
+je veux qu'un incident réseau passager ne perde pas mon ingestion,
+afin de ne pas rejouer un dépôt de vingt-quatre fichiers pour un timeout.
+
+**Acceptance Criteria:**
+
+**Given** un appel qui échoue sur timeout, 5xx ou 429
+**When** l'ingestion se poursuit
+**Then** un second appel est tenté après une courte attente, puis l'erreur remonte
+
+**Given** une clé d'API invalide (401 ou 403)
+**When** l'appel échoue
+**Then** aucune relance n'est tentée et le message distingue la configuration de la panne
+
+**Given** un relevé dont les soldes ne sont pas lisibles
+**When** il est ingéré
+**Then** l'échec survient avant tout appel au fournisseur
+
+### Story 17.6: Descente par poste — rechargement et anti-course
+
+> **Le défaut le plus visible du produit.** Un poste laissé ouvert dans la répartition conserve
+> son état d'ouverture au changement de période, mais ses lignes sont vidées et jamais
+> rechargées : le poste affiche « 0 ligne, total 0,00 € » sous un montant non nul. Le même
+> symptôme survient après un reclassement, le poste d'arrivée n'étant pas invalidé. S'y ajoute
+> une course : aucun jeton n'annule un chargement en vol, si bien que les lignes de mars peuvent
+> s'afficher sous les totaux d'avril. C'est NFR2 qui est en jeu — un montant doit mener à ses
+> lignes, pas à zéro ligne.
+
+En tant qu'utilisateur,
+je veux qu'un poste ouvert montre toujours les lignes de la période affichée,
+afin de pouvoir croire ce que je lis.
+
+**Acceptance Criteria:**
+
+**Given** un poste déplié
+**When** la période change
+**Then** ses lignes sont rechargées pour la nouvelle période, sans geste supplémentaire
+
+**Given** une transaction reclassée depuis un poste vers un autre
+**When** les deux postes sont ouverts
+**Then** les deux listes reflètent le déplacement
+
+**Given** un chargement de lignes encore en vol
+**When** la période change avant sa réponse
+**Then** la réponse tardive est ignorée
+
+### Story 17.7: Erreurs de chargement visibles et invalidation ciblée
+
+> Trois écrans confondent « échec » et « vide » : sur une erreur serveur, la page transactions
+> affiche « Aucune transaction pour ce mois », la page import « Aucun relevé ingéré », et les
+> compteurs de santé tombent à zéro. Par ailleurs chaque mutation enchaîne un rafraîchissement
+> ciblé **puis** un rafraîchissement global — et l'ingestion en déclenche un par fichier, soit
+> vingt-quatre rechargements complets sur un dépôt d'historique.
+
+En tant qu'utilisateur,
+je veux distinguer une absence de donnée d'une panne,
+afin de ne pas conclure que mon historique a disparu.
+
+**Acceptance Criteria:**
+
+**Given** un chargement en erreur sur les écrans transactions, import ou barre d'application
+**When** la réponse arrive
+**Then** un message d'erreur est affiché, distinct de l'état vide
+
+**Given** une mutation réussie
+**When** les données sont réactualisées
+**Then** seules les clés concernées sont rafraîchies, une seule fois
+
+**Given** un dépôt de plusieurs fichiers
+**When** la file progresse
+**Then** le rafraîchissement global est déclenché une fois à la fin, pas à chaque fichier
+
+### Story 17.8: Index de poste et échappement des motifs de recherche
+
+> `transactions.category_item_code` n'est pas indexé alors qu'il porte le filtre par poste, la
+> vérification de clé étrangère avant suppression et le dépliage. Par ailleurs les trois usages
+> de `LIKE` interpolent le motif sans échapper `%` et `_` : un motif contenant `_` compte des
+> correspondances qui n'en sont pas (`a_b` attrape `aXb`). Paramétré, donc sans injection, mais
+> le compteur de portée d'une règle ment.
+
+**Acceptance Criteria:**
+
+**Given** un filtre ou une suppression portant sur un poste
+**When** la requête s'exécute
+**Then** elle s'appuie sur un index dédié
+
+**Given** une règle dont le motif contient `%` ou `_`
+**When** sa portée est comptée ou prévisualisée
+**Then** ces caractères sont traités comme littéraux
+
+### Story 17.9: Suppression du périmètre forecast résiduel
+
+> `CLAUDE.md` affirme que l'ancien périmètre a été « entièrement supprimé du code ». C'est faux.
+> Restent sans aucun appelant : le service de suggestion de charges et sa table, les utilitaires
+> de période, un schéma de relevé périmé, quatre composables et utilitaires front, et deux
+> dépendances déclarées jamais importées. Le service résiduel porte au passage les deux derniers
+> `Math.abs` sur montants du dépôt.
+
+**Acceptance Criteria:**
+
+**Given** le dépôt après nettoyage
+**When** on cherche un import du périmètre forecast
+**Then** il n'en reste aucun, et la table orpheline est retirée par migration
+
+**Given** la suite de tests
+**When** elle s'exécute après suppression
+**Then** elle reste verte, les tests du code retiré ayant disparu avec lui
+
+### Story 17.10: Sauvegarde et restauration des corrections
+
+> **NFR12 est faux dès la première correction.** Les PDF sont conservés, mais une ré-ingestion
+> ne restitue ni les reclassements manuels, ni les écarts acceptés : ils ne vivent qu'en base,
+> et rien ne les sauvegarde. La donnée la plus chère du projet — le travail de rangement de
+> l'utilisateur — n'a aucune copie.
+
+En tant qu'utilisateur,
+je veux pouvoir sauvegarder et restaurer mon travail de classement,
+afin qu'une base perdue ne me coûte pas des heures de reclassement.
+
+**Acceptance Criteria:**
+
+**Given** une base peuplée
+**When** la commande de sauvegarde est lancée
+**Then** une copie cohérente de la base est écrite, horodatée, hors du dossier suivi par git
+
+**Given** une sauvegarde des corrections
+**When** elle est produite
+**Then** elle contient les règles, les reclassements manuels et les écarts acceptés, dans un
+format lisible et indépendant des identifiants techniques
+
+### Story 17.11: Intégration continue et seuil de couverture
+
+> Aucune CI. Les seuils de couverture sont déclarés à **0 %** et aucun script ne les mesure :
+> le gap G4 n'est pas « manuel », il est absent. Deux trous de couverture NFR3 subsistent par
+> ailleurs sur le suggérateur (base vide) et sur les fonctions de fiabilité.
+
+**Acceptance Criteria:**
+
+**Given** une poussée sur une branche
+**When** la CI s'exécute
+**Then** elle installe, lint, typecheck et joue les tests unitaires
+
+**Given** la mesure de couverture
+**When** elle s'exécute sur le moteur et les types partagés
+**Then** un seuil non nul est appliqué et documenté
+
+---
+
+## Epic 18 — Améliorations issues de l'audit
+
+Propositions nées de l'audit du 2026-09-06, **aucune n'est implémentée**. Elles sont consignées
+ici pour être arbitrées, pas exécutées : le périmètre du PRD reste verrouillé et plusieurs
+d'entre elles demandent un amendement explicite avant d'entrer en sprint.
+
+**Constat qui les ordonne.** Sur les 1 855 lignes en base, **311 tombent au poste de repli**,
+pour environ 13 900 € — devant les courses alimentaires. Tant que ce bloc existe, « où part
+l'argent » ne peut pas répondre. Les stories 18.1 et 18.2 attaquent ce bloc ; le reste vient
+après.
+
+### Story 18.1: File de revue des non catégorisés
+
+En tant qu'utilisateur,
+je veux voir d'un seul écran toutes mes lignes non catégorisées, groupées par libellé,
+afin de ranger deux ans d'historique en une passe au lieu d'ouvrir vingt mois un par un.
+
+**Valeur :** c'est le chantier qui fait franchir le jalon 14.4 · **Effort :** M · **Origine :**
+nouveau, sert un jalon existant · **Dépend de :** rien, l'endpoint de transactions sait déjà
+filtrer par poste sur une plage.
+
+### Story 18.2: Ré-application d'une règle à l'historique
+
+En tant qu'utilisateur,
+je veux appliquer une règle nouvellement écrite aux lignes déjà en base,
+afin qu'une connaissance que je viens de formaliser ne serve pas qu'aux relevés futurs.
+
+**Valeur :** haute, complément direct de 18.1 · **Effort :** S · **Origine :** extension de
+FR41, **amendement PRD requis** · **À trancher :** ces lignes comptent-elles comme corrections
+manuelles ? Le taux de correction en dépend.
+
+### Story 18.3: Rubriques classées par variation
+
+En tant qu'utilisateur,
+je veux voir en tête les rubriques qui ont le plus bougé depuis la période précédente,
+afin de répondre à « pourquoi ce mois est dans le rouge » sans lire toute la liste.
+
+**Valeur :** haute · **Effort :** S · **Origine :** FR34, **partiellement livré** — l'écart est
+affiché mais le tri reste sur le montant.
+
+### Story 18.4: Relevé source et fiabilité partout
+
+En tant qu'utilisateur,
+je veux atteindre le relevé d'origine depuis n'importe quelle ligne, et voir la fiabilité sur
+la vue d'évolution,
+afin que la traçabilité ne s'arrête pas à la vue de répartition.
+
+**Valeur :** moyenne, ferme deux trous · **Effort :** S · **Origine :** FR36 et FR12,
+**partiellement livrés** — le hash du relevé transite déjà dans les charges utiles mais n'est
+rendu nulle part.
+
+### Story 18.5: Comparaison à la moyenne des douze tranches
+
+En tant qu'utilisateur,
+je veux comparer une rubrique à sa moyenne sur douze tranches, pas seulement à la tranche
+précédente,
+afin de distinguer une vraie dérive d'un mois atypique.
+
+**Valeur :** haute · **Effort :** M · **Origine :** nouveau, voisin de FR39 · **Dépend de :** le
+moteur reçoit déjà deux jeux de lignes, il faut lui en passer douze.
+
+### Story 18.6: Recherche plein texte sur l'historique
+
+En tant qu'utilisateur,
+je veux chercher un libellé sur tout l'historique et en voir le total,
+afin de répondre à « combien chez ce marchand en deux ans » sans passer par les catégories.
+
+**Valeur :** moyenne, sert aussi l'écriture de règles · **Effort :** S/M · **Origine :** nouveau
+· **Note :** le filtre existant est client et ne couvre qu'un mois.
+
+### Story 18.7: Export CSV d'une période
+
+En tant qu'utilisateur,
+je veux exporter les lignes d'une période avec rubrique, poste et nature,
+afin de contrôler les chiffres hors de l'application.
+
+**Valeur :** moyenne · **Effort :** S · **Origine :** **hors périmètre explicite** du PRD
+(§ Notes de traçabilité, « export de données »). Amendement requis.
+
+### Story 18.8: Objectifs de dépense par rubrique
+
+En tant qu'utilisateur,
+je veux fixer un plafond mensuel par rubrique et voir où j'en suis,
+afin de passer du constat à la décision.
+
+**Valeur :** haute mais structurante · **Effort :** M · **Origine :** **Vision phase 3**, hors
+périmètre V1 · **Contrainte :** table dédiée, calcul hors du moteur (NFR22).
+
+### Écarté volontairement
+
+- **Projection de fin de mois** et **alertes de dérive** : trop proches du forecast invalidé le
+  2026-09-04, et hors périmètre explicite. Le besoin réel est couvert par 18.3.
+- **Split d'une transaction** : casse l'invariant « une ligne de relevé = une transaction » et
+  oblige à rouvrir réconciliation et traçabilité. À ne pas envisager avant 18.1 à 18.4.
+- **Import d'autres banques** : Vision phase 3, dépend d'une extraction paramétrée par banque
+  qui n'est pas décidée.
+- **Taux de confiance du modèle** : le fournisseur ne l'expose pas. Le signal exploitable est le
+  taux de repli, déjà mesuré.

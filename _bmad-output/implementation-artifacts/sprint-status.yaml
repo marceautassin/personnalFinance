@@ -1,5 +1,5 @@
 # generated: 2026-04-30
-# last_updated: 2026-09-04
+# last_updated: 2026-09-06
 # project: personnalFinance
 # project_key: NOKEY
 # tracking_system: file-system
@@ -65,7 +65,7 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 generated: 2026-04-30
-last_updated: 2026-09-05
+last_updated: 2026-09-06
 project: personnalFinance
 project_key: NOKEY
 tracking_system: file-system
@@ -250,3 +250,62 @@ development_status:
   # rubrique sur GET /api/transactions). Signalée plutôt que faite en passant — scope verrouillé.
   16-5-descente-depuis-la-trajectoire: backlog
   epic-16-retrospective: optional
+
+  # ─────────────────── AUDIT DU 2026-09-06 (epics 17-18) ───────────────────
+  # Audit complet sur quatre axes : services back, front, tests/outillage, conformité PRD.
+  # Base réelle au moment de l'audit : 1 855 transactions, 20 relevés, 13 règles.
+  # Socle sain (510 tests verts, lint et typecheck propres). Trois défauts sérieux :
+  #   • NFR6 non respectée — le texte INTÉGRAL du relevé part au fournisseur, IBAN et
+  #     adresse compris. La doc (PRD, architecture, CLAUDE.md) décrit une garantie absente.
+  #   • Regex de soldes cassées dès qu'un séparateur de milliers apparaît. Latent : ça ne
+  #     tient que parce qu'`unpdf` aplatit sans séparateur.
+  #   • L'écart accepté est inséré en DÉPENSE manuelle : il fausse le résultat de la période
+  #     et le taux de correction du jalon 14.4.
+
+  # Epic 17 — Correctifs de l'audit. Aucune fonctionnalité nouvelle.
+  # Ordre = gravité décroissante : 17-1 à 17-3 avant tout le reste.
+  epic-17: in-progress
+  17-1-texte-transmis-limite-aux-operations: review
+  17-2-lecture-des-soldes-robuste: review
+  17-3-ecart-accepte-neutre: review
+  17-4-dates-bornees-a-la-periode: review
+  17-5-relance-transitoire-et-ordre-des-etapes: review
+  17-6-descente-par-poste-rechargement-et-course: review
+  17-7-erreurs-de-chargement-et-invalidation: review
+  17-8-index-de-poste-et-echappement-like: review
+  17-9-suppression-du-forecast-residuel: review
+  17-10-sauvegarde-et-restauration: review
+  # PARTIELLE : la CI est livrée, le seuil de couverture NON.
+  # La mesure est cassée dans ce dépôt — avec `v8` comme avec `istanbul`, les onze fichiers du
+  # périmètre sont instrumentés puis rapportés à 0/N statements alors que les 497 tests les
+  # traversent. Poser un seuil non nul sur cette mesure ferait échouer la CI sur un artefact
+  # d'outillage. Le gap G4 reste OUVERT. Détail dans `vitest.config.ts`.
+  17-11-integration-continue-et-couverture: in-progress
+  # REVUE `pr-reviewer` du 2026-09-06 (contexte neuf, validation visuelle Playwright FAITE sur
+  # la base réelle) : 1 BLOQUANT, 2 MAJEURS, 8 mineurs — tous traités.
+  #   • BLOQUANT — `useItemTransactions.setRange` déduisait les postes à recharger de `byItem`,
+  #     qu'il vide AVANT l'arrivée des réponses : deux changements de période rapprochés
+  #     reperdaient les postes ouverts, soit le défaut même que 17.6 corrige. Corrigé par un
+  #     `openCodes` tenu à part, avec un test de non-régression vérifié rouge sans le correctif.
+  #   • MAJEUR — une clé d'API invalide sortait en « fournisseur indisponible » et l'UI
+  #     proposait « Réessayer ». Code métier dédié `llm_config_error`, hors des codes relançables.
+  #   • MAJEUR — le repli texte plat ne coupait qu'UN bloc d'identité : les pages 2..N d'un
+  #     relevé multipage aplati passaient entières. Coupe à chaque ancre, tranche tronquée
+  #     après son dernier montant.
+  # Vérifications finales : 505 tests unitaires verts, 20 E2E verts (7 skipped, fixtures PDF
+  # absentes du dépôt), lint et typecheck propres.
+  epic-17-retrospective: optional
+
+  # Epic 18 — Améliorations issues de l'audit. AUCUNE N'EST IMPLÉMENTÉE.
+  # Consignées pour arbitrage : plusieurs demandent un amendement du PRD (périmètre verrouillé).
+  # Constat qui les ordonne : 311 des 1 855 lignes au poste de repli, ~13 900 €, devant les
+  # courses alimentaires. 18-1 et 18-2 attaquent ce bloc, le reste vient après.
+  epic-18: backlog
+  18-1-file-de-revue-des-non-categorises: backlog
+  18-2-reapplication-d-une-regle-a-l-historique: backlog
+  18-3-rubriques-classees-par-variation: backlog
+  18-4-releve-source-et-fiabilite-partout: backlog
+  18-5-comparaison-moyenne-douze-tranches: backlog
+  18-6-recherche-plein-texte: backlog
+  18-7-export-csv-d-une-periode: backlog
+  18-8-objectifs-de-depense-par-rubrique: backlog
