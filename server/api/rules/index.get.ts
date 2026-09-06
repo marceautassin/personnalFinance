@@ -25,9 +25,14 @@ export default defineEventHandler(async (): Promise<ClassificationRuleWithLabels
       createdAt: classificationRules.createdAt,
       itemLabel: categoryItems.label,
       groupLabel: categoryGroups.label,
+      // Les jokers du motif sont neutralisés côté SQL (story 17.8) : `REPLACE` imbriqués,
+      // car le motif vient d'une colonne et non d'un paramètre applicatif.
       matchCount: sql<number>`(
         SELECT COUNT(*) FROM ${transactions}
-        WHERE LOWER(${transactions.label}) LIKE '%' || LOWER(${classificationRules.pattern}) || '%'
+        WHERE LOWER(${transactions.label}) LIKE
+          '%' || REPLACE(REPLACE(REPLACE(LOWER(${classificationRules.pattern}),
+            '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'
+          ESCAPE '\\'
       )`,
     })
     .from(classificationRules)

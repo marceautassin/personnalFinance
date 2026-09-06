@@ -141,6 +141,32 @@ describe('GET /api/rules', () => {
     expect(rules[0]!.matchCount).toBe(2)
   })
 
+  /**
+   * Story 17.8 — les jokers `LIKE` du motif sont neutralisés.
+   *
+   * Sans échappement, `%` et `_` gardaient leur sens de joker : le compteur de portée d'une
+   * règle annonçait des correspondances qui n'en étaient pas, et c'est sur ce chiffre que
+   * l'utilisateur décide de créer la règle.
+   */
+  it('traite `_` comme un caractère littéral, pas comme un joker', async () => {
+    seedTransaction('PRLV SPOTIFY_PREMIUM')
+    seedTransaction('PRLV SPOTIFYXPREMIUM')
+    await create('spotify_premium')
+
+    const rules = (await getHandler(makeEvent({ method: 'GET' }))) as Rule[]
+    expect(rules[0]!.matchCount).toBe(1)
+  })
+
+  it('traite `%` comme un caractère littéral', async () => {
+    seedTransaction('REMISE 20% FIDELITE')
+    // Ne correspond QUE si `%` est interprété comme joker : c'est ce que le test interdit.
+    seedTransaction('REMISE 20 SUPER FIDELITE')
+    await create('20% fidelite')
+
+    const rules = (await getHandler(makeEvent({ method: 'GET' }))) as Rule[]
+    expect(rules[0]!.matchCount).toBe(1)
+  })
+
   it('rend un compteur nul quand rien ne correspond', async () => {
     seedTransaction('VIR SALAIRE ACME')
     await create('carrefour')

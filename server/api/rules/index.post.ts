@@ -1,6 +1,7 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { eq, sql, like } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
+import { likeContains, LIKE_ESCAPE_CHAR } from '~~/server/utils/sql-like'
 import { classificationRules, categoryItems, categoryGroups, transactions } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { assertCategoryItemExists } from '~~/server/utils/category-fk'
@@ -73,7 +74,7 @@ function countMatching(pattern: string): number {
   const row = db
     .select({ cnt: sql<number>`count(*)` })
     .from(transactions)
-    .where(like(sql`LOWER(${transactions.label})`, `%${pattern}%`))
+    .where(sql`LOWER(${transactions.label}) LIKE ${likeContains(pattern)} ESCAPE ${LIKE_ESCAPE_CHAR}`)
     .get()
   return Number(row?.cnt ?? 0)
 }
