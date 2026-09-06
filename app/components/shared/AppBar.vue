@@ -21,20 +21,28 @@ interface NavItem { label: string, href: string, match: string }
 const health = useBaseHealth()
 
 /**
- * Mois visé par « Transactions » — le dernier RELEVÉ, pas le mois du calendrier.
+ * Tranche visée par « Transactions » — l'ANNÉE du dernier relevé (demande du 2026-09-06).
  *
- * Viser le mois courant ouvrait l'écran le plus dense du produit sur son état vide chaque
- * début de mois, tant que le relevé n'était pas importé. La liste des relevés est triée par
- * période décroissante et déjà chargée pour les compteurs : aucun appel de plus.
+ * Deux choix s'empilent ici, et ils ont la même raison d'être.
+ *
+ * L'ANNÉE plutôt que le mois : « Analyse » s'ouvre sur l'année, et atterrir sur un mois depuis
+ * l'onglet voisin obligeait à changer d'échelle à chaque visite. Un an fait un millier de
+ * lignes, que le filtre et la recherche rendent praticables.
+ *
+ * Le dernier RELEVÉ plutôt que le calendrier : viser l'année civile ouvrirait l'écran le plus
+ * dense du produit sur son état vide chaque 1er janvier, tant que le relevé n'est pas importé.
+ * La liste des relevés est triée par période décroissante et déjà chargée pour les compteurs :
+ * aucun appel de plus.
  */
 const now = new Date()
 const calendarPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 const latestPeriod = computed(() => health.latestPeriod.value ?? calendarPeriod)
+const latestYear = computed(() => latestPeriod.value.slice(0, 4))
 
 const items = computed<NavItem[]>(() => [
   { label: 'Analyse', href: '/analyse', match: '/analyse' },
   { label: 'Évolution', href: '/evolution', match: '/evolution' },
-  { label: 'Transactions', href: `/transactions/${latestPeriod.value}`, match: '/transactions' },
+  { label: 'Transactions', href: `/transactions/${latestYear.value}`, match: '/transactions' },
   { label: 'Import', href: '/import', match: '/import' },
   { label: 'Catégories', href: '/categories', match: '/categories' },
   { label: 'À ranger', href: '/a-ranger', match: '/a-ranger' },
@@ -111,8 +119,9 @@ function isActive(item: NavItem): boolean {
           {{ formatEuros(health.gapCents.value) }}
         </strong>
       </NuxtLink>
+      <!-- Le taux porte sur TOUTE la base : il mène à l'année, pas à un mois. -->
       <NuxtLink
-        :to="`/transactions/${latestPeriod}`"
+        :to="`/transactions/${latestYear}`"
         class="bar__stat"
       >
         Corrigé à la main
