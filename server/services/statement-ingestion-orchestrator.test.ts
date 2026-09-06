@@ -30,8 +30,17 @@ vi.mock('~~/server/services/llm-categorizer', () => {
       this.name = 'LlmUnavailableError'
     }
   }
+  // Sous-classe, comme en production : c'est ce qui rend l'ORDRE des tests d'instance
+  // significatif dans l'orchestrateur (story 17.5).
+  class LlmConfigError extends LlmUnavailableError {
+    constructor(message: string) {
+      super(message)
+      this.name = 'LlmConfigError'
+    }
+  }
   return {
     categorizeStatement: vi.fn(),
+    LlmConfigError,
     LlmExtractionError,
     LlmUnavailableError,
   }
@@ -318,5 +327,109 @@ describe('ingestStatement (orchestrator)', () => {
 
     expect(existsSync(pdfPathFor(buf))).toBe(false)
     expect(dbMod.db.select().from(schema.bankStatements).all()).toHaveLength(0)
+  })
+
+  /**
+   * Story 17.4 — dates bornées à la période du relevé.
+   *
+   * Rien ne contraignait les dates du modèle : une ligne du relevé de mars 2026 datée
+   * 2025-03-05 partait polluer l'analyse de mars 2025, sans que la fiabilité — calculée par
+   * période de relevé — ne signale quoi que ce soit.
+   */
+  describe('bornage des dates à la période (story 17.4)', () => {
+    it('refuse une ligne antérieure à la période', async () => {
+      mockExtract({ periodStart: '2026-04-01', periodEnd: '2026-04-30' })
+      mockCategorize([
+        { transactionDate: '2026-04-05', label: 'Courses', amountCents: -30_000, categoryItemCode: 'alimentation-courses' },
+        { transactionDate: '2025-03-05', label: 'Ligne égarée', amountCents: -20_000, categoryItemCode: 'alimentation-courses' },
+      ])
+
+      await expect(
+        orch.ingestStatement({ pdfBuffer: pdf('out-of-period-before'), confirmReplace: false }),
+      ).rejects.toMatchObject({
+        statusCode: 502,
+        statusMessage: ApiErrorCode.LlmExtractionFailed,
+      })
+      expect(dbMod.db.select().from(schema.bankStatements).all()).toHaveLength(0)
+    })
+
+    it('refuse une ligne postérieure à la période', async () => {
+      mockExtract({ periodStart: '2026-04-01', periodEnd: '2026-04-30' })
+      mockCategorize([
+        { transactionDate: '2026-05-02', label: 'Trop tard', amountCents: -50_000, categoryItemCode: 'alimentation-courses' },
+      ])
+
+      await expect(
+        orch.ingestStatement({ pdfBuffer: pdf('out-of-period-after'), confirmReplace: false }),
+      ).rejects.toMatchObject({ statusCode: 502 })
+    })
+
+    it('accepte les dates aux bornes exactes', async () => {
+      mockExtract({ periodStart: '2026-04-01', periodEnd: '2026-04-30', openingBalanceCents: 100_000, closingBalanceCents: 50_000 })
+      mockCategorize([
+        { transactionDate: '2026-04-01', label: 'Premier jour', amountCents: -25_000, categoryItemCode: 'alimentation-courses' },
+        { transactionDate: '2026-04-30', label: 'Dernier jour', amountCents: -25_000, categoryItemCode: 'alimentation-courses' },
+      ])
+
+      const result = await orch.ingestStatement({ pdfBuffer: pdf('bounds-inclusive'), confirmReplace: false })
+      expect(result.transactionCount).toBe(2)
+    })
+
+    it('ne rejette rien quand la période vient du repli sur les dates extraites', async () => {
+      // La période est alors l'enveloppe des dates : la garde ne peut pas mordre.
+      mockExtract({ periodStart: null, periodEnd: null, openingBalanceCents: 100_000, closingBalanceCents: 50_000 })
+      mockCategorize([
+        { transactionDate: '2025-03-05', label: 'Vieille ligne', amountCents: -25_000, categoryItemCode: 'alimentation-courses' },
+        { transactionDate: '2026-04-30', label: 'Récente', amountCents: -25_000, categoryItemCode: 'alimentation-courses' },
+      ])
+
+      const result = await orch.ingestStatement({ pdfBuffer: pdf('fallback-period'), confirmReplace: false })
+      expect(result.periodStart).toBe('2025-03-05')
+      expect(result.periodEnd).toBe('2026-04-30')
+    })
+  })
+
+  /**
+   * Story 17.5 — les soldes sont vérifiés AVANT l'appel au fournisseur.
+   *
+   * Un relevé sans solde lisible faisait payer un appel voué au rejet : le contrôle ne dépend
+   * que du texte extrait et n'a rien à faire derrière l'appel.
+   */
+  describe('ordre des étapes (story 17.5)', () => {
+    it.each([
+      ['ouverture', { openingBalanceCents: null }],
+      ['clôture', { closingBalanceCents: null }],
+    ])('refuse un solde de %s illisible sans appeler le fournisseur', async (_name, opts) => {
+      mockExtract(opts)
+      mockCategorize([])
+
+      await expect(
+        orch.ingestStatement({ pdfBuffer: pdf(`no-balance-${_name}`), confirmReplace: false }),
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        statusMessage: ApiErrorCode.PdfParseFailed,
+      })
+      expect(vi.mocked(llmMod.categorizeStatement)).not.toHaveBeenCalled()
+    })
+  })
+
+  /**
+   * Story 17.5 — un défaut de configuration se distingue d'une panne du fournisseur.
+   *
+   * Sans code métier dédié, une clé invalide sortait en « fournisseur indisponible » et l'UI
+   * proposait un bouton « Réessayer » sur un problème que retenter ne résout pas.
+   */
+  it('traduit un défaut de configuration en code métier dédié', async () => {
+    mockExtract()
+    vi.mocked(llmMod.categorizeStatement).mockRejectedValue(
+      new llmMod.LlmConfigError('Accès refusé (401)'),
+    )
+
+    await expect(
+      orch.ingestStatement({ pdfBuffer: pdf('llm-config'), confirmReplace: false }),
+    ).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: ApiErrorCode.LlmConfigError,
+    })
   })
 })

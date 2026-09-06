@@ -52,12 +52,44 @@ export class LlmUnavailableError extends Error {
   }
 }
 
+/**
+ * Défaut de CONFIGURATION, pas panne du fournisseur (story 17.5).
+ *
+ * Un 401 ou un 403 était jusqu'ici classé « fournisseur indisponible » : message trompeur pour
+ * une clé absente ou invalide, et surtout motif de relance alors que retenter est vain. Sous-
+ * classe de `LlmUnavailableError` pour que la traduction HTTP de l'orchestrateur reste
+ * inchangée ; c'est la logique de relance qui la distingue.
+ */
+export class LlmConfigError extends LlmUnavailableError {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause)
+    this.name = 'LlmConfigError'
+  }
+}
+
 const MODEL = 'zai-glm-5-2'
 const REQUEST_TIMEOUT_MS = 120_000
 const MAX_TOKENS = 32_000
 
-/** Une seule relance (AR17) : au-delà, le problème n'est pas passager et l'attente est vaine. */
+/**
+ * Une seule relance sur non-conformité (AR17) : au-delà, le problème n'est pas passager.
+ *
+ * ⚠️ Combiné à la relance sur défaillance passagère, le pire cas est de **quatre** appels
+ * facturés pour un relevé : deux tentatives de conformité, chacune pouvant retenter une fois
+ * sur incident réseau. C'est borné et assumé (revue du 2026-09-06).
+ */
 const MAX_ATTEMPTS = 2
+
+/**
+ * Attente avant la relance d'une défaillance passagère (story 17.5).
+ * Réglable pour que la suite de tests n'attende pas réellement (`LLM_RETRY_DELAY_MS=0`).
+ */
+const TRANSIENT_RETRY_DELAY_MS = (() => {
+  const configured = Number(process.env.LLM_RETRY_DELAY_MS)
+  // Une valeur non numérique donnerait `setTimeout(NaN)`, c'est-à-dire une relance immédiate :
+  // le contraire du temporisateur qu'on croit avoir posé (revue du 2026-09-06).
+  return Number.isFinite(configured) && configured >= 0 ? configured : 1_000
+})()
 
 let _client: Mistral | null = null
 
@@ -132,7 +164,12 @@ const ResponseSchema = z.object({
  * les corriger côté donnée, il doit réessayer ou corriger sa configuration.
  */
 function isUnavailableStatus(status: number): boolean {
-  return status >= 500 || status === 429 || status === 408 || status === 401 || status === 403
+  return status >= 500 || status === 429 || status === 408
+}
+
+/** 401/403 : la clé est absente, invalide ou sans droit. Relancer n'y changera rien. */
+function isConfigStatus(status: number): boolean {
+  return status === 401 || status === 403
 }
 
 /** Extrait le statut HTTP d'une `SDKError`, dont le message porte `Status <code>`. */
@@ -162,6 +199,12 @@ async function callProvider(messages: { role: 'system' | 'user', content: string
     }
     if (err instanceof SDKError) {
       const status = statusOf(err)
+      if (isConfigStatus(status)) {
+        throw new LlmConfigError(
+          `Accès au fournisseur LLM refusé (${status}) — vérifier MISTRAL_API_KEY`,
+          err,
+        )
+      }
       if (isUnavailableStatus(status)) {
         throw new LlmUnavailableError(`Fournisseur LLM indisponible (${status})`, err)
       }
@@ -181,14 +224,47 @@ async function callProvider(messages: { role: 'system' | 'user', content: string
 
   const content = choice.message?.content
   if (typeof content !== 'string' || content.trim().length === 0) {
-    throw new LlmExtractionError('Réponse du fournisseur vide ou non textuelle')
+    throw new TransientExtractionError('Réponse du fournisseur vide ou non textuelle')
   }
 
   try {
     return JSON.parse(content)
   }
   catch (err) {
-    throw new LlmExtractionError('Réponse du fournisseur non parsable en JSON', err)
+    throw new TransientExtractionError('Réponse du fournisseur non parsable en JSON', err)
+  }
+}
+
+/**
+ * Réponse illisible — vide ou JSON invalide. Contrairement à une troncature, rien ne dit que
+ * le défaut se reproduira : c'est un motif de relance (story 17.5).
+ */
+class TransientExtractionError extends LlmExtractionError {}
+
+/**
+ * Un appel, avec UNE relance sur défaillance passagère (story 17.5).
+ *
+ * L'audit du 2026-09-06 a constaté que la relance annoncée par AR17 ne couvrait qu'un seul des
+ * trois modes d'échec : la non-conformité de schéma. Un timeout, un 5xx, un 429 ou un JSON
+ * illisible remontaient dès la première tentative — et faisaient perdre un dépôt de vingt-quatre
+ * fichiers pour un incident réseau.
+ *
+ * Ne sont PAS relancés : le défaut de configuration (401/403, retenter est vain) et la réponse
+ * tronquée (déterministe à température 0 — la même requête produira la même troncature).
+ */
+async function callProviderWithRetry(
+  messages: { role: 'system' | 'user', content: string }[],
+  schema: object,
+): Promise<unknown> {
+  try {
+    return await callProvider(messages, schema)
+  }
+  catch (err) {
+    const transient = (err instanceof LlmUnavailableError && !(err instanceof LlmConfigError))
+      || err instanceof TransientExtractionError
+    if (!transient) throw err
+    await new Promise(resolve => setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS))
+    return callProvider(messages, schema)
   }
 }
 
@@ -262,7 +338,7 @@ export async function categorizeStatement(
           },
         ]
 
-    const payload = await callProvider(messages, schema)
+    const payload = await callProviderWithRetry(messages, schema)
     const result = validate(payload, validCodes)
     if (result.ok) return result.transactions
     lastReason = result.reason

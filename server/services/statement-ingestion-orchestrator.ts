@@ -9,9 +9,10 @@
  *   1. sha256(pdfBuffer)
  *   2. dédup hash en base
  *   3. extractStatement() → texte + métadonnées
+ *   3bis. validation soldes obligatoires (AVANT l'appel payant — story 17.5)
  *   4. categorizeStatement() → ExtractedTransaction[]
  *   5. fallback période G3 si non détectée
- *   6. validation soldes obligatoires
+ *   6. bornage des dates à la période (story 17.4)
  *   7. détection chevauchement période
  *   8. savePdfByHash (avant la tx DB pour avoir un point de rollback explicite)
  *   9. reconcile()
@@ -30,6 +31,7 @@ import {
   categorizeStatement,
   LlmExtractionError,
   LlmUnavailableError,
+  LlmConfigError,
 } from '~~/server/services/llm-categorizer'
 import { reconcile } from '~~/server/services/reconciler'
 import { sha256 } from '~~/server/utils/hash'
@@ -88,6 +90,19 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
     closingBalanceCents: raw.closingBalanceCents,
   })
 
+  // 3bis. Soldes obligatoires — vérifiés AVANT l'appel au fournisseur (story 17.5).
+  //
+  // Ils étaient contrôlés après l'extraction LLM : un relevé sans solde lisible faisait donc
+  // payer un appel voué au rejet. Ce contrôle ne dépend que du texte, il n'a rien à faire
+  // derrière l'appel. Sans solde, pas de réconciliation possible — refus V1.
+  if (raw.openingBalanceCents === null || raw.closingBalanceCents === null) {
+    throw domainError(
+      ApiErrorCode.PdfParseFailed,
+      { reason: 'opening or closing balance not found in PDF text' },
+      400,
+    )
+  }
+
   // 4. Catégorisation LLM (avant résolution période, pour permettre fallback G3)
   // Story 5.6 : la taxonomie est lue depuis la DB (catégories utilisateur incluses), plus
   // depuis DEFAULT_REFERENTIAL (réservé au seed bootstrap).
@@ -143,6 +158,12 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
     extracted = await categorizeStatement(raw.rawText, availableCategories)
   }
   catch (err) {
+    // `LlmConfigError` étend `LlmUnavailableError` : le test le plus spécifique d'abord.
+    // Sans cet ordre, une clé invalide sortait en « fournisseur indisponible » et l'UI
+    // proposait un bouton « Réessayer » sur un problème que retenter ne résout pas.
+    if (err instanceof LlmConfigError) {
+      throw domainError(ApiErrorCode.LlmConfigError, {}, 503)
+    }
     if (err instanceof LlmUnavailableError) {
       throw domainError(ApiErrorCode.LlmUnavailable, {}, 503)
     }
@@ -176,13 +197,28 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
     )
   }
 
-  // 6. Soldes obligatoires (sans eux, pas de réconciliation possible — refus V1)
-  if (raw.openingBalanceCents === null || raw.closingBalanceCents === null) {
-    throw domainError(
-      ApiErrorCode.PdfParseFailed,
-      { reason: 'opening or closing balance not found in PDF text' },
-      400,
-    )
+  // 6. Dates bornées à la période du relevé (story 17.4).
+  //
+  // Rien ne contraignait les dates renvoyées par le modèle. Une ligne du relevé de mars 2026
+  // datée `2025-03-05` serait insérée telle quelle : la réconciliation du relevé resterait
+  // juste, mais la ligne polluerait l'analyse de mars 2025 — et la fiabilité, calculée par
+  // période de relevé, ne signalerait rien. On refuse plutôt que de corriger : rectifier une
+  // date serait inventer une donnée, ce que NFR15 interdit.
+  //
+  // Quand la période vient du repli G3, elle est l'enveloppe des dates extraites : la garde
+  // ne peut alors rien rejeter, par construction.
+  const outOfPeriod = extracted.filter(t => t.transactionDate < periodStart || t.transactionDate > periodEnd)
+  if (outOfPeriod.length > 0) {
+    throw domainError(ApiErrorCode.LlmExtractionFailed, {
+      reason: 'transaction dates outside the statement period',
+      periodStart,
+      periodEnd,
+      offending: outOfPeriod.slice(0, 5).map(t => ({
+        date: t.transactionDate,
+        label: t.label.slice(0, 40),
+      })),
+      offendingCount: outOfPeriod.length,
+    }, 502)
   }
 
   // 7. Détection chevauchement période

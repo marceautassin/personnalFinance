@@ -3,6 +3,7 @@ import {
   categorizeStatement,
   LlmExtractionError,
   LlmUnavailableError,
+  LlmConfigError,
   _resetClientForTesting,
 } from './llm-categorizer'
 import { DEFAULT_REFERENTIAL, FALLBACK_ITEM_CODE } from '~~/shared/constants/default-referential'
@@ -221,9 +222,42 @@ describe('categorizeStatement — indisponibilité du fournisseur (NFR17)', () =
     await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmUnavailableError)
   })
 
-  it('ne relance PAS sur indisponibilité — le retry ne réparerait rien ici', async () => {
+  /**
+   * Story 17.5 — la relance couvre désormais les défaillances PASSAGÈRES.
+   *
+   * Décision inversée le 2026-09-06. L'audit a constaté que la relance annoncée par AR17 ne
+   * couvrait qu'un seul des trois modes d'échec : la non-conformité de schéma. Un timeout ou
+   * un 503 faisait perdre un dépôt de vingt-quatre fichiers pour un incident réseau.
+   */
+  it('relance UNE fois sur indisponibilité passagère', async () => {
     mockComplete.mockRejectedValue(new errors.SDKError(503, 'down'))
     await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmUnavailableError)
+    expect(mockComplete).toHaveBeenCalledTimes(2)
+  })
+
+  it('aboutit si la relance passe', async () => {
+    mockComplete
+      .mockRejectedValueOnce(new errors.SDKError(503, 'down'))
+      .mockResolvedValueOnce(reply({ transactions: [TX] }))
+    const result = await categorizeStatement('relevé', AVAILABLE_ITEMS)
+    expect(result).toEqual([TX])
+    expect(mockComplete).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([401, 403])('ne relance PAS sur un défaut de configuration (%i)', async (status) => {
+    mockComplete.mockRejectedValue(new errors.SDKError(status, 'forbidden'))
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmConfigError)
+    expect(mockComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it('relance sur une réponse illisible, mais PAS sur une troncature', async () => {
+    mockComplete.mockResolvedValue({ choices: [{ message: { content: 'pas du json' } }] })
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmExtractionError)
+    expect(mockComplete).toHaveBeenCalledTimes(2)
+
+    mockComplete.mockClear()
+    mockComplete.mockResolvedValue({ choices: [{ finishReason: 'length', message: { content: '{' } }] })
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toThrow(/tronqu/i)
     expect(mockComplete).toHaveBeenCalledTimes(1)
   })
 
