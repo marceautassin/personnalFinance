@@ -46,6 +46,15 @@ export interface DefaultCategoryGroup {
  */
 export const FALLBACK_ITEM_CODE = 'divers-non-categorise'
 
+/**
+ * Poste portant les écarts de réconciliation acceptés (story 17.3), protégé et non supprimable.
+ *
+ * Séparé du repli `divers-non-categorise` : confondre « le modèle n'a pas su ranger cette
+ * ligne » et « le relevé ne tombe pas juste et je l'assume » mélangeait deux natures de
+ * problème dans un même poste, et faisait compter les écarts dans le taux de correction.
+ */
+export const ACCEPT_GAP_ITEM_CODE = 'internes-ecart-accepte'
+
 export const DEFAULT_REFERENTIAL: ReadonlyArray<DefaultCategoryGroup> = [
   {
     code: 'revenus',
@@ -78,6 +87,12 @@ export const DEFAULT_REFERENTIAL: ReadonlyArray<DefaultCategoryGroup> = [
       // d'un mois où rien n'a été gagné. Juridiquement la SASU est un tiers ; économiquement
       // c'est du capital qui rentre, d'où le classement en mouvement interne.
       { code: 'internes-remboursement-cca', label: 'Remboursement CCA', nature: 'internal_transfer' },
+      // Destination des écarts de réconciliation assumés (story 17.3). Sa nature n'est pas un
+      // détail : un écart est une différence INEXPLIQUÉE, ni recette ni dépense. Rangé en
+      // dépense — ce qu'il était avant le 2026-09-06 — un écart positif venait DIMINUER les
+      // dépenses de la période et fausser le résultat. En mouvement interne, il sort du
+      // résultat et reste dans le solde bancaire, ce qui est exactement sa signification.
+      { code: ACCEPT_GAP_ITEM_CODE, label: 'Écart de réconciliation accepté', nature: 'internal_transfer' },
     ],
   },
   {

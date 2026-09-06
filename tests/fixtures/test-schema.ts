@@ -61,11 +61,6 @@ export const TEST_SCHEMA_DDL = `
     created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   );
   CREATE INDEX classification_rules_item_idx ON classification_rules(category_item_code);
-  CREATE TABLE dismissed_suggestions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    normalized_label TEXT NOT NULL UNIQUE,
-    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-  );
 `
 
 /**
@@ -93,5 +88,6 @@ export const TEST_REFERENTIAL_DDL = `
     ('style-habillement', 'style', 'Habillement', 'expense', 0),
     ('revenus-salaire', 'revenus', 'Salaire', 'income', 0),
     ('internes-virement-epargne', 'internes', 'Virement épargne', 'internal_transfer', 0),
+    ('internes-ecart-accepte', 'internes', 'Écart de réconciliation accepté', 'internal_transfer', 1),
     ('divers-non-categorise', 'divers', 'Non catégorisé', 'expense', 0);
 `

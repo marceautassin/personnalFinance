@@ -18,7 +18,7 @@ import { defineEventHandler, getRouterParam } from 'h3'
 import { eq, asc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { bankStatements, transactions, categoryItems } from '~~/server/db/schema'
-import { FALLBACK_ITEM_CODE } from '~~/shared/constants/default-referential'
+import { ACCEPT_GAP_ITEM_CODE } from '~~/shared/constants/default-referential'
 import { reconcile } from '~~/server/services/reconciler'
 import { validateBody } from '~~/server/utils/validation'
 import { domainError, notFound } from '~~/server/utils/errors'
@@ -32,7 +32,10 @@ import { deriveReliability } from '~~/shared/types/statement-reliability'
  * Poste de repli d'un écart accepté. Défini une seule fois, dans le référentiel : un
  * littéral local ici divergerait silencieusement du poste protégé le jour où il changerait.
  */
-const ACCEPT_GAP_CATEGORY = FALLBACK_ITEM_CODE
+// Poste dédié de nature `internal_transfer` (story 17.3). Auparavant le repli
+// `divers-non-categorise`, de nature `expense` : un écart POSITIF venait alors diminuer les
+// dépenses de la période, et la ligne comptait dans le taux de correction manuelle du jalon.
+const ACCEPT_GAP_CATEGORY = ACCEPT_GAP_ITEM_CODE
 const ACCEPT_GAP_LABEL = 'Écart accepté (réconciliation)'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -117,7 +120,9 @@ export default defineEventHandler(async (event) => {
     )
   }
 
-  // Vérifier que la catégorie 'divers' existe (seedée par bootstrap, défense en profondeur)
+  // Le poste d'écart accepté doit exister (seedé au bootstrap, posé par la migration 0005 sur
+  // les bases antérieures). Défense en profondeur : sans ce contrôle, son absence sortirait en
+  // violation de clé étrangère, c'est-à-dire un 500 opaque au lieu d'un motif lisible.
   const cat = await db
     .select({ code: categoryItems.code })
     .from(categoryItems)

@@ -13,6 +13,7 @@
 import { defineEventHandler } from 'h3'
 import { sql, desc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
+import { ACCEPT_GAP_ITEM_CODE } from '~~/shared/constants/default-referential'
 import { bankStatements, transactions } from '~~/server/db/schema'
 import { ratio, type Ratio } from '~~/shared/types/ratio'
 import type { StatementReliability } from '~~/shared/types/statement-reliability'
@@ -39,6 +40,15 @@ export default defineEventHandler(async (): Promise<{ statements: StatementListI
     ${condition ?? sql``}
   )`
 
+  // Les lignes d'écart accepté sont exclues des DEUX TERMES DU TAUX (story 17.3) : ce ne sont
+  // ni des lignes de relevé, ni des corrections de classement. Les compter au numérateur
+  // gonflait le taux de correction manuelle — l'indicateur même du jalon 14.4.
+  //
+  // L'exclusion ne touche PAS `transactionCount` : ce compteur dit ce que la base contient
+  // pour ce relevé, et le faire diverger de `/transactions/<mois>` créerait une incohérence
+  // visible d'un écran à l'autre (revue du 2026-09-06).
+  const notAcceptGap = sql`AND ${transactions.categoryItemCode} <> ${ACCEPT_GAP_ITEM_CODE}`
+
   const rows = await db
     .select({
       hash: bankStatements.hashSha256,
@@ -46,7 +56,8 @@ export default defineEventHandler(async (): Promise<{ statements: StatementListI
       periodEnd: bankStatements.periodEnd,
       ingestedAt: bankStatements.ingestedAt,
       transactionCount: countFor(null),
-      manualCount: countFor(sql`AND ${transactions.isManual} = 1`),
+      manualCount: countFor(sql`AND ${transactions.isManual} = 1 ${notAcceptGap}`),
+      ratedCount: countFor(notAcceptGap),
     })
     .from(bankStatements)
     .orderBy(desc(bankStatements.periodStart))
@@ -54,13 +65,13 @@ export default defineEventHandler(async (): Promise<{ statements: StatementListI
   const reliabilities = await reliabilityByStatement()
 
   return {
-    statements: rows.map((r) => {
+    statements: rows.map(({ ratedCount, ...r }) => {
       const rel = reliabilities.get(r.hash)
       return {
         ...r,
         transactionCount: Number(r.transactionCount),
         manualCount: Number(r.manualCount),
-        correctionRate: ratio(Number(r.manualCount), Number(r.transactionCount)),
+        correctionRate: ratio(Number(r.manualCount), Number(ratedCount)),
         reliability: rel?.reliability ?? 'reliable',
         gapCents: rel?.gapCents ?? 0,
       }

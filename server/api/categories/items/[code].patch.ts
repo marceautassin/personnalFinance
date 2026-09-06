@@ -8,6 +8,7 @@ import { itemTransactionCount } from '~~/server/utils/category-references'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { CategoryItemPatchSchema, type CategoryItemWithCount } from '~~/shared/schemas/category.schema'
+import { ACCEPT_GAP_ITEM_CODE } from '~~/shared/constants/default-referential'
 
 /**
  * Modifie le libellé et/ou la nature d'un poste (FR16, FR17).
@@ -30,6 +31,13 @@ export default defineEventHandler(async (event): Promise<CategoryItemWithCount> 
 
   if (body.label !== undefined) {
     assertItemLabelAvailable(existing.groupCode, body.label, code)
+  }
+
+  // La nature du poste d'écart accepté n'est pas modifiable (story 17.3). La basculer en
+  // recette ferait entrer une différence inexpliquée dans le résultat de la période — ce que
+  // le correctif vient précisément d'empêcher. Le libellé, lui, reste libre.
+  if (body.nature !== undefined && code === ACCEPT_GAP_ITEM_CODE) {
+    throw domainError(ApiErrorCode.CategoryProtected, { code, field: 'nature' }, 409)
   }
 
   const updated = db

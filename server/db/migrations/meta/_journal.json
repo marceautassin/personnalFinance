@@ -36,6 +36,20 @@
       "when": 1788598496887,
       "tag": "0004_purple_shinobi_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788688168331,
+      "tag": "0005_cheerful_exiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788688533708,
+      "tag": "0006_cool_boomerang",
+      "breakpoints": true
     }
   ]
 }

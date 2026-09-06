@@ -122,6 +122,9 @@ export const transactions = sqliteTable(
   t => ({
     transactionsPeriodIdx: index('transactions_period_idx').on(t.transactionDate),
     transactionsStatementIdx: index('transactions_statement_idx').on(t.statementHash),
+    // Story 17.8 : porte le filtre par poste, le dépliage d'une rubrique et la vérification
+    // de clé étrangère avant suppression d'un poste. Sans lui, chacune scannait la table.
+    transactionsItemIdx: index('transactions_item_idx').on(t.categoryItemCode),
   }),
 )
 
@@ -164,17 +167,3 @@ export const classificationRules = sqliteTable(
 
 export type ClassificationRuleRow = typeof classificationRules.$inferSelect
 export type NewClassificationRuleRow = typeof classificationRules.$inferInsert
-
-/**
- * dismissed_suggestions — libellés normalisés de suggestions de charges récurrentes
- * rejetées par l'utilisateur (Story 5.2). `charge-suggester` exclut ces labels.
- * Insert idempotent (UNIQUE) ; pas de soft-delete.
- */
-export const dismissedSuggestions = sqliteTable('dismissed_suggestions', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  normalizedLabel: text('normalized_label').notNull().unique(),
-  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
-})
-
-export type DismissedSuggestionRow = typeof dismissedSuggestions.$inferSelect
-export type NewDismissedSuggestionRow = typeof dismissedSuggestions.$inferInsert

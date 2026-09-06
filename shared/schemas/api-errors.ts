@@ -16,6 +16,11 @@ export const ApiErrorCode = {
   PeriodOverlap: 'period_overlap',
   LlmExtractionFailed: 'llm_extraction_failed',
   LlmUnavailable: 'llm_unavailable',
+  /**
+   * Clé d'API absente, invalide ou sans droit (401/403). Distinct de `llm_unavailable` :
+   * réessayer ne sert à rien, seule une correction de configuration débloque (story 17.5).
+   */
+  LlmConfigError: 'llm_config_error',
 
   // Domaine — Réconciliation
   ReconciliationFailed: 'reconciliation_failed',

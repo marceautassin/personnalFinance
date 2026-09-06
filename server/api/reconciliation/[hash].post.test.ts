@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { H3Event } from 'h3'
+import { eq } from 'drizzle-orm'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
@@ -212,9 +213,16 @@ describe('POST /api/reconciliation/[hash]', () => {
       expect(rows).toHaveLength(2)
       const accepted = rows.find(r => r.label === 'Écart accepté (réconciliation)')!
       expect(accepted.amountCents).toBe(-10)
-      expect(accepted.categoryItemCode).toBe('divers-non-categorise')
+      // Story 17.3 : poste dédié de nature `internal_transfer`, pas le repli en dépense.
+      expect(accepted.categoryItemCode).toBe('internes-ecart-accepte')
       expect(accepted.isManual).toBe(true)
       expect(accepted.transactionDate).toBe('2026-04-30')
+
+      // La nature du poste décide de tout : un écart en `expense` viendrait, s'il est positif,
+      // DIMINUER les dépenses de la période. En mouvement interne, il sort du résultat.
+      const item = dbMod.db.select().from(schema.categoryItems)
+        .where(eq(schema.categoryItems.code, accepted.categoryItemCode)).get()!
+      expect(item.nature).toBe('internal_transfer')
 
       const stmt = dbMod.db.select().from(schema.bankStatements).all()
       expect(stmt[0]!.gapAccepted).toBe(true)
