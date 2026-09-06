@@ -189,9 +189,14 @@ const targetDrift = computed(() => {
               v-for="point in data.series"
               :key="point.bucket"
               :data-testid="`evo-row-${point.bucket}`"
+              class="evo-page__clickable"
             >
               <th scope="row">
-                {{ point.label }}
+                <NuxtLink
+                  class="evo-page__jump"
+                  :to="{ path: '/analyse', query: { p: point.bucket, g: granularity } }"
+                  :aria-label="`Analyser ${point.label}`"
+                >{{ point.label }}</NuxtLink>
               </th>
               <td>{{ formatEuros(point.incomeCents as Cents) }}</td>
               <td>{{ formatEuros(point.expenseCents as Cents) }}</td>
@@ -303,9 +308,14 @@ const targetDrift = computed(() => {
               <tr
                 v-for="point in data.targetSeries"
                 :key="point.bucket"
+                class="evo-page__clickable"
               >
                 <th scope="row">
-                  {{ point.label }}
+                  <NuxtLink
+                    class="evo-page__jump"
+                    :to="{ path: '/analyse', query: { p: point.bucket, g: granularity } }"
+                    :aria-label="`Analyser ${point.label}`"
+                  >{{ point.label }}</NuxtLink>
                 </th>
                 <!--
                   Montant NEUTRE : sur une cible de dépense, les douze lignes sont négatives et
@@ -347,5 +357,18 @@ const targetDrift = computed(() => {
 .evo-page__table thead th { text-align: right; }
 .evo-page__table thead th:first-child { text-align: left; }
 .evo-page__table th[scope='row'] { text-align: left; font-family: var(--font-sans); }
+/*
+  Ligne cliquable : UN SEUL lien, étiré sur toute la rangée par `::after` (demande du
+  2026-09-06). Un gestionnaire de clic sur la `<tr>` donnerait la même zone de clic, mais une
+  rangée n'est pas un lien : ni focus au clavier, ni ouverture dans un onglet, ni annonce par
+  un lecteur d'écran. Si `position: relative` sur `tr` n'est pas honoré, seule la cellule de
+  période reste cliquable — dégradation acceptable, jamais une régression.
+*/
+.evo-page__clickable { position: relative; }
+.evo-page__clickable:hover { background: var(--color-bg-subtle, var(--color-accent-subtle)); }
+.evo-page__jump { color: inherit; text-decoration: none; }
+.evo-page__jump::after { content: ''; position: absolute; inset: 0; }
+.evo-page__clickable:focus-within { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
 .evo-page__neg { color: var(--color-danger); }
 </style>
