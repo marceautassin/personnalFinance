@@ -160,10 +160,27 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && open.value) closeAndRestoreFocus()
 }
 
-onMounted(() => {
-  document.addEventListener('click', onClickOutside)
-  document.addEventListener('keydown', onKey)
+/**
+ * Les écouteurs de document ne vivent QUE pendant l'ouverture.
+ *
+ * Ils étaient posés au montage : deux par ligne, en permanence. Sur un mois de cent lignes on
+ * ne le sentait pas ; sur une année, c'est deux mille écouteurs traversés à chaque clic et à
+ * chaque frappe. Or un seul menu est ouvert à la fois — deux écouteurs suffisent (recette du
+ * 2026-09-06, avant l'ouverture de la vue annuelle).
+ */
+watch(open, (isOpen) => {
+  if (isOpen) {
+    document.addEventListener('click', onClickOutside)
+    document.addEventListener('keydown', onKey)
+  }
+  else {
+    document.removeEventListener('click', onClickOutside)
+    document.removeEventListener('keydown', onKey)
+  }
 })
+
+// Un démontage alors que le menu est ouvert — un reclassement qui retire la ligne de la liste
+// filtrée, par exemple — laisserait les écouteurs derrière lui.
 onBeforeUnmount(() => {
   document.removeEventListener('click', onClickOutside)
   document.removeEventListener('keydown', onKey)
