@@ -202,4 +202,47 @@ describe('GET /api/evolution — nature de la cible', () => {
     const r = await handler(query(AUGUST)) as unknown as { targetNature: string | null }
     expect(r.targetNature).toBeNull()
   })
+
+  /**
+   * Report du patrimoine antérieur — demande du 2026-09-06.
+   *
+   * La courbe cumulée repartait de zéro à chaque fenêtre : elle décrivait la trésorerie DE LA
+   * FENÊTRE, pas la trajectoire du patrimoine. Or c'est la trajectoire qui répond à « est-ce
+   * que mon patrimoine a augmenté ou baissé ».
+   */
+  describe('report du patrimoine antérieur', () => {
+    type Resp = {
+      priorCumulativeCents: number
+      series: Array<{ cumulativeResultCents: number }>
+    }
+    const call = async (qs: string) => (await handler(query(qs))) as unknown as Resp
+
+    it('amorce le cumul avec ce qui précède la fenêtre', async () => {
+      // La fenêtre couvre les douze tranches jusqu'à 2026-04 : mai 2025 en est le début.
+      seedTx('2024-01-10', -100_000, 'alimentation-courses')
+      seedTx('2026-04-10', -20_000, 'alimentation-courses')
+
+      const r = await call('to=2026-04&granularity=month')
+
+      expect(r.priorCumulativeCents).toBe(-100_000)
+      expect(r.series.at(-1)!.cumulativeResultCents).toBe(-120_000)
+    })
+
+    it('ignore les mouvements internes dans ce report', async () => {
+      seedTx('2024-01-10', -500_000, 'internes-virement-epargne')
+
+      const r = await call('to=2026-04&granularity=month')
+
+      expect(r.priorCumulativeCents).toBe(0)
+    })
+
+    it('rend zéro quand rien ne précède la fenêtre', async () => {
+      seedTx('2026-04-10', -20_000, 'alimentation-courses')
+
+      const r = await call('to=2026-04&granularity=month')
+
+      expect(r.priorCumulativeCents).toBe(0)
+      expect(r.series.at(-1)!.cumulativeResultCents).toBe(-20_000)
+    })
+  })
 })

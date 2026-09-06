@@ -1,5 +1,5 @@
 import { defineEventHandler } from 'h3'
-import { and, gte, lte, eq, asc } from 'drizzle-orm'
+import { and, gte, lte, lt, ne, eq, asc, sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { transactions, categoryItems, categoryGroups } from '~~/server/db/schema'
 import { validateQuery } from '~~/server/utils/validation'
@@ -31,6 +31,14 @@ export interface EvolutionResponse {
   buckets: string[]
   /** Vue d'ensemble : recettes, dépenses, résultat et cumul par tranche. */
   series: AnalysisSeriesPoint[]
+  /**
+   * Patrimoine accumulé AVANT la première tranche affichée.
+   *
+   * Le cumul de `series` en repart, au lieu de zéro : sans ce report la courbe décrivait la
+   * trésorerie de la fenêtre, pas la trajectoire du patrimoine depuis le début de l'historique
+   * (demande du 2026-09-06). Permet aussi à l'écran de dire depuis QUAND la courbe compte.
+   */
+  priorCumulativeCents: number
   /** Trajectoire de la cible demandée, `null` si aucune. */
   targetSeries: CategorySeriesPoint[] | null
   targetLabel: string | null
@@ -77,12 +85,33 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
     .from(transactions)
     .where(and(gte(transactions.transactionDate, from), lte(transactions.transactionDate, toDate)))
 
+  /**
+   * Patrimoine accumulé AVANT la fenêtre (demande du 2026-09-06).
+   *
+   * Sans ce report, la courbe cumulée repartait de zéro à chaque fenêtre de douze tranches :
+   * elle montrait la trésorerie DE LA FENÊTRE, pas la trajectoire du patrimoine. Or c'est cette
+   * trajectoire que l'utilisateur cherche — « est-ce que mon patrimoine a augmenté ou baissé ».
+   *
+   * Les mouvements internes sont exclus, comme partout : ils déplacent de l'argent entre les
+   * comptes de l'utilisateur sans en créer ni en détruire (NFR4).
+   */
+  const priorRow = await db
+    .select({ cents: sql<number>`coalesce(sum(${transactions.amountCents}), 0)` })
+    .from(transactions)
+    .innerJoin(categoryItems, eq(categoryItems.code, transactions.categoryItemCode))
+    .where(and(
+      lt(transactions.transactionDate, from),
+      ne(categoryItems.nature, 'internal_transfer'),
+    ))
+    .get()
+  const priorCents = Number(priorRow?.cents ?? 0)
+
   const overview = analyze({ transactions: rows, referential, granularity })
 
   // Les tranches vides sont complétées : le moteur ne connaît que les lignes reçues, pas la
   // fenêtre demandée — c'est à l'appelant, qui l'a choisie, de la refermer.
   const byBucket = new Map(overview.series.map(p => [p.bucket, p]))
-  let running = 0
+  let running = priorCents
   const series: AnalysisSeriesPoint[] = buckets.map((bucket) => {
     const point = byBucket.get(bucket)
     const result = point?.resultCents ?? 0
@@ -102,6 +131,11 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
   return {
     buckets,
     series,
+    /**
+     * Patrimoine accumulé avant la première tranche affichée. Permet à l'écran de dire depuis
+     * QUAND la courbe compte, plutôt que de laisser croire qu'elle démarre à zéro.
+     */
+    priorCumulativeCents: priorCents,
     targetSeries: parsed
       ? categorySeries(rows, referential, granularity, parsed, buckets)
       : null,
