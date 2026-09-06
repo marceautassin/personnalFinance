@@ -20,7 +20,8 @@ test.describe('Analyse — période et états vides', () => {
 
     // AR10 — un taux sans dénominateur s'affiche « — », jamais « 0 % » : un mois sans recette
     // n'a pas un taux d'épargne nul, il n'en a pas.
-    const rates = page.locator('.indic__card', { hasText: 'Taux' }).locator('.indic__value')
+    // `.kpi` depuis l'epic 16 : les quatre cartes sont devenues un bandeau unique.
+    const rates = page.locator('.kpi', { hasText: 'Taux' }).locator('.kpi__value')
     await expect(rates.first()).toHaveText('—')
     await expect(rates.nth(1)).toHaveText('—')
   })

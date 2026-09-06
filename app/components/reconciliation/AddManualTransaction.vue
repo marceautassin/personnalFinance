@@ -92,6 +92,7 @@ watch(() => props.submitting, (val) => {
         <input
           v-model="transactionDate"
           type="date"
+          class="input"
           required
         >
       </label>
@@ -100,6 +101,7 @@ watch(() => props.submitting, (val) => {
         <input
           v-model="label"
           type="text"
+          class="input"
           required
           maxlength="120"
         >
@@ -109,7 +111,10 @@ watch(() => props.submitting, (val) => {
     <div class="add-tx__row">
       <label class="add-tx__field">
         <span>Sens</span>
-        <select v-model="direction">
+        <select
+          v-model="direction"
+          class="select"
+        >
           <option value="expense">
             Sortie (-)
           </option>
@@ -123,6 +128,7 @@ watch(() => props.submitting, (val) => {
         <input
           v-model="amountInput"
           type="text"
+          class="input"
           inputmode="decimal"
           placeholder="0,00"
           required
@@ -132,6 +138,7 @@ watch(() => props.submitting, (val) => {
         <span>Catégorie</span>
         <select
           v-model="categoryItemCode"
+          class="select"
           required
         >
           <option
@@ -163,24 +170,30 @@ watch(() => props.submitting, (val) => {
 
     <p
       v-if="error"
-      class="add-tx__error"
+      class="notice"
       role="alert"
     >
       {{ error }}
     </p>
 
     <div class="add-tx__actions">
+      <!--
+        `aria-disabled` et non `disabled` : s'il porte le focus au moment de l'envoi, un
+        `disabled` natif le fait disparaître et renvoie le clavier au début du document
+        (NFR19). La garde du clic vit donc dans le gestionnaire.
+      -->
       <button
         type="button"
-        class="add-tx__btn"
-        :disabled="submitting || localSubmitting"
-        @click="$emit('cancel')"
+        class="btn"
+        :aria-disabled="submitting || localSubmitting"
+        :aria-label="submitting || localSubmitting ? 'Annuler — impossible, enregistrement en cours' : undefined"
+        @click="!(submitting || localSubmitting) && $emit('cancel')"
       >
         Annuler
       </button>
       <button
         type="submit"
-        class="add-tx__btn add-tx__btn--primary"
+        class="btn btn--primary"
         :disabled="submitting || localSubmitting"
       >
         {{ (submitting || localSubmitting) ? 'Envoi…' : 'Ajouter' }}
@@ -199,7 +212,7 @@ watch(() => props.submitting, (val) => {
   border-radius: var(--radius-md);
   background: var(--color-bg-elevated);
 }
-.add-tx__title { margin: 0; font-size: var(--font-size-lg); }
+.add-tx__title { margin: 0; font-size: var(--font-size-md); }
 .add-tx__row {
   display: flex;
   gap: var(--space-3);
@@ -213,40 +226,10 @@ watch(() => props.submitting, (val) => {
   min-width: 8rem;
 }
 .add-tx__field--grow { flex: 1 1 12rem; }
-.add-tx__field input,
-.add-tx__field select {
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  background: var(--color-bg);
-}
-.add-tx__error {
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-left: 3px solid var(--color-danger);
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-md);
-  color: var(--color-danger);
-}
+
 .add-tx__actions {
   display: flex;
   gap: var(--space-2);
   justify-content: flex-end;
 }
-.add-tx__btn {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  font: inherit;
-  cursor: pointer;
-}
-.add-tx__btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.add-tx__btn--primary {
-  background: var(--color-accent);
-  color: white;
-  border-color: var(--color-accent);
-}
-.add-tx__btn--primary:hover:not(:disabled) { filter: brightness(1.05); }
 </style>

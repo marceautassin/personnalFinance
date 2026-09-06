@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatEuros, type Cents } from '~~/shared/types/money'
+import { formatAxisEuros, niceStep } from '~/utils/axis'
 
 /**
  * Une série unique dans le temps — trésorerie cumulée, ou trajectoire d'une rubrique.
@@ -19,7 +20,12 @@ const props = withDefaults(defineProps<{
   valueLabel?: string
 }>(), { filled: false, height: 180, valueLabel: 'Montant' })
 
-const W = 960
+/*
+ * Largeur du repère, calée sur la largeur RÉELLE de rendu (conteneur 1 600 px moins ses
+ * marges). Un `viewBox` plus étroit que le rendu étire tout ce qu'il contient : à 960, les
+ * libellés d'axes en 11 px sortaient à 17 px et le graphique paraissait grossier.
+ */
+const W = 1552
 const PAD = { top: 14, right: 16, bottom: 34, left: 68 }
 
 const plot = computed(() => ({
@@ -66,19 +72,12 @@ const gridLines = computed(() => {
   const first = Math.ceil(bounds.value.min / step) * step
   const lines: Array<{ value: number, y: number, label: string }> = []
   for (let v = first; v <= bounds.value.max; v += step) {
-    // `v === 0` neutralise le zéro NÉGATIF que produit `ceil(min / step) * step` : sans lui,
-    // la ligne d'eau s'étiquette « -0,00 € ».
-    lines.push({ value: v, y: y(v), label: formatEuros((v === 0 ? 0 : v) as Cents) })
+    // Le zéro négatif que produit `ceil(min / step) * step` est neutralisé par le formateur,
+    // qui porte cette règle pour tous les axes.
+    lines.push({ value: v, y: y(v), label: formatAxisEuros(v) })
   }
   return lines
 })
-
-function niceStep(raw: number): number {
-  const magnitude = 10 ** Math.floor(Math.log10(Math.max(raw, 1)))
-  const normalized = raw / magnitude
-  const factor = normalized > 5 ? 10 : normalized > 2 ? 5 : normalized > 1 ? 2 : 1
-  return factor * magnitude
-}
 
 /**
  * Un libellé sur deux quand les tranches sont serrées, décalé depuis la FIN : forcer en plus
@@ -255,7 +254,7 @@ const tip = computed(() => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-elevated);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  box-shadow: var(--shadow-overlay);
   font-size: var(--font-size-sm);
   white-space: nowrap;
   pointer-events: none;
@@ -272,5 +271,5 @@ const tip = computed(() => {
 .trend__line { fill: none; stroke: var(--color-accent); stroke-width: 2; }
 .trend__area { fill: color-mix(in srgb, var(--color-accent) 18%, transparent); }
 .trend__dot { fill: var(--color-accent); }
-.trend__dot--negative { fill: var(--color-danger); }
+.trend__dot--negative { fill: var(--color-danger-vivid); }
 </style>

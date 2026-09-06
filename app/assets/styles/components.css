@@ -1,0 +1,347 @@
+/* Primitives partagées — personnalFinance (epic 16)
+ *
+ * Classes GLOBALES et non composants Vue : le projet fait du CSS vanilla en `<style scoped>`,
+ * et une feuille globale est le moyen le plus direct de n'avoir qu'une définition par motif.
+ * Un `UiButton.vue` aurait ajouté une indirection pour habiller un `<button>` — l'inverse de
+ * ce que demandent KISS et YAGNI ici.
+ *
+ * Ce que ces quelques centaines de lignes remplacent : le même bouton défini six fois sous
+ * cinq noms de classe, quatre définitions locales de tableau, et autant de champs.
+ *
+ * Règle d'usage : un composant garde en `scoped` sa MISE EN PAGE (grille, colonnes, écarts)
+ * et rien d'autre. S'il redéfinit un bouton, un champ ou un tableau, c'est un bug.
+ */
+
+/* ============================================================ BOUTON */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-base);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn:hover { background: var(--color-neutral-100); }
+
+.btn--sm { height: var(--control-height-sm); padding: 0 var(--space-2); font-size: var(--font-size-sm); }
+
+/* Une seule action principale par vue — c'est ce qui la désigne comme le geste attendu. */
+.btn--primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.btn--primary:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
+
+/* Discrète : une action de ligne, dans un tableau, répétée des dizaines de fois. Une bordure
+   par ligne dessinerait une grille de boutons là où on veut lire des données. */
+.btn--quiet {
+  border-color: transparent;
+  background: none;
+  color: var(--color-accent);
+  padding: 0 var(--space-2);
+}
+.btn--quiet:hover { background: var(--color-accent-subtle); }
+
+.btn--danger { border-color: transparent; background: none; color: var(--color-danger); padding: 0 var(--space-2); }
+.btn--danger:hover { background: var(--color-danger-subtle); }
+
+/* Destructive assumée : le seul bouton plein rouge, dans un dialogue de confirmation. */
+.btn--destructive { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }
+.btn--destructive:hover { background: var(--color-danger); filter: brightness(1.08); }
+
+/*
+ * Indisponible — NFR18-20.
+ *
+ * `aria-disabled` et NON l'attribut `disabled` : le contrôle reste focusable, et son nom
+ * accessible doit porter la RAISON. Un bouton grisé et muet oblige à deviner pourquoi il ne
+ * marche pas. Le sélecteur cible l'attribut plutôt qu'une classe pour qu'on ne puisse pas
+ * avoir l'apparence sans la sémantique.
+ */
+/* `--color-neutral-500` et non `--color-text-subtle` : l'exemption de contraste de WCAG 1.4.3
+   vise les contrôles `disabled`. Un contrôle `aria-disabled` reste actif et focusable — son
+   libellé doit rester lisible. */
+.btn[aria-disabled='true'] {
+  background: var(--color-neutral-50);
+  border-color: var(--color-border);
+  color: var(--color-neutral-500);
+  cursor: default;
+}
+.btn[aria-disabled='true']:hover { background: var(--color-neutral-50); }
+.btn--quiet[aria-disabled='true'],
+.btn--danger[aria-disabled='true'] { background: none; border-color: transparent; }
+.btn--quiet[aria-disabled='true']:hover,
+.btn--danger[aria-disabled='true']:hover { background: none; }
+
+/* `disabled` reste toléré pour les contrôles qui ne portent AUCUNE information — un bouton de
+   soumission tant que le formulaire est vide, par exemple. */
+.btn:disabled { background: var(--color-neutral-50); border-color: var(--color-border); color: var(--color-neutral-500); cursor: default; }
+
+/* ============================================================ CHAMP */
+
+.field { display: flex; flex-direction: column; gap: var(--space-1); }
+.field__label { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+.field__error { font-size: var(--font-size-xs); color: var(--color-danger); }
+
+/* La largeur est fixée par l'appelant, jamais par la primitive : un champ fait la largeur de
+   ce qu'on y écrit, pas celle de son conteneur. */
+.input,
+.select {
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-base);
+}
+.input--sm, .select--sm { height: var(--control-height-sm); font-size: var(--font-size-sm); }
+.input::placeholder { color: var(--color-text-subtle); }
+.input:focus-visible, .select:focus-visible { border-color: var(--color-accent); }
+.input[aria-invalid='true'] { border-color: var(--color-danger); }
+
+/* ============================================================ TABLEAU */
+
+.table { width: 100%; border-collapse: collapse; font-size: var(--font-size-base); }
+
+.table th {
+  height: var(--row-height-sm);
+  padding: 0 var(--space-3);
+  text-align: left;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: var(--color-neutral-50);
+  border-bottom: 1px solid var(--color-border-strong);
+  white-space: nowrap;
+}
+
+/* En-tête collant : indispensable dès qu'on descend une centaine de lignes. */
+.table thead th { position: sticky; top: 0; z-index: 1; }
+
+.table td {
+  height: var(--row-height);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+/* Filet plutôt que zébrure : à 32 px de hauteur, une ligne sur deux peinte devient un motif
+   rayé qui fatigue avant d'aider. Le survol suffit à tenir la ligne. */
+.table tbody tr:hover td,
+.table tbody tr:hover th[scope='row'] { background: var(--color-neutral-50); }
+
+.table th.num, .table td.num { text-align: right; }
+.table th[scope='row'] { background: none; text-transform: none; letter-spacing: 0; font-size: var(--font-size-base); font-weight: 400; color: var(--color-text); border-bottom: 1px solid var(--color-hairline); position: static; }
+
+.table tfoot td {
+  height: var(--row-height);
+  font-weight: 600;
+  background: var(--color-neutral-50);
+  border-top: 1px solid var(--color-border-strong);
+  border-bottom: none;
+}
+
+.table--framed { border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.table--framed thead th:first-child { border-top-left-radius: var(--radius-md); }
+.table--framed thead th:last-child { border-top-right-radius: var(--radius-md); }
+/* Les angles INFÉRIEURS aussi : sans eux, le fond du survol de la dernière ligne et celui du
+   pied débordaient du cadre — l'effet de bord du retrait de l'`overflow`. */
+.table--framed tbody tr:last-child > :first-child,
+.table--framed tfoot tr:last-child > :first-child { border-bottom-left-radius: var(--radius-md); }
+.table--framed tbody tr:last-child > :last-child,
+.table--framed tfoot tr:last-child > :last-child { border-bottom-right-radius: var(--radius-md); }
+
+.table__caption {
+  text-align: left;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  padding-bottom: var(--space-1);
+}
+
+/* ============================================================ SURFACE */
+
+/*
+ * PAS d'`overflow: hidden` ici, si tentant soit-il pour arrondir les angles.
+ *
+ * Un ancêtre dont l'`overflow` n'est pas `visible` devient le scrollport de ses descendants :
+ * le `position: sticky` de `.table thead th` s'y accroche alors au lieu du viewport, et
+ * l'en-tête cesse de coller dès que le panneau contient un tableau. Deux tableaux sur quatre
+ * avaient perdu le leur (revue du 2026-09-05). Les angles sont donc arrondis par les éléments
+ * de bord eux-mêmes.
+ */
+.panel {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.panel__head {
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.panel__title { font-size: var(--font-size-md); font-weight: 600; }
+.panel__body { padding: var(--space-3); }
+.panel__foot {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-neutral-50);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+/* ============================================================ BADGE ET ÉTIQUETTE */
+
+/* Un badge porte TOUJOURS un symbole et un mot, jamais la seule teinte (NFR18-20). */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.badge--ok { background: var(--color-success-subtle); color: var(--color-success); box-shadow: inset 0 0 0 1px var(--color-green-200); }
+.badge--warn { background: var(--color-warning-subtle); color: var(--color-warning); box-shadow: inset 0 0 0 1px var(--color-amber-200); }
+.badge--alert { background: var(--color-danger); color: #fff; }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 19px;
+  padding: 0 var(--space-2);
+  border-radius: 3px;
+  font-size: var(--font-size-xs);
+  background: var(--color-neutral-100);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* ============================================================ SURVOL (menu, dialogue) */
+
+.overlay {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-overlay);
+}
+
+/* ============================================================ SENS DES MONTANTS */
+
+/*
+ * La couleur SIGNALE, elle ne décore pas.
+ *
+ * Un montant négatif porte déjà son signe moins ; le peindre en rouge sur deux cents lignes
+ * rend le rouge muet, et c'est ce qui arrivait avant l'epic 16. Ces classes sont donc
+ * réservées aux TOTAUX, aux ÉCARTS et aux ALERTES.
+ */
+.amount--bad { color: var(--color-danger); }
+.amount--good { color: var(--color-success); }
+.amount--flat { color: var(--color-neutral-500); }
+
+/* ============================================================ ÉTATS DE ZONE */
+
+.state {
+  padding: var(--space-4) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  text-align: center;
+}
+.state__title { font-size: var(--font-size-base); font-weight: 500; }
+.state__hint { font-size: var(--font-size-sm); color: var(--color-text-muted); max-width: 52ch; line-height: var(--line-height-normal); }
+
+/* Une erreur ne se range pas au centre d'une zone vide : elle se lit en tête, alignée au
+   texte, avec la barre qui la signale. */
+.state--error {
+  align-items: flex-start;
+  text-align: left;
+  background: var(--color-danger-subtle);
+  border-left: 3px solid var(--color-danger);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: var(--space-3);
+}
+.state--error .state__title { color: var(--color-danger); }
+
+.notice {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-danger);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--color-bg-elevated);
+  font-size: var(--font-size-sm);
+}
+.notice--warn { border-left-color: var(--color-warning); background: var(--color-warning-subtle); color: var(--color-warning); }
+
+/* ============================================================ SÉLECTEUR DE PÉRIODE */
+
+/* Trois éléments soudés en un seul objet : deux flèches encadrant un libellé. Séparés, ils se
+   lisent comme trois contrôles indépendants. */
+.stepper { display: inline-flex; align-items: center; }
+.stepper__btn {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.stepper__btn:hover { background: var(--color-neutral-100); color: var(--color-text); }
+.stepper__btn:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.stepper__btn:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; border-left: none; }
+.stepper__label {
+  height: var(--control-height-sm);
+  min-width: 9rem;
+  padding: 0 var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid var(--color-border-strong);
+  border-bottom: 1px solid var(--color-border-strong);
+  background: var(--color-bg-elevated);
+  font-weight: 600;
+}
+
+/* ============================================================ BANDEAU D'INDICATEURS */
+
+/* Un bandeau, pas quatre cartes : quatre surfaces ombrées et espacées coûtaient 110 px de
+   hauteur pour quatre nombres, et les isolaient là où on veut justement les comparer. */
+.kpis { display: flex; flex-wrap: wrap; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+/* `flex-wrap` plutôt qu'une ligne rigide : à quatre valeurs en 24 px, une fenêtre étroite les
+   faisait se chevaucher — des chiffres financiers superposés valent moins que deux rangées. */
+.kpi { flex: 1 1 14rem; min-width: 0; padding: var(--space-2) var(--space-4); display: flex; flex-direction: column; gap: 1px; border-left: 1px solid var(--color-border); }
+.kpi:first-child { border-left: none; }
+.kpi__label { font-size: var(--font-size-xs); color: var(--color-text-muted); letter-spacing: 0.03em; text-transform: uppercase; }
+.kpi__value { font-size: var(--font-size-xl); font-weight: 600; letter-spacing: -0.01em; font-family: var(--font-mono); font-variant-numeric: tabular-nums; line-height: 1.25; }
+.kpi__hint { font-size: var(--font-size-xs); color: var(--color-text-muted); }
+
+/* ============================================================ EN-TÊTE DE PAGE */
+
+.page-head { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.page-head__title { margin: 0; font-size: var(--font-size-lg); font-weight: 600; letter-spacing: -0.01em; }
+.page-head__sub { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+.page-head__meta { margin-left: auto; display: flex; align-items: center; gap: var(--space-4); font-size: var(--font-size-sm); color: var(--color-text-muted); }
+.page-head__meta strong { color: var(--color-text); font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

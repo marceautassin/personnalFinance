@@ -78,6 +78,7 @@ defineExpose({ reset })
         <input
           v-model="labelInput"
           type="text"
+          class="input"
           :placeholder="props.placeholder"
           maxlength="50"
         >
@@ -87,7 +88,10 @@ defineExpose({ reset })
         class="cat-form__field"
       >
         <span>Nature</span>
-        <select v-model="nature">
+        <select
+          v-model="nature"
+          class="select"
+        >
           <option
             v-for="[value, label] in NATURE_OPTIONS"
             :key="value"
@@ -99,7 +103,7 @@ defineExpose({ reset })
       </label>
       <button
         type="submit"
-        class="cat-form__btn"
+        class="btn btn--primary cat-form__btn"
         :aria-disabled="props.saving"
       >
         {{ props.saving ? 'Ajout…' : props.submitLabel }}
@@ -124,46 +128,14 @@ defineExpose({ reset })
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
+  background: var(--color-neutral-50);
 }
-.cat-form__title {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  font-weight: var(--font-weight-medium, 500);
-}
-.cat-form__row {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.cat-form__field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--font-size-sm);
-}
-.cat-form__field--grow { flex: 1 1 12rem; }
+.cat-form__title { margin: 0; font-size: var(--font-size-sm); color: var(--color-text-muted); font-weight: 500; }
+.cat-form__row { display: flex; align-items: flex-end; gap: var(--space-3); flex-wrap: wrap; }
+.cat-form__field { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-sm); }
+/* Le champ fait la largeur de ce qu'on y écrit, pas celle du conteneur : le libellé d'un
+   poste tient en un mot, et le champ s'étirait jusqu'à 1 350 px avant l'epic 16. */
+.cat-form__field--grow { flex: 0 1 20rem; }
 .cat-form__field span { color: var(--color-text-muted); }
-.cat-form__field input,
-.cat-form__field select {
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  color: inherit;
-  font: inherit;
-}
-.cat-form__btn {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  background: var(--color-accent);
-  color: var(--color-bg);
-  font: inherit;
-  cursor: pointer;
-}
-.cat-form__btn[aria-disabled='true'] { opacity: 0.6; cursor: default; }
 .cat-form__error { margin: 0; color: var(--color-danger); font-size: var(--font-size-sm); }
 </style>

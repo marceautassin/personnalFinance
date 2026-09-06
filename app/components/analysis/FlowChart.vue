@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatEuros, type Cents } from '~~/shared/types/money'
+import { formatAxisEuros, niceStep } from '~/utils/axis'
 import type { AnalysisSeriesPoint } from '~~/server/services/analysis-engine'
 
 /**
@@ -17,7 +18,12 @@ import type { AnalysisSeriesPoint } from '~~/server/services/analysis-engine'
  */
 const props = defineProps<{ series: AnalysisSeriesPoint[] }>()
 
-const W = 960
+/*
+ * Largeur du repère, calée sur la largeur RÉELLE de rendu (conteneur 1 600 px moins ses
+ * marges). Un `viewBox` plus étroit que le rendu étire tout ce qu'il contient : à 960, les
+ * libellés d'axes en 11 px sortaient à 17 px et le graphique paraissait grossier.
+ */
+const W = 1552
 const H = 260
 const PAD = { top: 16, right: 16, bottom: 34, left: 68 }
 
@@ -74,18 +80,10 @@ const gridLines = computed(() => {
   const step = niceStep(maxValue.value / 3)
   const lines: Array<{ value: number, y: number, label: string }> = []
   for (let v = 0; v <= maxValue.value; v += step) {
-    lines.push({ value: v, y: y(v), label: formatEuros(v as Cents) })
+    lines.push({ value: v, y: y(v), label: formatAxisEuros(v) })
   }
   return lines
 })
-
-/** Arrondit un pas d'échelle à 1, 2 ou 5 fois une puissance de dix — les seuls pas lisibles. */
-function niceStep(raw: number): number {
-  const magnitude = 10 ** Math.floor(Math.log10(Math.max(raw, 1)))
-  const normalized = raw / magnitude
-  const factor = normalized > 5 ? 10 : normalized > 2 ? 5 : normalized > 1 ? 2 : 1
-  return factor * magnitude
-}
 
 /**
  * Un libellé sur deux quand les tranches sont serrées, et JAMAIS le dernier en plus.
@@ -294,7 +292,7 @@ const tip = computed(() => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-elevated);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  box-shadow: var(--shadow-overlay);
   font-size: var(--font-size-sm);
   white-space: nowrap;
   pointer-events: none;
@@ -305,19 +303,21 @@ const tip = computed(() => {
 .flow__tip b { margin-left: auto; font-variant-numeric: tabular-nums; }
 .flow__tip-neg b { color: var(--color-danger); }
 .flow__swatch { width: 0.75rem; height: 2px; border-radius: 1px; }
-.flow__swatch--income { background: var(--color-success); }
-.flow__swatch--expense { background: var(--color-danger); }
+.flow__swatch--income { background: var(--color-success-vivid); }
+.flow__swatch--expense { background: var(--color-danger-vivid); }
 .flow__grid line { stroke: var(--color-border); stroke-width: 1; }
 .flow__axis-label { fill: var(--color-text-muted); font-size: 11px; }
 .flow__band { opacity: 0.22; }
-.flow__band--deficit { fill: var(--color-danger); }
-.flow__band--surplus { fill: var(--color-success); }
+.flow__band--deficit { fill: var(--color-danger-vivid); }
+.flow__band--surplus { fill: var(--color-success-vivid); }
 .flow__line { fill: none; stroke-width: 2; }
-.flow__line--income { stroke: var(--color-success); }
+/* Tracés et aplats : variantes VIVES. Les sémantiques de base sont assombries pour le texte
+   (contraste AA) et deviennent ternes en trait fin sur fond clair. */
+.flow__line--income { stroke: var(--color-success-vivid); }
 /* Tireté sur les dépenses : la distinction ne doit pas reposer sur la seule couleur. */
-.flow__line--expense { stroke: var(--color-danger); stroke-dasharray: 6 3; }
-.flow__dot--income { fill: var(--color-success); }
-.flow__dot--expense { fill: var(--color-danger); }
+.flow__line--expense { stroke: var(--color-danger-vivid); stroke-dasharray: 6 3; }
+.flow__dot--income { fill: var(--color-success-vivid); }
+.flow__dot--expense { fill: var(--color-danger-vivid); }
 
 .flow__legend {
   display: flex;
@@ -334,10 +334,10 @@ const tip = computed(() => {
   border-top-width: 2px;
   border-top-style: solid;
 }
-.flow__key--income::before { border-color: var(--color-success); }
-.flow__key--expense::before { border-color: var(--color-danger); border-top-style: dashed; }
+.flow__key--income::before { border-color: var(--color-success-vivid); }
+.flow__key--expense::before { border-color: var(--color-danger-vivid); border-top-style: dashed; }
 .flow__key--deficit::before,
 .flow__key--surplus::before { height: 0.7rem; border: none; border-radius: 2px; }
-.flow__key--deficit::before { background: color-mix(in srgb, var(--color-danger) 25%, transparent); }
-.flow__key--surplus::before { background: color-mix(in srgb, var(--color-success) 25%, transparent); }
+.flow__key--deficit::before { background: color-mix(in srgb, var(--color-danger-vivid) 25%, transparent); }
+.flow__key--surplus::before { background: color-mix(in srgb, var(--color-success-vivid) 25%, transparent); }
 </style>

@@ -17,9 +17,18 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   // CSS vanilla via SFC <style scoped> + tokens (Story 1.7)
   css: [
+    // Fontes SERVIES DEPUIS LE DÉPÔT : l'application est locale et doit tourner sans réseau.
+    // Un `<link>` vers un CDN de fontes la casserait hors ligne et signalerait chaque ouverture
+    // à un tiers, ce que le local-first exclut.
+    '@fontsource/ibm-plex-sans/400.css',
+    '@fontsource/ibm-plex-sans/500.css',
+    '@fontsource/ibm-plex-sans/600.css',
+    '@fontsource/ibm-plex-mono/400.css',
+    '@fontsource/ibm-plex-mono/500.css',
     '~/assets/styles/reset.css',
     '~/assets/styles/tokens.css',
     '~/assets/styles/global.css',
+    '~/assets/styles/components.css',
   ],
   // SPA mode — décision PRD (mono-user, local-first, pas de SEO)
   // Workaround Nuxt 4.4.4 bug : avec `ssr: false`, le SSR server vite n'est pas créé,

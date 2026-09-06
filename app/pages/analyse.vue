@@ -89,33 +89,36 @@ watch(bounds, () => itemTransactions.reset())
 
 <template>
   <section class="analyse">
-    <header class="analyse__header">
-      <h2 class="analyse__title">
+    <header class="page-head">
+      <h2 class="page-head__title">
         Analyse
       </h2>
 
       <div class="analyse__period">
-        <button
-          type="button"
-          class="analyse__nav"
-          aria-label="Période précédente"
-          @click="shift(-1)"
-        >
-          ‹
-        </button>
-        <strong class="analyse__label">{{ label }}</strong>
-        <button
-          type="button"
-          class="analyse__nav"
-          aria-label="Période suivante"
-          @click="shift(1)"
-        >
-          ›
-        </button>
+        <div class="stepper">
+          <button
+            type="button"
+            class="stepper__btn"
+            aria-label="Période précédente"
+            @click="shift(-1)"
+          >
+            ‹
+          </button>
+          <strong class="stepper__label analyse__label">{{ label }}</strong>
+          <button
+            type="button"
+            class="stepper__btn"
+            aria-label="Période suivante"
+            @click="shift(1)"
+          >
+            ›
+          </button>
+        </div>
 
         <label class="analyse__granularity">
           <span class="analyse__granularity-label">Granularité</span>
           <select
+            class="select select--sm"
             :value="granularity"
             @change="setGranularity(($event.target as HTMLSelectElement).value as Granularity)"
           >
@@ -128,12 +131,19 @@ watch(bounds, () => itemTransactions.reset())
             </option>
           </select>
         </label>
+
+        <NuxtLink
+          class="analyse__link"
+          :to="`/evolution?p=${bucket}&g=${granularity}`"
+        >
+          Voir l'évolution sur douze tranches →
+        </NuxtLink>
       </div>
     </header>
 
     <p
       v-if="fetchErrorMessage"
-      class="analyse__error"
+      class="notice"
       role="alert"
     >
       {{ fetchErrorMessage }}
@@ -153,7 +163,7 @@ watch(bounds, () => itemTransactions.reset())
       -->
       <div
         v-if="isDegraded(data.reliability)"
-        class="analyse__alert"
+        class="notice notice--warn analyse__alert"
         :role="data.reliability === 'gap_unreviewed' ? 'alert' : 'status'"
       >
         <ReliabilityBadge :reliability="data.reliability" />
@@ -171,7 +181,7 @@ watch(bounds, () => itemTransactions.reset())
 
       <p
         v-if="data.orphanCount > 0"
-        class="analyse__alert"
+        class="notice analyse__alert"
         role="alert"
       >
         {{ data.orphanCount }} transaction(s) référencent un poste supprimé et ne sont comptées
@@ -187,15 +197,12 @@ watch(bounds, () => itemTransactions.reset())
 
       <p class="analyse__scope">
         <!-- Le texte est un seul nœud : en éléments séparés, le flex détachait la ponctuation. -->
-        <span>Tout ce qui suit décrit <strong>{{ label }}</strong>.</span>
-        <NuxtLink :to="`/evolution?p=${bucket}&g=${granularity}`">
-          Voir l'évolution sur douze tranches
-        </NuxtLink>
+        <span>Tout ce qui suit décrit <strong>{{ label }}</strong>. Les écarts se lisent contre <strong>{{ previousLabel }}</strong>.</span>
       </p>
 
       <p
         v-if="recategorizeError"
-        class="analyse__error"
+        class="notice"
         role="alert"
       >
         {{ recategorizeError }}
@@ -243,55 +250,15 @@ watch(bounds, () => itemTransactions.reset())
 </template>
 
 <style scoped>
-.analyse { display: flex; flex-direction: column; gap: var(--space-4); }
-.analyse__header { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
-.analyse__title { margin: 0; font-size: var(--font-size-xl, 1.5rem); }
-.analyse__period { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
-.analyse__nav {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-elevated);
-  color: inherit;
-  font: inherit;
-  padding: var(--space-1) var(--space-3);
-  cursor: pointer;
-}
-.analyse__label { min-width: 9rem; text-align: center; }
+/* Ne subsiste ici que la MISE EN PAGE. Boutons, champs, encarts et bandeau d'indicateurs
+   viennent de `components.css` — les redéfinir localement est ce que l'epic 16 a supprimé. */
+.analyse { display: flex; flex-direction: column; gap: var(--space-3); }
+.analyse__period { display: flex; align-items: center; gap: var(--space-3); margin-left: auto; }
 .analyse__granularity { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); }
 .analyse__granularity-label { color: var(--color-text-muted); }
-.analyse__granularity select {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  color: inherit;
-  font: inherit;
-}
-.analyse__error, .analyse__alert {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin: 0;
-  padding: var(--space-3);
-  border-left: 3px solid var(--color-danger);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-}
+.analyse__link { font-size: var(--font-size-sm); color: var(--color-accent); }
+.analyse__alert { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .analyse__pending { color: var(--color-text-muted); }
-/* La portée est écrite noir sur blanc : la page mélangeait auparavant la période choisie et
-   une fenêtre de douze tranches, sans que rien ne le dise (recette du 2026-09-05). */
-.analyse__scope {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  display: flex;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.analyse__columns {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
-  gap: var(--space-4);
-}
+.analyse__scope { margin: 0; color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.analyse__columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(30rem, 1fr)); gap: var(--space-3); }
 </style>

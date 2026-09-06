@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useTransactions } from '~/composables/useTransactions'
 import { isDegraded } from '~~/shared/types/statement-reliability'
+import { ratio, formatRatio } from '~~/shared/types/ratio'
 
 // Validation du paramètre dynamique : Nuxt rejoue la guard à chaque navigation
 // (re-mount ou réutilisation du composant), évitant le bypass d'un throw top-level setup.
@@ -107,48 +108,90 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
   const outcome = await mutateCategory(transactionId, categoryItemCode)
   if (outcome.error) mutationError.value = outcome.error
 }
+
+/**
+ * Filtre par libellé — la liste fait une centaine de lignes par mois, et rien ne permettait
+ * d'en atteindre une sans la dérouler entièrement (epic 16).
+ *
+ * Le filtrage est CLIENT : les lignes du mois sont déjà toutes chargées, un aller-retour
+ * serveur par frappe n'apporterait rien et ferait clignoter la liste.
+ */
+const filter = ref('')
+
+/** Sans accent ni casse : on tape « croix rouge » pour trouver « Croix-Rouge française ». */
+const normalize = (value: string) =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+const visibleTransactions = computed(() => {
+  const needle = normalize(filter.value.trim())
+  if (needle === '') return data.value.transactions
+  return data.value.transactions.filter(t => normalize(t.label).includes(needle))
+})
+
+/**
+ * Compteurs BORNÉS AU MOIS affiché — la barre d'application porte, elle, les mêmes grandeurs
+ * sur toute la base. Chaque libellé dit sa portée : « 1,1 % sur ce relevé » à côté de
+ * « 0,2 % » se lirait autrement comme une contradiction.
+ */
+const manualCount = computed(() => data.value.transactions.filter(t => t.isManual).length)
+const periodCorrectionRate = computed(() =>
+  ratio(manualCount.value, data.value.transactions.length),
+)
 </script>
 
 <template>
   <section class="tx-page">
-    <header class="tx-page__header">
-      <button
-        type="button"
-        class="tx-page__nav"
-        aria-label="Mois précédent"
-        @click="navigate(-1)"
-      >
-        ←
-      </button>
-      <h2 class="tx-page__title">
-        {{ monthLabel }}
+    <header class="page-head">
+      <h2 class="page-head__title">
+        Transactions
       </h2>
-      <button
-        type="button"
-        class="tx-page__nav"
-        aria-label="Mois suivant"
-        @click="navigate(1)"
-      >
-        →
-      </button>
+
+      <div class="stepper">
+        <button
+          type="button"
+          class="stepper__btn"
+          aria-label="Mois précédent"
+          @click="navigate(-1)"
+        >
+          ‹
+        </button>
+        <strong class="stepper__label tx-page__title">{{ monthLabel }}</strong>
+        <button
+          type="button"
+          class="stepper__btn"
+          aria-label="Mois suivant"
+          @click="navigate(1)"
+        >
+          ›
+        </button>
+      </div>
+
+      <ReliabilityBadge
+        v-if="data.reliability"
+        :reliability="data.reliability"
+      />
+
+      <div class="page-head__meta">
+        <span><strong>{{ data.transactions.length }}</strong> lignes</span>
+        <span><strong>{{ formatRatio(periodCorrectionRate) }}</strong> corrigé sur ce relevé</span>
+      </div>
     </header>
 
     <div
       v-if="data.reliability && isDegraded(data.reliability)"
-      class="tx-page__alert"
+      class="notice notice--warn"
       :role="data.reliability === 'gap_unreviewed' ? 'alert' : 'status'"
     >
-      <ReliabilityBadge :reliability="data.reliability" />
-      <span class="tx-page__alert-hint">{{
+      {{
         data.reliability === 'gap_accepted'
           ? 'Un écart a été assumé sur ce mois.'
           : 'La réconciliation laisse un écart, encore inexaminé.'
-      }}</span>
+      }}
     </div>
 
     <p
       v-if="mutationError"
-      class="tx-page__error"
+      class="notice"
       role="alert"
     >
       {{ mutationError }}
@@ -163,12 +206,14 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
 
     <div
       v-else-if="data.transactions.length === 0"
-      class="tx-page__empty"
+      class="panel state"
     >
-      <p>Aucune transaction pour ce mois.</p>
+      <p class="state__title">
+        Aucune transaction pour ce mois.
+      </p>
       <NuxtLink
         to="/import"
-        class="tx-page__empty-link"
+        class="btn btn--sm"
       >
         Importer un relevé
       </NuxtLink>
@@ -188,7 +233,7 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
         <input
           v-model="editablePattern"
           type="text"
-          class="tx-page__suggestion-input"
+          class="input input--sm tx-page__suggestion-input"
           maxlength="120"
           aria-label="Motif de la règle"
           @keyup.enter="onAcceptSuggestion"
@@ -211,7 +256,7 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
       </span>
       <button
         type="button"
-        class="tx-page__suggestion-accept"
+        class="btn btn--primary btn--sm tx-page__suggestion-accept"
         :aria-disabled="savingRule"
         @click="onAcceptSuggestion"
       >
@@ -219,22 +264,61 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
       </button>
       <button
         type="button"
-        class="tx-page__suggestion-dismiss"
+        class="btn btn--quiet btn--sm"
         @click="dismissSuggestion"
       >
         Non merci
       </button>
     </div>
 
-    <TransactionList
-      v-if="data.transactions.length > 0"
-      :transactions="data.transactions"
-      @category-change="onCategoryChange"
-    />
+    <template v-if="data.transactions.length > 0">
+      <div class="tx-page__tools">
+        <label class="tx-page__filter">
+          <span class="tx-page__filter-label">Filtrer par libellé</span>
+          <input
+            v-model="filter"
+            type="search"
+            class="input input--sm tx-page__filter-input"
+            placeholder="Ex : croix rouge"
+          >
+        </label>
+        <span
+          v-if="filter.trim() !== ''"
+          class="tx-page__filter-count"
+          role="status"
+        >
+          {{ visibleTransactions.length }} sur {{ data.transactions.length }}
+        </span>
+      </div>
+
+      <p
+        v-if="visibleTransactions.length === 0"
+        class="tx-page__pending"
+      >
+        Aucun libellé ne contient « {{ filter.trim() }} ».
+      </p>
+      <TransactionList
+        v-else
+        :transactions="visibleTransactions"
+        @category-change="onCategoryChange"
+      />
+    </template>
   </section>
 </template>
 
 <style scoped>
+.tx-page { display: flex; flex-direction: column; gap: var(--space-3); }
+.tx-page__title { min-width: 10rem; }
+.tx-page__pending { color: var(--color-text-muted); }
+
+.tx-page__tools { display: flex; align-items: center; gap: var(--space-3); }
+.tx-page__filter { display: flex; align-items: center; gap: var(--space-2); }
+.tx-page__filter-label { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+.tx-page__filter-input { width: 20rem; }
+.tx-page__filter-count { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+
+/* La proposition de règle est le seul encart bordé d'accent : c'est une question posée à
+   l'utilisateur, pas un état de la page. */
 .tx-page__suggestion {
   display: flex;
   align-items: center;
@@ -243,95 +327,12 @@ async function onCategoryChange(transactionId: number, categoryItemCode: string)
   padding: var(--space-3);
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
+  background: var(--color-accent-subtle);
   font-size: var(--font-size-sm);
 }
 .tx-page__suggestion-label { display: flex; align-items: center; gap: var(--space-2); }
-.tx-page__suggestion-input {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  color: inherit;
-  font: inherit;
-  font-family: var(--font-mono, monospace);
-  min-width: 14rem;
-}
-.tx-page__suggestion-accept {
-  margin-left: auto;
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  background: var(--color-accent);
-  color: var(--color-bg);
-  font: inherit;
-  cursor: pointer;
-}
-.tx-page__suggestion-accept[aria-disabled='true'] { opacity: 0.6; cursor: default; }
+.tx-page__suggestion-input { font-family: var(--font-mono); min-width: 14rem; }
+.tx-page__suggestion-accept { margin-left: auto; }
 .tx-page__suggestion-reach { color: var(--color-text-muted); font-size: var(--font-size-xs); }
 .tx-page__suggestion-reach--wide { color: var(--color-danger); font-weight: 600; }
-.tx-page__suggestion-dismiss {
-  border: none;
-  background: none;
-  font: inherit;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-.tx-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-.tx-page__header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-}
-.tx-page__title {
-  margin: 0;
-  font-size: var(--font-size-xl, 1.5rem);
-  min-width: 12em;
-  text-align: center;
-}
-.tx-page__nav {
-  width: 2.25rem;
-  height: 2.25rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  font: inherit;
-  font-size: var(--font-size-lg, 1.125rem);
-  cursor: pointer;
-}
-.tx-page__nav:hover { border-color: var(--color-accent); }
-.tx-page__alert {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-left: 3px solid var(--color-warning);
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-md);
-  margin: 0;
-}
-.tx-page__alert-hint { color: var(--color-text-muted); font-size: var(--font-size-sm); }
-.tx-page__pending { color: var(--color-text-muted); }
-.tx-page__error {
-  padding: var(--space-3);
-  border-left: 3px solid var(--color-danger, #c53030);
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-md);
-  margin: 0;
-}
-.tx-page__empty {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  align-items: flex-start;
-  padding: var(--space-4);
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-md);
-}
-.tx-page__empty-link { font-weight: 500; }
 </style>

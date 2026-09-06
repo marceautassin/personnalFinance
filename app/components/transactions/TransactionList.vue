@@ -11,7 +11,7 @@ defineEmits<{
 </script>
 
 <template>
-  <table class="tx-list">
+  <table class="table tx-list">
     <thead>
       <tr>
         <th
@@ -25,7 +25,7 @@ defineEmits<{
         </th>
         <th
           scope="col"
-          class="tx-list__col-amount"
+          class="tx-list__col-amount num"
         >
           Montant
         </th>
@@ -49,21 +49,13 @@ defineEmits<{
 </template>
 
 <style scoped>
-.tx-list {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--font-size-sm);
-}
-.tx-list th {
-  text-align: left;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  font-weight: 600;
-  color: var(--color-text-muted);
-}
-.tx-list__col-date { width: 6em; }
-.tx-list__col-amount { width: 9em; text-align: right; }
-/* Assez large pour « Abonnements et prélèvements · Streaming » sur deux lignes plutôt que
-   trois : chaque retour à la ligne fait grandir la ligne entière et déforme le tableau. */
-.tx-list__col-cat { width: 20em; }
+/* Le tableau lui-même vient de `components.css` : hauteur de ligne, filets, en-tête collant et
+   survol y sont définis une fois pour les quatre tableaux de l'application. Ne restent ici que
+   les LARGEURS de colonne, qui dépendent de ce que cette table-ci contient. */
+.tx-list { table-layout: fixed; }
+.tx-list__col-date { width: 5.5rem; }
+.tx-list__col-amount { width: 7.5rem; }
+/* Assez large pour « Abonnements et prélèvements · Streaming » sur une seule ligne : à 32 px
+   de hauteur, un retour à la ligne déforme la ligne et casse le rythme du tableau. */
+.tx-list__col-cat { width: 19rem; }
 </style>

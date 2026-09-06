@@ -66,7 +66,14 @@ function periodSlug(periodStart: string): string {
 
 <template>
   <section class="import">
-    <h2>Importer des relevés</h2>
+    <header class="page-head">
+      <h2 class="page-head__title">
+        Importer des relevés
+      </h2>
+      <span class="page-head__sub">
+        Un fichier qui échoue n'interrompt pas la file — chaque relevé est traité seul.
+      </span>
+    </header>
 
     <PdfDropZone
       v-if="!running && awaiting === null"
@@ -95,113 +102,117 @@ function periodSlug(periodStart: string): string {
     />
 
     <section
-      class="statements"
+      class="statements panel"
       aria-labelledby="statements-heading"
     >
-      <h3 id="statements-heading">
-        Relevés ingérés
-      </h3>
+      <header class="panel__head">
+        <h3
+          id="statements-heading"
+          class="panel__title"
+        >
+          Relevés ingérés
+        </h3>
+      </header>
+
       <p
         v-if="listData.statements.length === 0"
         class="statements__empty"
       >
         Aucun relevé ingéré pour le moment.
       </p>
-      <ul
+
+      <table
         v-else
-        class="statements__list"
+        class="table statements__table"
       >
-        <li
-          v-for="stmt in listData.statements"
-          :key="stmt.hash"
-          class="statements__row"
-        >
-          <span class="statements__period">{{ periodLabel(stmt.periodStart, stmt.periodEnd) }}</span>
-          <span class="statements__count">{{ stmt.transactionCount }} tx</span>
-          <!--
-            Taux de correction manuelle (FR24) — le chiffre du jalon de décision du MVP.
-            Au-delà de 10 %, la corvée que le produit devait supprimer est de retour.
-          -->
-          <span
-            class="statements__rate"
-            :class="{ 'statements__rate--high': isRateHigh(stmt) }"
-            :title="correctionTitle(stmt)"
-          >{{ formatRatio(stmt.correctionRate) }} corrigé</span>
-          <ReliabilityBadge
-            :reliability="stmt.reliability"
-            :gap-cents="stmt.gapCents as Cents"
-          />
-          <span class="statements__links">
-            <NuxtLink :to="`/transactions/${periodSlug(stmt.periodStart)}`">
-              Transactions
-            </NuxtLink>
-            <NuxtLink :to="`/reconciliation/${stmt.hash}`">
-              Réconciliation
-            </NuxtLink>
-          </span>
-        </li>
-      </ul>
+        <thead>
+          <tr>
+            <th scope="col">
+              Période
+            </th>
+            <th
+              scope="col"
+              class="num"
+            >
+              Lignes
+            </th>
+            <th
+              scope="col"
+              class="num"
+            >
+              Corrigé
+            </th>
+            <th scope="col">
+              Fiabilité
+            </th>
+            <th scope="col">
+              <span class="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="stmt in listData.statements"
+            :key="stmt.hash"
+          >
+            <th
+              scope="row"
+              class="statements__period"
+            >
+              {{ periodLabel(stmt.periodStart, stmt.periodEnd) }}
+            </th>
+            <td class="num statements__count">
+              {{ stmt.transactionCount }}
+            </td>
+            <!--
+              Taux de correction manuelle (FR24) — le chiffre du jalon de décision du MVP.
+              Au-delà de 10 %, la corvée que le produit devait supprimer est de retour.
+            -->
+            <td
+              class="num statements__rate"
+              :class="{ 'statements__rate--high': isRateHigh(stmt) }"
+              :title="correctionTitle(stmt)"
+            >
+              {{ formatRatio(stmt.correctionRate) }}
+            </td>
+            <td>
+              <ReliabilityBadge
+                :reliability="stmt.reliability"
+                :gap-cents="stmt.gapCents as Cents"
+              />
+            </td>
+            <td class="statements__links">
+              <NuxtLink
+                class="btn btn--quiet btn--sm"
+                :to="`/transactions/${periodSlug(stmt.periodStart)}`"
+              >
+                Transactions
+              </NuxtLink>
+              <NuxtLink
+                class="btn btn--quiet btn--sm"
+                :to="`/reconciliation/${stmt.hash}`"
+              >
+                Réconciliation
+              </NuxtLink>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </section>
   </section>
 </template>
 
 <style scoped>
-.import {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-.success {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-md);
-  border-left: 3px solid var(--color-success);
-}
-.success__warning { color: var(--color-warning); }
-.success__link {
-  margin-top: var(--space-2);
-  font-weight: 500;
-}
-.error {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  align-items: flex-start;
-  padding: var(--space-4);
-  border-left: 3px solid var(--color-danger);
-  background: var(--color-bg-elevated);
-}
-.btn {
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid transparent;
-  font: inherit;
-  cursor: pointer;
-}
-.btn--primary { background: var(--color-accent); color: white; }
-.statements {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
-.statements h3 { margin: 0; font-size: var(--font-size-lg); }
-.statements__empty { color: var(--color-text-muted); margin: 0; }
-.statements__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.statements__row {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  gap: var(--space-3);
-  align-items: center;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-}
-.statements__period { font-weight: 500; }
-.statements__count { color: var(--color-text-muted); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
-.statements__rate { color: var(--color-text-muted); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.import { display: flex; flex-direction: column; gap: var(--space-3); }
+.statements__empty { color: var(--color-text-muted); margin: 0; padding: var(--space-3); }
+.statements__table { table-layout: fixed; }
+.statements__table th:nth-child(2), .statements__table td:nth-child(2) { width: 6rem; }
+.statements__table th:nth-child(3), .statements__table td:nth-child(3) { width: 6rem; }
+.statements__table th:nth-child(4), .statements__table td:nth-child(4) { width: 15rem; }
+.statements__table th:nth-child(5), .statements__table td:nth-child(5) { width: 17rem; }
+.statements__period { font-weight: 500 !important; }
+.statements__count { color: var(--color-text-muted); }
+.statements__rate { color: var(--color-text-muted); }
 .statements__rate--high { color: var(--color-danger); font-weight: 600; }
-.statements__links { display: flex; gap: var(--space-3); font-size: var(--font-size-sm); }
+.statements__links { display: flex; gap: var(--space-1); justify-content: flex-end; }
 </style>

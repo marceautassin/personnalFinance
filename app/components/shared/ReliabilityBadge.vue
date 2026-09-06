@@ -33,13 +33,23 @@ const ICONS: Record<StatementReliability, string> = {
   gap_unreviewed: '⚠️',
   gap_accepted: '≈',
 }
+
+/**
+ * Trois états, trois variantes du badge partagé. « Non examiné » est le seul vraiment alarmant
+ * — personne n'a encore regardé ; « accepté » est signalé sans crier, l'utilisateur a tranché.
+ */
+const BADGE_CLASS: Record<StatementReliability, string> = {
+  reliable: 'badge--ok',
+  gap_unreviewed: 'badge--alert',
+  gap_accepted: 'badge--warn',
+}
 </script>
 
 <template>
   <span
     v-if="label && reliability"
-    class="rel-badge"
-    :class="`rel-badge--${reliability}`"
+    class="badge"
+    :class="BADGE_CLASS[reliability]"
     role="status"
     :aria-label="label"
     :title="compact ? label : undefined"
@@ -56,31 +66,7 @@ const ICONS: Record<StatementReliability, string> = {
 </template>
 
 <style scoped>
-.rel-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-}
-.rel-badge--reliable {
-  background: color-mix(in srgb, var(--color-success) 15%, var(--color-bg-elevated));
-  color: var(--color-success);
-}
-/* Non examiné : le seul état vraiment alarmant — personne n'a encore regardé. */
-.rel-badge--gap_unreviewed {
-  background: var(--color-danger);
-  color: white;
-}
-/* Assumé : signalé mais pas alarmant. L'utilisateur a tranché, on le lui rappelle sans crier. */
-.rel-badge--gap_accepted {
-  background: color-mix(in srgb, var(--color-warning, #b45309) 15%, var(--color-bg-elevated));
-  color: var(--color-warning, #b45309);
-}
-.rel-badge--compact { padding: var(--space-1); }
-.rel-badge__icon { font-size: var(--font-size-sm); }
+/* Le badge vient de `components.css` — les trois variantes aussi. Ne reste ici que la taille
+   de l'icône, qui doit rester lisible quand le libellé est masqué. */
+.rel-badge__icon { font-size: var(--font-size-sm); line-height: 1; }
 </style>

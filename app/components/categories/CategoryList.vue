@@ -92,7 +92,7 @@ function onNatureChange(item: CategoryItemWithCount, event: Event) {
     </p>
     <table
       v-else
-      class="cat-list__table"
+      class="table cat-list__table"
     >
       <thead>
         <tr>
@@ -116,7 +116,7 @@ function onNatureChange(item: CategoryItemWithCount, event: Event) {
               :ref="el => setEditInput(el as Element | null)"
               v-model="editLabel"
               type="text"
-              class="cat-list__edit"
+              class="input input--sm cat-list__edit"
               maxlength="50"
               :aria-label="`Renommer ${item.label}`"
               @keyup.enter="commitEdit(item, true)"
@@ -141,7 +141,7 @@ function onNatureChange(item: CategoryItemWithCount, event: Event) {
               poste (D17), donc toutes ses transactions suivent.
             -->
             <select
-              class="cat-list__nature"
+              class="select select--sm cat-list__nature"
               :aria-label="`Nature de ${item.label}`"
               :value="item.nature"
               @change="onNatureChange(item, $event)"
@@ -169,7 +169,7 @@ function onNatureChange(item: CategoryItemWithCount, event: Event) {
             -->
             <button
               type="button"
-              class="cat-list__del"
+              class="btn btn--danger btn--sm cat-list__del"
               data-cancels-edit
               :class="{ 'cat-list__del--blocked': isBlocked(item) }"
               :aria-disabled="isBlocked(item) || savingCode === item.code"
@@ -189,31 +189,8 @@ function onNatureChange(item: CategoryItemWithCount, event: Event) {
 
 <style scoped>
 .cat-list__empty { color: var(--color-text-muted); margin: 0; padding: var(--space-2) 0; }
-.cat-list__nature {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-elevated);
-  color: inherit;
-  font: inherit;
-  font-size: var(--font-size-sm);
-}
-.cat-list__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--font-size-sm);
-}
-.cat-list__table th,
-.cat-list__table td {
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-  border-bottom: 1px solid var(--color-border);
-}
-.cat-list__table th {
-  color: var(--color-text-muted);
-  font-weight: var(--font-weight-medium, 500);
-}
-.cat-list__num { text-align: right; font-variant-numeric: tabular-nums; }
+.cat-list__num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-text-muted); }
+.cat-list__edit { width: 100%; }
 .cat-list__actions { text-align: right; }
 .cat-list__label {
   background: none;
@@ -226,26 +203,7 @@ function onNatureChange(item: CategoryItemWithCount, event: Event) {
   text-align: left;
 }
 .cat-list__label:hover { background: var(--color-neutral-100); }
-.cat-list__edit {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  width: 100%;
-}
-.cat-list__del {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-.cat-list__del:hover:not(:disabled) { border-color: var(--color-danger); color: var(--color-danger); }
-.cat-list__del:disabled { opacity: 0.45; cursor: not-allowed; }
-.cat-list__del--blocked {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* L'état indisponible vient de `components.css`, via `aria-disabled` : le bouton reste
+   focusable et dit la raison dans son nom accessible (NFR18-20). L'opacité qui l'exprimait
+   auparavant coupait le contraste sans rien dire de plus. */
 </style>

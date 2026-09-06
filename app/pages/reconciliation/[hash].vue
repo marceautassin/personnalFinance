@@ -94,7 +94,7 @@ async function onAcceptConfirm() {
 
     <div
       v-else-if="fetchErrorMessage"
-      class="rec-page__error"
+      class="notice rec-page__error"
       role="alert"
     >
       <p>{{ fetchErrorMessage }}</p>
@@ -122,7 +122,7 @@ async function onAcceptConfirm() {
 
       <p
         v-if="actionError"
-        class="rec-page__error"
+        class="notice rec-page__error"
         role="alert"
       >
         {{ actionError }}
@@ -145,12 +145,11 @@ async function onAcceptConfirm() {
               {{ tx.label }}
               <small
                 v-if="tx.isManual"
-                class="rec-page__tx-badge"
+                class="tag rec-page__tx-badge"
               >manuelle</small>
             </span>
             <span
               class="rec-page__tx-amount"
-              :class="{ 'rec-page__tx-amount--neg': tx.amountCents < 0 }"
             >
               {{ formatEuros(tx.amountCents) }}
             </span>
@@ -171,49 +170,30 @@ async function onAcceptConfirm() {
 </template>
 
 <style scoped>
-.rec-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
+.rec-page { display: flex; flex-direction: column; gap: var(--space-3); }
 .rec-page__header { display: flex; flex-direction: column; gap: var(--space-1); }
 .rec-page__header h2 { margin: 0; }
-.rec-page__period { margin: 0; color: var(--color-text-muted); }
+.rec-page__period { margin: 0; color: var(--color-text-muted); font-size: var(--font-size-sm); }
 .rec-page__pending { color: var(--color-text-muted); }
-.rec-page__error {
-  padding: var(--space-3);
-  border-left: 3px solid var(--color-danger);
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.rec-page__tx {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.rec-page__tx h3 { margin: 0; font-size: var(--font-size-base); }
-.rec-page__tx-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.rec-page__error { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
+.rec-page__tx { display: flex; flex-direction: column; gap: var(--space-2); }
+.rec-page__tx h3 { margin: 0; font-size: var(--font-size-md); }
+.rec-page__tx-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
 .rec-page__tx-row {
   display: grid;
-  grid-template-columns: 6rem 1fr auto;
+  grid-template-columns: 5.5rem 1fr 7rem;
   gap: var(--space-3);
-  padding: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
-  align-items: baseline;
+  height: var(--row-height);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-hairline);
+  align-items: center;
+  font-size: var(--font-size-sm);
 }
+.rec-page__tx-row:last-child { border-bottom: none; }
 .rec-page__tx-row--manual { background: var(--color-neutral-50); }
-.rec-page__tx-date { color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
-.rec-page__tx-amount { font-variant-numeric: tabular-nums; font-weight: 500; color: var(--color-success); }
-.rec-page__tx-amount--neg { color: var(--color-danger); }
-.rec-page__tx-badge {
-  margin-left: var(--space-2);
-  padding: 0 var(--space-2);
-  background: var(--color-neutral-200);
-  color: var(--color-text-muted);
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-xs);
-}
+.rec-page__tx-date { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--font-size-xs); }
+.rec-page__tx-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Montant NEUTRE : la couleur est réservée aux totaux, aux écarts et aux alertes (epic 16). */
+.rec-page__tx-amount { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.rec-page__tx-badge { margin-left: var(--space-2); }
 </style>

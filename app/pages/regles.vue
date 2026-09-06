@@ -68,14 +68,14 @@ async function onConfirmDelete() {
 
     <p
       v-if="actionError"
-      class="rules__error"
+      class="notice"
       role="alert"
     >
       {{ actionError }}
     </p>
     <p
       v-if="fetchErrorMessage"
-      class="rules__error"
+      class="notice"
       role="alert"
     >
       {{ fetchErrorMessage }}
@@ -90,13 +90,17 @@ async function onConfirmDelete() {
         <input
           v-model="pattern"
           type="text"
+          class="input rules__pattern"
           placeholder="Ex : SOCIETEX"
           maxlength="120"
         >
       </label>
       <label class="rules__field rules__field--grow">
         <span>Ranger dans</span>
-        <select v-model="categoryItemCode">
+        <select
+          v-model="categoryItemCode"
+          class="select"
+        >
           <option
             value=""
             disabled
@@ -121,7 +125,7 @@ async function onConfirmDelete() {
       </label>
       <button
         type="submit"
-        class="rules__btn"
+        class="btn btn--primary rules__btn"
         :aria-disabled="saving"
       >
         {{ saving ? 'Ajout…' : 'Ajouter la règle' }}
@@ -143,7 +147,7 @@ async function onConfirmDelete() {
     </p>
     <table
       v-else
-      class="rules__table"
+      class="table table--framed rules__table"
     >
       <thead>
         <tr>
@@ -152,7 +156,7 @@ async function onConfirmDelete() {
           <th class="rules__num">
             Lignes couvertes
           </th>
-          <th />
+          <th><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
       <tbody>
@@ -161,7 +165,9 @@ async function onConfirmDelete() {
           :key="rule.id"
           :data-testid="`rule-row-${rule.id}`"
         >
-          <td><code>{{ rule.pattern }}</code></td>
+          <td class="rules__pattern">
+            {{ rule.pattern }}
+          </td>
           <td>{{ rule.groupLabel }} · {{ rule.itemLabel }}</td>
           <td class="rules__num">
             {{ rule.matchCount }}
@@ -169,7 +175,7 @@ async function onConfirmDelete() {
           <td class="rules__actions">
             <button
               type="button"
-              class="rules__del"
+              class="btn btn--danger btn--sm"
               :aria-label="`Supprimer la règle ${rule.pattern}`"
               @click="pendingDelete = rule"
             >
@@ -192,17 +198,8 @@ async function onConfirmDelete() {
 </template>
 
 <style scoped>
-.rules { display: flex; flex-direction: column; gap: var(--space-4); }
-.rules__title { margin: 0; font-size: var(--font-size-xl, 1.5rem); }
-.rules__lead { margin: var(--space-1) 0 0; color: var(--color-text-muted); max-width: 68ch; }
-.rules__error {
-  margin: 0;
-  padding: var(--space-3);
-  border-left: 3px solid var(--color-danger);
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-md);
-  color: var(--color-danger);
-}
+.rules { display: flex; flex-direction: column; gap: var(--space-3); }
+.rules__lead { margin: 0; color: var(--color-text-muted); max-width: 88ch; font-size: var(--font-size-sm); }
 .rules__form {
   display: flex;
   align-items: flex-end;
@@ -214,45 +211,11 @@ async function onConfirmDelete() {
   background: var(--color-bg-elevated);
 }
 .rules__field { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-sm); }
-.rules__field--grow { flex: 1 1 14rem; }
+.rules__field--grow { flex: 1 1 20rem; }
 .rules__field span { color: var(--color-text-muted); }
-.rules__field input,
-.rules__field select {
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  color: inherit;
-  font: inherit;
-}
-.rules__btn {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  background: var(--color-accent);
-  color: var(--color-bg);
-  font: inherit;
-  cursor: pointer;
-}
-.rules__btn[aria-disabled='true'] { opacity: 0.6; cursor: default; }
 .rules__empty { color: var(--color-text-muted); max-width: 60ch; }
-.rules__table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); }
-.rules__table th,
-.rules__table td {
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-  border-bottom: 1px solid var(--color-border);
-}
-.rules__table th { color: var(--color-text-muted); font-weight: 500; }
-.rules__num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Le motif est de la donnée saisie, pas de la prose : à chasse fixe, on voit les espaces. */
+.rules__pattern { font-family: var(--font-mono); font-size: var(--font-size-sm); }
+.rules__num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .rules__actions { text-align: right; }
-.rules__del {
-  border: none;
-  background: none;
-  font: inherit;
-  color: var(--color-danger);
-  cursor: pointer;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-}
 </style>

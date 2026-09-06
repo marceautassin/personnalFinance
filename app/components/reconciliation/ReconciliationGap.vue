@@ -50,14 +50,14 @@ defineEmits<{ addTransaction: [], acceptGap: [] }>()
     >
       <button
         type="button"
-        class="rec-gap__btn rec-gap__btn--primary"
+        class="btn btn--primary"
         @click="$emit('addTransaction')"
       >
         Ajouter une transaction
       </button>
       <button
         type="button"
-        class="rec-gap__btn"
+        class="btn"
         @click="$emit('acceptGap')"
       >
         Accepter l'écart (mois non fiable)
@@ -83,10 +83,7 @@ defineEmits<{ addTransaction: [], acceptGap: [] }>()
   gap: var(--space-3);
   flex-wrap: wrap;
 }
-.rec-gap__title {
-  margin: 0;
-  font-size: var(--font-size-lg);
-}
+.rec-gap__title { margin: 0; font-size: var(--font-size-md); }
 .rec-gap__status { margin: 0; font-weight: 500; }
 .rec-gap__status--ok { color: var(--color-success); }
 .rec-gap__status--gap { color: var(--color-warning); }
@@ -98,25 +95,10 @@ defineEmits<{ addTransaction: [], acceptGap: [] }>()
 }
 .rec-gap__balances > div { display: flex; flex-direction: column; gap: var(--space-1); }
 .rec-gap__balances dt { color: var(--color-text-muted); font-size: var(--font-size-sm); }
-.rec-gap__balances dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 500; }
+.rec-gap__balances dd { margin: 0; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
 .rec-gap__actions {
   display: flex;
   gap: var(--space-2);
   flex-wrap: wrap;
 }
-.rec-gap__btn {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  font: inherit;
-  cursor: pointer;
-}
-.rec-gap__btn:hover { border-color: var(--color-accent); }
-.rec-gap__btn--primary {
-  background: var(--color-accent);
-  color: white;
-  border-color: var(--color-accent);
-}
-.rec-gap__btn--primary:hover { filter: brightness(1.05); }
 </style>

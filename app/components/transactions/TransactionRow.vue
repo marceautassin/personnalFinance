@@ -18,8 +18,6 @@ const dayLabel = computed(() => {
 })
 
 const amountLabel = computed(() => formatEuros(props.transaction.amountCents as Cents))
-
-const isNegative = computed(() => props.transaction.amountCents < 0)
 </script>
 
 <template>
@@ -27,7 +25,10 @@ const isNegative = computed(() => props.transaction.amountCents < 0)
     <td class="tx-row__date">
       {{ dayLabel }}
     </td>
-    <td class="tx-row__label">
+    <td
+      class="tx-row__label"
+      :title="transaction.label"
+    >
       <!--
         Le flex vit sur un conteneur INTERNE, jamais sur le `<td>` : `display: flex` sort la
         cellule du layout de tableau, et le `vertical-align: middle` de la ligne cesse alors
@@ -38,15 +39,17 @@ const isNegative = computed(() => props.transaction.amountCents < 0)
         <span class="tx-row__label-text">{{ transaction.label }}</span>
         <small
           v-if="transaction.isManual"
-          class="tx-row__badge tx-row__badge--manual"
+          class="tag"
           :title="'Catégorie modifiée manuellement'"
         >modifié</small>
       </span>
     </td>
-    <td
-      class="tx-row__amount"
-      :class="{ 'tx-row__amount--neg': isNegative, 'tx-row__amount--pos': !isNegative }"
-    >
+    <!--
+      Montant NEUTRE (epic 16). Peindre chaque ligne en rouge ou en vert faisait un mur de
+      couleur où plus rien ne ressortait : le signe moins dit déjà le sens, et la couleur est
+      désormais réservée aux totaux, aux écarts et aux alertes.
+    -->
+    <td class="tx-row__amount num">
       {{ amountLabel }}
     </td>
     <td class="tx-row__cat">
@@ -60,22 +63,13 @@ const isNegative = computed(() => props.transaction.amountCents < 0)
 </template>
 
 <style scoped>
-.tx-row td {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  vertical-align: middle;
-}
-.tx-row__date { color: var(--color-text-muted); white-space: nowrap; }
-.tx-row__label-inner { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.tx-row__label-text { overflow-wrap: anywhere; }
-.tx-row__amount { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tx-row__amount--neg { color: var(--color-danger); }
-.tx-row__amount--pos { color: var(--color-success); }
-.tx-row__badge {
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  background: var(--color-neutral-100);
-  color: var(--color-text-muted);
-}
+.tx-row td { vertical-align: middle; }
+.tx-row__date { color: var(--color-text-muted); white-space: nowrap; font-family: var(--font-mono); font-size: var(--font-size-sm); }
+.tx-row__label { overflow: hidden; }
+/* Le libellé se TRONQUE au lieu de passer à la ligne : un libellé bancaire fait parfois
+   quatre-vingts caractères, et le laisser se replier ferait grandir la ligne — donc perdre
+   la densité que toute la refonte cherche. Le texte entier reste dans l'infobulle. */
+.tx-row__label-inner { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.tx-row__label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tx-row__amount { white-space: nowrap; }
 </style>

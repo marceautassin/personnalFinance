@@ -20,7 +20,7 @@ const emit = defineEmits<{ cancel: [] }>()
     </p>
     <button
       type="button"
-      class="progress__cancel"
+      class="btn btn--sm progress__cancel"
       @click="emit('cancel')"
     >
       Annuler
@@ -33,15 +33,15 @@ const emit = defineEmits<{ cancel: [] }>()
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4);
-  background: var(--color-neutral-100);
+  padding: var(--space-3);
+  background: var(--color-accent-subtle);
   border-radius: var(--radius-md);
   border-left: 3px solid var(--color-accent);
 }
 .progress__spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid var(--color-border);
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-border);
   border-top-color: var(--color-accent);
   border-radius: var(--radius-full);
   animation: spin 1s linear infinite;
@@ -52,17 +52,7 @@ const emit = defineEmits<{ cancel: [] }>()
   font-size: var(--font-size-sm);
   flex: 1;
 }
-.progress__cancel {
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-elevated);
-  color: var(--color-text);
-  font: inherit;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.progress__cancel:hover { background: var(--color-neutral-200); }
+.progress__cancel { flex-shrink: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .progress__spinner { animation: none; }

@@ -4,6 +4,7 @@ import { formatDate } from '~/utils/dates'
 import type { RangeTransaction } from '~/composables/useItemTransactions'
 import { formatRatio, ratio, type Ratio } from '~~/shared/types/ratio'
 import type { AnalysisResponse } from '~/composables/useAnalysis'
+import { describeDistributionNode } from '~/utils/distribution-label'
 
 type NatureNode = AnalysisResponse['natures'][number]
 type GroupNode = NatureNode['groups'][number]
@@ -24,6 +25,21 @@ const emit = defineEmits<{
   recategorize: [transaction: RangeTransaction, categoryItemCode: string]
 }>()
 
+/** Nom accessible d'une rubrique — la construction vit dans `distribution-label.ts`. */
+function groupLabel(group: GroupNode): string {
+  const d = delta(group)
+  return describeDistributionNode({
+    label: group.label,
+    totalCents: group.totalCents as Cents,
+    transactionCount: group.items.reduce((sum, i) => sum + i.transactionCount, 0),
+    deltaCents: d as Cents | null,
+    share: showsShare.value && !isInverted(group) ? share(group.totalCents) : null,
+    expanded: expanded.value.has(group.groupCode),
+    previousLabel: props.previousLabel ?? null,
+    deltaIsAlarming: d !== null && isDeltaAlarming(d),
+  })
+}
+
 const expanded = ref<Set<string>>(new Set())
 function toggle(code: string) {
   const next = new Set(expanded.value)
@@ -37,7 +53,26 @@ function toggle(code: string) {
  * comparer, et replier une rubrique ne doit pas faire oublier ce qu'on avait ouvert dedans.
  */
 const expandedItems = ref<Set<string>>(new Set())
+/** Nom accessible d'un poste — même construction que la rubrique, un seul endroit. */
+function itemLabel(item: GroupNode['items'][number]): string {
+  const d = delta(item)
+  return describeDistributionNode({
+    label: item.label,
+    totalCents: item.totalCents as Cents,
+    transactionCount: item.transactionCount,
+    deltaCents: d as Cents | null,
+    // Un poste n'affiche pas de barre de part : ne pas l'annoncer non plus.
+    share: null,
+    expanded: expandedItems.value.has(item.itemCode),
+    previousLabel: props.previousLabel ?? null,
+    deltaIsAlarming: d !== null && isDeltaAlarming(d),
+  })
+}
+
 function toggleItem(code: string) {
+  // `aria-disabled` laisse le clic partir : la garde vit donc ici, pas dans l'attribut.
+  const item = props.nature.groups.flatMap(g => g.items).find(i => i.itemCode === code)
+  if (item?.transactionCount === 0) return
   const next = new Set(expandedItems.value)
   if (next.has(code)) {
     next.delete(code)
@@ -127,12 +162,12 @@ function isDeltaAlarming(value: number): boolean {
 </script>
 
 <template>
-  <section class="dist">
-    <header class="dist__header">
-      <h3 class="dist__title">
+  <section class="dist panel">
+    <header class="panel__head">
+      <h3 class="panel__title">
         {{ title }}
       </h3>
-      <strong class="dist__total">{{ formatEuros(nature.totalCents as Cents) }}</strong>
+      <strong class="dist__total num">{{ formatEuros(nature.totalCents as Cents) }}</strong>
     </header>
 
     <!--
@@ -173,7 +208,7 @@ function isDeltaAlarming(value: number): boolean {
           type="button"
           class="dist__row"
           :aria-expanded="expanded.has(group.groupCode)"
-          :aria-label="`${group.label} — ${formatEuros(group.totalCents as Cents)}`"
+          :aria-label="groupLabel(group)"
           @click="toggle(group.groupCode)"
         >
           <span
@@ -187,6 +222,7 @@ function isDeltaAlarming(value: number): boolean {
             justement celles qu'on cherche.
           -->
           <svg
+            v-if="showsShare"
             class="dist__bar"
             :viewBox="`0 0 100 8`"
             preserveAspectRatio="none"
@@ -201,12 +237,14 @@ function isDeltaAlarming(value: number): boolean {
               :class="isInverted(group) ? 'dist__fill dist__fill--inverted' : 'dist__fill'"
             />
           </svg>
+          <span v-else />
           <span class="dist__share">{{ !showsShare || isInverted(group) ? '—' : formatRatio(share(group.totalCents)) }}</span>
           <span class="dist__amount">{{ formatEuros(group.totalCents as Cents) }}</span>
           <span
             v-if="delta(group) !== null"
             class="dist__delta"
             :class="{
+              'dist__delta--flat': delta(group) === 0,
               'dist__delta--up': isDeltaAlarming(delta(group) ?? 0),
               'dist__delta--neutral': nature.nature === 'internal_transfer',
             }"
@@ -225,9 +263,9 @@ function isDeltaAlarming(value: number): boolean {
             <button
               type="button"
               class="dist__item"
-              :aria-expanded="expandedItems.has(item.itemCode)"
-              :aria-label="`${expandedItems.has(item.itemCode) ? 'Replier' : 'Déplier'} les ${item.transactionCount} transaction(s) de ${item.label}`"
-              :disabled="item.transactionCount === 0"
+              :aria-expanded="item.transactionCount === 0 ? undefined : expandedItems.has(item.itemCode)"
+              :aria-disabled="item.transactionCount === 0"
+              :aria-label="itemLabel(item)"
               @click="toggleItem(item.itemCode)"
             >
               <span
@@ -235,8 +273,10 @@ function isDeltaAlarming(value: number): boolean {
                 aria-hidden="true"
               >{{ item.transactionCount === 0 ? '' : expandedItems.has(item.itemCode) ? '▾' : '▸' }}</span>
               <span class="dist__name">{{ item.label }}</span>
+              <span />
               <span class="dist__count">{{ item.transactionCount }} tx</span>
               <span class="dist__amount">{{ formatEuros(item.totalCents as Cents) }}</span>
+              <span />
             </button>
 
             <!--
@@ -298,7 +338,7 @@ function isDeltaAlarming(value: number): boolean {
 
     <p
       v-if="nature.groups.length > 0"
-      class="dist__note"
+      class="panel__foot dist__note"
     >
       <template v-if="nature.nature === 'expense'">
         Une dépense en hausse est en rouge, en baisse en vert.
@@ -313,7 +353,7 @@ function isDeltaAlarming(value: number): boolean {
 
     <p
       v-if="nature.groups.some(isInverted)"
-      class="dist__note"
+      class="panel__foot dist__note"
     >
       Une rubrique au net inversé — davantage de remboursements que de mouvements — n'entre pas
       dans la répartition, mais son montant reste affiché.
@@ -322,77 +362,102 @@ function isDeltaAlarming(value: number): boolean {
 </template>
 
 <style scoped>
-.dist { display: flex; flex-direction: column; gap: var(--space-2); }
-.dist__header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
-.dist__title { margin: 0; font-size: var(--font-size-lg); }
-.dist__total { font-variant-numeric: tabular-nums; }
-.dist__empty, .dist__note { color: var(--color-text-muted); font-size: var(--font-size-sm); margin: 0; }
-.dist__list, .dist__items { list-style: none; margin: 0; padding: 0; }
+/*
+ * Trois niveaux dans un tableau continu : rubrique 32 px, poste 30 px en retrait, ligne 28 px
+ * plus en retrait encore. La hiérarchie tient par la HAUTEUR et le RETRAIT, jamais par un
+ * cadre : chaque encadré supplémentaire coupe le chemin qui prouve le total (NFR2).
+ */
+.dist { display: flex; flex-direction: column; }
+.dist__total { font-size: var(--font-size-md); font-weight: 600; margin-left: auto; }
+.dist__empty { color: var(--color-text-muted); font-size: var(--font-size-sm); margin: 0; padding: var(--space-3); }
+.dist__note { margin: 0; }
+.dist__list, .dist__items, .dist__tx-list { list-style: none; margin: 0; padding: 0; }
+
 .dist__row, .dist__item {
   display: grid;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   width: 100%;
-  padding: var(--space-2);
+  padding: 0 var(--space-3);
   border: none;
+  border-bottom: 1px solid var(--color-hairline);
   background: none;
   font: inherit;
   color: inherit;
   text-align: left;
   cursor: pointer;
-  border-radius: var(--radius-sm);
 }
-.dist__row { grid-template-columns: 1rem minmax(7rem, 12rem) 1fr 3.5rem 6rem 8rem; }
+.dist__row,
+.dist__item { grid-template-columns: 1rem minmax(7rem, 14rem) 1fr 4rem 6.5rem 8rem; }
+.dist__row { height: var(--row-height); }
 .dist__row--head {
+  height: var(--row-height-sm);
+  white-space: nowrap;
   cursor: default;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: var(--space-1);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--color-neutral-50);
+  border-bottom: 1px solid var(--color-border-strong);
 }
-.dist__row--head:hover { background: none; }
-.dist__item { grid-template-columns: 1rem minmax(7rem, 1fr) 4rem 6rem; padding-left: var(--space-4); }
-.dist__item[disabled] { cursor: default; opacity: 0.65; }
-.dist__item[disabled]:hover { background: none; }
+.dist__row--head:hover { background: var(--color-neutral-50); }
+/* Le retrait porte sur le LIBELLÉ et non sur la ligne : décaler la ligne entière décalerait
+   aussi ses montants, et « Montant » ne tomberait plus sous « Montant ». */
+.dist__item {
+  height: 30px;
+  font-size: var(--font-size-sm);
+  background: var(--color-neutral-50);
+}
+.dist__item .dist__name { padding-left: var(--space-4); }
+.dist__item[aria-disabled='true'] { cursor: default; color: var(--color-neutral-500); }
+.dist__row:hover, .dist__item:hover { background: var(--color-neutral-100); }
 
 /* Les lignes vivent sous leur poste, décalées. Pas de hauteur bornée : le menu de reclassement
    s'ouvre en position absolue et un conteneur qui défile le rognerait sur les dernières lignes.
    Le poste se replie, ce qui suffit à ne pas noyer la page. */
-.dist__tx {
-  margin: 0 0 var(--space-2) var(--space-6, 3rem);
-  padding-left: var(--space-3);
-  border-left: 2px solid var(--color-border);
-}
-.dist__tx-list { list-style: none; margin: 0; padding: 0; }
+.dist__tx { padding: 0 var(--space-3) var(--space-2) var(--space-8); }
 .dist__tx-row {
   display: grid;
-  grid-template-columns: 6rem 1fr 6rem auto;
+  grid-template-columns: 4.5rem 1fr 5.5rem auto;
   align-items: center;
   gap: var(--space-2);
-  padding: 2px 0;
-  font-size: var(--font-size-xs);
+  height: var(--row-height-sm);
+  font-size: var(--font-size-sm);
+  border-bottom: 1px solid var(--color-hairline);
 }
-.dist__tx-date, .dist__tx-source { color: var(--color-text-muted); }
+.dist__tx-date { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--font-size-xs); }
 .dist__tx-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dist__tx-amount { text-align: right; font-variant-numeric: tabular-nums; }
-.dist__tx-source { text-align: right; }
+.dist__tx-amount { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .dist__tx-state { margin: var(--space-1) 0 0; color: var(--color-text-muted); font-size: var(--font-size-xs); }
 .dist__tx-state--error { color: var(--color-danger); }
-.dist__row:hover, .dist__item:hover { background: var(--color-neutral-100); }
-.dist__bar { width: 100%; height: 8px; }
+
+.dist__bar { width: 100%; height: 5px; }
 .dist__fill { fill: var(--color-accent); }
-.dist__fill--inverted { fill: var(--color-text-muted); }
+.dist__fill--inverted { fill: var(--color-text-subtle); }
 .dist__share, .dist__amount, .dist__count, .dist__delta {
   text-align: right;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--font-size-sm);
 }
-.dist__share, .dist__count { color: var(--color-text-muted); }
+.dist__share, .dist__count { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+/*
+ * La couleur SIGNALE, elle ne décore pas : la colonne « Montant » reste neutre, seul l'ÉCART
+ * est coloré. Peindre chaque montant en rouge rendait le rouge muet (epic 16).
+ */
 .dist__delta { color: var(--color-success); }
 .dist__row--head .dist__delta,
 .dist__row--head .dist__share,
-.dist__row--head .dist__amount { color: var(--color-text-muted); }
+.dist__row--head .dist__amount,
+.dist__row--head .dist__count { color: var(--color-text-muted); font-family: var(--font-sans); }
 .dist__delta--up { color: var(--color-danger); }
-.dist__delta--neutral { color: var(--color-text-muted); }
-.dist__caret { color: var(--color-text-muted); }
+/* Un écart NUL n'est pas une amélioration : sans cette règle il tombait dans le vert par
+   défaut, et « 0,00 € » se lisait comme un progrès (revue du 2026-09-05). */
+.dist__delta--flat { color: var(--color-neutral-500); }
+/* `neutral-500` et non `text-subtle` : c'est un MONTANT, il doit rester lisible (4,63:1). */
+.dist__delta--neutral { color: var(--color-neutral-500); }
+.dist__caret { color: var(--color-text-subtle); font-size: 9px; }
+.dist__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

@@ -143,14 +143,14 @@ function onRemoveItem(item: CategoryItemWithCount) {
 
     <p
       v-if="actionError"
-      class="cat-page__error"
+      class="notice"
       role="alert"
     >
       {{ actionError }}
     </p>
     <p
       v-if="fetchErrorMessage"
-      class="cat-page__error"
+      class="notice"
       role="alert"
     >
       {{ fetchErrorMessage }}
@@ -201,7 +201,7 @@ function onRemoveItem(item: CategoryItemWithCount) {
           :ref="el => groupRename.setEditInput(el as Element | null)"
           v-model="groupRename.editLabel.value"
           type="text"
-          class="cat-group__edit"
+          class="input input--sm cat-group__edit"
           maxlength="50"
           :aria-label="`Renommer ${group.label}`"
           @keyup.enter="groupRename.commitEdit(group, true)"
@@ -225,7 +225,6 @@ function onRemoveItem(item: CategoryItemWithCount) {
           type="button"
           class="cat-group__del"
           data-cancels-edit
-          :class="{ 'cat-group__del--blocked': groupBlockReason(group) !== null }"
           :aria-disabled="groupBlockReason(group) !== null || savingCode === group.code"
           :title="groupBlockReason(group) ?? 'Supprimer'"
           :aria-label="groupBlockReason(group) ? `Supprimer ${group.label} — ${groupBlockReason(group)}` : `Supprimer ${group.label}`"
@@ -268,34 +267,18 @@ function onRemoveItem(item: CategoryItemWithCount) {
 </template>
 
 <style scoped>
-.cat-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-.cat-page__title { margin: 0; font-size: var(--font-size-xl, 1.5rem); }
-.cat-page__lead { margin: var(--space-1) 0 0; color: var(--color-text-muted); max-width: 60ch; }
-.cat-page__error {
-  padding: var(--space-3);
-  border-left: 3px solid var(--color-danger);
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-md);
-  margin: 0;
-  color: var(--color-danger);
-}
+.cat-page { display: flex; flex-direction: column; gap: var(--space-3); }
+.cat-page__lead { margin: 0; color: var(--color-text-muted); max-width: 88ch; font-size: var(--font-size-sm); }
 .cat-page__pending { color: var(--color-text-muted); }
 
-.cat-group {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
+.cat-group { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
 .cat-group__header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-bg-elevated);
+  height: 34px;
+  padding: 0 var(--space-3);
+  background: var(--color-neutral-50);
   border-bottom: 1px solid var(--color-border);
 }
 .cat-group__toggle,
@@ -306,22 +289,16 @@ function onRemoveItem(item: CategoryItemWithCount) {
   font: inherit;
   color: inherit;
   cursor: pointer;
-  padding: var(--space-1) var(--space-2);
+  padding: 0 var(--space-1);
   border-radius: var(--radius-sm);
 }
+.cat-group__toggle { color: var(--color-text-subtle); font-size: 9px; }
 .cat-group__label { font-weight: 600; cursor: text; }
 .cat-group__label:hover { background: var(--color-neutral-100); }
-.cat-group__count { margin-left: auto; color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.cat-group__count { margin-left: auto; color: var(--color-text-muted); font-size: var(--font-size-xs); font-family: var(--font-mono); }
 .cat-group__del { color: var(--color-danger); font-size: var(--font-size-sm); }
-.cat-group__del--blocked { color: var(--color-text-muted); cursor: default; }
-.cat-group__edit {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  font-weight: 600;
-  background: var(--color-bg);
-  color: inherit;
-}
+/* Indisponible : `aria-disabled`, focusable, raison dans le nom accessible (NFR18-20). */
+.cat-group__del[aria-disabled='true'] { color: var(--color-neutral-500); cursor: default; }
+.cat-group__edit { font-weight: 600; }
 .cat-group > div { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); }
 </style>

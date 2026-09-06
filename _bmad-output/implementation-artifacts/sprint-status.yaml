@@ -234,3 +234,19 @@ development_status:
   15-5-descente-agregat-vers-transactions: review
   15-6-evolution-entre-periodes: review
   epic-15-retrospective: optional
+
+  # Epic 16 — Système de design et refonte du front
+  # Aucune fonctionnalité nouvelle : ni moteur, ni endpoint, ni schéma touchés.
+  # Ouvert le 2026-09-05 après validation du canevas de conception par l'utilisateur.
+  # Les quatre stories sont implémentées et passées en revue (agent `pr-reviewer`, 2026-09-05,
+  # contexte neuf) : trois bloquants levés — en-tête collant neutralisé par un `overflow` sur
+  # deux tableaux, et un `disabled` natif sur un contrôle porteur d'information.
+  epic-16: review
+  16-1-fondations-tokens-fontes-reset: review
+  16-2-primitives-partagees: review
+  16-3-barre-application-et-compteurs: review
+  16-4-refonte-des-six-ecrans: review
+  # Conçue et validée, non implémentée : demande une capacité d'API nouvelle (filtre par
+  # rubrique sur GET /api/transactions). Signalée plutôt que faite en passant — scope verrouillé.
+  16-5-descente-depuis-la-trajectoire: backlog
+  epic-16-retrospective: optional

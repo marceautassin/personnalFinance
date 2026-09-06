@@ -56,7 +56,7 @@ function fmtPeriods(periods: Array<{ start: string, end: string }>): string {
     <div class="dialog__actions">
       <button
         type="button"
-        class="btn btn--secondary"
+        class="btn"
         @click="onCancel"
       >
         Annuler
@@ -74,11 +74,12 @@ function fmtPeriods(periods: Array<{ start: string, end: string }>): string {
 
 <style scoped>
 .dialog {
-  border: none;
-  border-radius: var(--radius-lg);
-  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
   max-width: 500px;
-  box-shadow: var(--shadow-md);
+  /* Un dialogue RECOUVRE le contenu : c'est le cas où l'ombre dit la vérité. */
+  box-shadow: var(--shadow-overlay);
   background: var(--color-bg-elevated);
   color: var(--color-text);
 }
@@ -90,13 +91,4 @@ function fmtPeriods(periods: Array<{ start: string, end: string }>): string {
   margin-top: var(--space-4);
   justify-content: flex-end;
 }
-.btn {
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid transparent;
-  font: inherit;
-  cursor: pointer;
-}
-.btn--primary { background: var(--color-accent); color: white; }
-.btn--secondary { background: var(--color-neutral-200); color: var(--color-text); }
 </style>

@@ -135,10 +135,12 @@ function onInput(e: Event) {
   justify-content: center;
   gap: var(--space-2);
   width: 100%;
-  min-height: 200px;
-  padding: var(--space-8);
-  border: 2px dashed var(--color-border-strong);
-  border-radius: var(--radius-lg);
+  /* 96 px et non 200 : la zone servait à peine plus qu'un bouton et occupait un cinquième de
+     l'écran. La cible reste largement assez grande pour un dépôt à la souris. */
+  min-height: 96px;
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
   background: var(--color-bg-elevated);
   transition: border-color var(--transition-base), background-color var(--transition-base);
   cursor: pointer;
@@ -151,13 +153,10 @@ function onInput(e: Event) {
   background: var(--color-neutral-100);
 }
 .dropzone__title {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-md);
   font-weight: 500;
 }
-.dropzone__hint { color: var(--color-text-muted); }
+.dropzone__hint { color: var(--color-text-muted); font-size: var(--font-size-sm); }
 .dropzone__input { display: none; }
-.dropzone__error {
-  color: var(--color-danger);
-  margin-top: var(--space-3);
-}
+.dropzone__error { color: var(--color-danger); margin-top: var(--space-2); font-size: var(--font-size-sm); }
 </style>

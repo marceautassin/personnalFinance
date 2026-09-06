@@ -61,7 +61,7 @@ const STATUS_LABELS: Record<QueueItem['status'], string> = {
       <button
         v-if="running"
         type="button"
-        class="queue__action"
+        class="btn btn--sm queue__action"
         @click="emit('cancel')"
       >
         Annuler le fichier en cours
@@ -69,7 +69,7 @@ const STATUS_LABELS: Record<QueueItem['status'], string> = {
       <button
         v-else-if="finished"
         type="button"
-        class="queue__action"
+        class="btn btn--sm queue__action"
         @click="emit('clear')"
       >
         Vider la liste
@@ -111,8 +111,8 @@ const STATUS_LABELS: Record<QueueItem['status'], string> = {
         <button
           v-if="item.status === 'failed' && isRetryableErrorCode(item.errorCode)"
           type="button"
-          class="queue__retry"
-          :aria-label="`Réessayer ${item.name}`"
+          class="btn btn--quiet btn--sm queue__retry"
+          :aria-label="running ? `Réessayer ${item.name} — impossible, une ingestion est en cours` : `Réessayer ${item.name}`"
           :aria-disabled="running"
           @click="running ? undefined : emit('retry', item.id)"
         >
@@ -126,19 +126,9 @@ const STATUS_LABELS: Record<QueueItem['status'], string> = {
 <style scoped>
 .queue { display: flex; flex-direction: column; gap: var(--space-2); }
 .queue__header { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
-.queue__title { margin: 0; font-size: var(--font-size-lg); }
+.queue__title { margin: 0; font-size: var(--font-size-md); }
 .queue__counter { margin: 0; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
-.queue__action {
-  margin-left: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-elevated);
-  color: inherit;
-  font: inherit;
-  font-size: var(--font-size-sm);
-  padding: var(--space-1) var(--space-3);
-  cursor: pointer;
-}
+.queue__action { margin-left: auto; }
 .queue__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .queue__row {
   display: flex;
@@ -152,17 +142,9 @@ const STATUS_LABELS: Record<QueueItem['status'], string> = {
 .queue__row--failed { border-left: 3px solid var(--color-danger); }
 .queue__row--success { border-left: 3px solid var(--color-success); }
 .queue__row--awaiting-decision { border-left: 3px solid var(--color-accent); }
-.queue__name { font-family: var(--font-mono, monospace); }
+.queue__name { font-family: var(--font-mono); }
 .queue__status { color: var(--color-text-muted); min-width: 8rem; }
 .queue__detail { color: var(--color-text-muted); }
 .queue__detail--error { color: var(--color-danger); }
-.queue__retry {
-  margin-left: auto;
-  border: none;
-  background: none;
-  font: inherit;
-  color: var(--color-accent);
-  cursor: pointer;
-}
-.queue__retry[aria-disabled='true'] { color: var(--color-text-muted); cursor: default; }
+.queue__retry { margin-left: auto; }
 </style>

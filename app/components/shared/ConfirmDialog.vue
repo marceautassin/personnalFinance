@@ -55,14 +55,14 @@ function onConfirm() {
     <div class="confirm__actions">
       <button
         type="button"
-        class="confirm__btn"
+        class="btn"
         @click="onCancel"
       >
         {{ cancelLabel ?? 'Annuler' }}
       </button>
       <button
         type="button"
-        class="confirm__btn confirm__btn--primary"
+        class="btn btn--destructive"
         @click="onConfirm"
       >
         {{ confirmLabel ?? 'Confirmer' }}
@@ -79,14 +79,15 @@ function onConfirm() {
   background: var(--color-bg-elevated);
   color: var(--color-text);
   max-width: 32rem;
-  box-shadow: var(--shadow-md);
+  /* Un dialogue RECOUVRE le contenu : c'est le cas où l'ombre dit la vérité. */
+  box-shadow: var(--shadow-overlay);
 }
 .confirm::backdrop {
   background: rgba(0, 0, 0, 0.4);
 }
 .confirm__title {
   margin: 0 0 var(--space-2);
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-md);
 }
 .confirm__message {
   margin: 0 0 var(--space-4);
@@ -97,23 +98,5 @@ function onConfirm() {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-}
-.confirm__btn {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  font: inherit;
-  cursor: pointer;
-}
-.confirm__btn:hover { border-color: var(--color-accent); }
-.confirm__btn--primary {
-  background: var(--color-danger);
-  color: white;
-  border-color: var(--color-danger);
-}
-.confirm__btn--primary:hover {
-  background: var(--color-danger);
-  filter: brightness(1.05);
 }
 </style>

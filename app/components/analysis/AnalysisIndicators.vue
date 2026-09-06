@@ -45,41 +45,51 @@ const balanceIsOffset = computed(() =>
 </script>
 
 <template>
-  <div class="indic">
+  <!--
+    Un BANDEAU et non quatre cartes (epic 16). Quatre surfaces ombrées et espacées coûtaient
+    110 px de hauteur pour quatre nombres, et les isolaient les unes des autres là où on veut
+    justement les comparer d'un coup d'œil.
+  -->
+  <div class="kpis">
     <div
-      class="indic__card indic__card--result"
-      :class="{ 'indic__card--deficit': isDeficit }"
+      class="kpi"
       data-testid="indicator-result"
     >
-      <span class="indic__label">Trésorerie de la période</span>
-      <strong class="indic__value">{{ formatEuros(indicators.resultCents as Cents) }}</strong>
-      <span
-        v-if="isDeficit"
-        class="indic__flag"
-        role="status"
-      >Période déficitaire</span>
-      <span
-        v-else
-        class="indic__hint"
-      >Recettes {{ formatEuros(indicators.incomeCents as Cents) }} · dépenses {{ formatEuros(indicators.expenseCents as Cents) }}</span>
+      <span class="kpi__label">Trésorerie de la période</span>
+      <strong
+        class="kpi__value"
+        :class="{ 'amount--bad': isDeficit }"
+      >{{ formatEuros(indicators.resultCents as Cents) }}</strong>
+      <span class="kpi__hint">
+        <template v-if="isDeficit">
+          <span
+            class="indic__flag"
+            role="status"
+          >Période déficitaire</span>
+          · hors mouvements internes
+        </template>
+        <template v-else>
+          Recettes {{ formatEuros(indicators.incomeCents as Cents) }} · dépenses {{ formatEuros(indicators.expenseCents as Cents) }}
+        </template>
+      </span>
     </div>
 
-    <div class="indic__card">
-      <span class="indic__label">Taux de dépense</span>
-      <strong class="indic__value">{{ formatRatio(indicators.spendRate) }}</strong>
-      <span class="indic__hint">des recettes consommées</span>
+    <div class="kpi">
+      <span class="kpi__label">Taux de dépense</span>
+      <strong class="kpi__value">{{ formatRatio(indicators.spendRate) }}</strong>
+      <span class="kpi__hint">des recettes consommées</span>
     </div>
 
-    <div class="indic__card">
-      <span class="indic__label">Taux d'épargne</span>
-      <strong class="indic__value">{{ formatRatio(indicators.savingsRate) }}</strong>
-      <span class="indic__hint">des recettes conservées</span>
+    <div class="kpi">
+      <span class="kpi__label">Taux d'épargne</span>
+      <strong class="kpi__value">{{ formatRatio(indicators.savingsRate) }}</strong>
+      <span class="kpi__hint">des recettes conservées</span>
     </div>
 
-    <div class="indic__card indic__card--aside">
-      <span class="indic__label">Solde bancaire</span>
-      <strong class="indic__value">{{ bankDelta === null ? '—' : formatEuros(bankDelta) }}</strong>
-      <span class="indic__hint">
+    <div class="kpi">
+      <span class="kpi__label">Solde bancaire</span>
+      <strong class="kpi__value">{{ bankDelta === null ? '—' : formatEuros(bankDelta) }}</strong>
+      <span class="kpi__hint">
         <template v-if="bankDelta === null">Historique incomplet sur la période</template>
         <template v-else-if="balanceIsOffset">
           Du {{ formatDate(bankBalance!.from) }} au {{ formatDate(bankBalance!.to) }}, mouvements internes compris
@@ -91,33 +101,14 @@ const balanceIsOffset = computed(() =>
 </template>
 
 <style scoped>
-.indic {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: var(--space-3);
-}
-.indic__card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-}
-.indic__card--result { border-left: 3px solid var(--color-success); }
-.indic__card--deficit { border-left-color: var(--color-danger); }
-.indic__card--aside { background: transparent; }
-.indic__label { color: var(--color-text-muted); font-size: var(--font-size-sm); }
-.indic__value { font-size: var(--font-size-xl, 1.5rem); font-variant-numeric: tabular-nums; }
-.indic__card--deficit .indic__value { color: var(--color-danger); }
-.indic__hint { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+/* Le bandeau vient de `components.css` ; ne reste ici que le drapeau du déficit, qui n'existe
+   nulle part ailleurs. */
 .indic__flag {
-  align-self: flex-start;
+  display: inline-block;
   padding: 0 var(--space-2);
   border-radius: var(--radius-full);
   background: var(--color-danger);
-  color: white;
+  color: #fff;
   font-size: var(--font-size-xs);
   font-weight: 600;
 }

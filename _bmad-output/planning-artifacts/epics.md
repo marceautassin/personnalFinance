@@ -848,3 +848,160 @@ afin de comprendre pourquoi je suis dans le rouge plutôt que de le constater.
 **Given** une correction de catégorie effectuée depuis la vue des transactions
 **When** l'utilisateur revient à l'analyse
 **Then** les agrégats et indicateurs reflètent la correction (FR23, AR20)
+
+---
+
+## Epic 16 — Système de design et refonte du front
+
+**Origine :** revue du front du 2026-09-05, canevas de conception validé par l'utilisateur.
+Aucune fonctionnalité nouvelle — l'epic ne touche ni le moteur, ni les endpoints, ni le schéma.
+Il rend cohérent et dense ce qui existe, et supprime la duplication CSS accumulée story après story.
+
+**Constat chiffré à l'ouverture :** 277 règles CSS pour ~15 motifs réels ; le même bouton
+redéfini 6 fois sous 5 noms de classe (`.btn`, `.confirm__btn`, `.rec-gap__btn`, `.add-tx__btn`,
+`.cat-editor__trigger`) ; 4 définitions locales de tableau ; les trois couleurs sémantiques
+(`#10b981`, `#ef4444`, `#f59e0b`) échouent au contraste AA sur blanc alors qu'elles sont
+utilisées **en texte**.
+
+**Décisions de conception retenues (canevas validé) :**
+- Densité **outil de travail** : ligne de tableau 32 px, contrôle 28/32 px, base 13 px.
+- Barre unique en haut : en-tête et navigation fusionnés, état actif, compteurs de santé de la
+  base à droite. Le rail latéral a été dessiné et **écarté** : 208 px de largeur perdus sur des
+  écrans dont la ressource rare est la largeur, pas la hauteur.
+- **La couleur signale, elle ne décore pas** : montants neutres, couleur réservée aux totaux,
+  aux écarts et aux alertes. L'écart tient compte de la nature du poste.
+- Ombre réservée à ce qui recouvre le contenu (menu, dialogue, infobulle) ; une surface posée
+  dans le flux se sépare par un filet de 1 px.
+- Chiffres en fonte à chasse fixe, tabulaires, alignés à droite.
+
+### Story 16.1: Fondations — tokens, fontes et reset
+
+En tant que développeur,
+je veux une seule source de vérité pour les couleurs, la typographie et les espacements,
+afin que deux écrans écrits à six mois d'intervalle se ressemblent sans effort.
+
+**Acceptance Criteria:**
+
+**Given** la rampe neutre
+**When** un gris intermédiaire est nécessaire
+**Then** il existe comme token (11 marches de 0 à 900) et aucun `color-mix()` ne le fabrique
+
+**Given** les couleurs sémantiques positif / négatif / avertissement
+**When** elles sont utilisées en texte sur le fond de l'application
+**Then** leur contraste atteint au moins 4,5:1 (WCAG AA)
+**And** une variante vive distincte existe pour les aplats et les tracés de courbe
+
+**Given** l'application, qui est locale et fonctionne sans réseau
+**When** une fonte de marque est utilisée
+**Then** ses fichiers sont servis depuis le dépôt, jamais depuis un CDN tiers
+
+**Given** un montant affiché n'importe où dans l'application
+**When** il est rendu
+**Then** il utilise des chiffres tabulaires et un alignement à droite
+
+### Story 16.2: Primitives partagées — bouton, champ, tableau, badge, surface
+
+En tant que développeur,
+je veux que chaque motif d'interface existe une fois,
+afin qu'une correction de survol ou de focus s'applique partout d'un coup.
+
+**Acceptance Criteria:**
+
+**Given** un bouton dans n'importe quel écran ou dialogue
+**When** on cherche sa définition
+**Then** elle est unique, et les variantes (principale, neutre, discrète, danger) en dérivent
+
+**Given** un contrôle qui porte une information et n'est pas disponible
+**When** il est rendu
+**Then** il reste focusable, porte `aria-disabled` et dit la raison dans son nom accessible (NFR18-20)
+
+**Given** un tableau de données
+**When** on le fait défiler
+**Then** son en-tête reste visible
+**And** la hauteur de ligne, les filets et le survol sont identiques à ceux de tous les autres tableaux
+
+**Given** les règles CSS écrites en `<style scoped>` dans `app/`
+**When** elles sont comptées par
+`grep -rhoE "^\.[a-z0-9_-]+(__[a-z0-9-]+)?(--[a-z0-9-]+)? \{" --include='*.vue' app/ | wc -l`
+**Then** leur nombre a diminué par rapport aux 277 de l'ouverture de l'epic
+
+**Given** les motifs partagés — bouton, champ, tableau, panneau, badge
+**When** on les cherche ailleurs que dans `components.css`
+**Then** aucun n'y est redéfini localement, ce que vérifient
+`grep -rnE "^\s*\.[a-z0-9_-]*(btn|button)[a-z0-9_-]* \{" --include='*.vue' app/` et
+`grep -rn "border-collapse" --include='*.vue' app/`
+
+> La feuille partagée ajoute ses propres règles : le total pour `app/` n'est donc pas
+> attendu en baisse, et ce n'est pas ce que mesure ce critère. Ce qui disparaît, c'est la
+> DUPLICATION — six définitions de bouton, quatre de tableau — et l'énoncé le dit désormais
+> plutôt que de laisser croire à une baisse globale (revue du 2026-09-05).
+
+### Story 16.3: Barre d'application et compteurs de santé
+
+En tant qu'utilisateur,
+je veux savoir en permanence où je suis et dans quel état est ma base,
+afin de ne pas avoir à ouvrir l'import pour vérifier qu'aucun relevé ne diverge.
+
+**Acceptance Criteria:**
+
+**Given** n'importe quelle page
+**When** elle est affichée
+**Then** l'entrée de navigation correspondante est visuellement active et l'indique aux technologies d'assistance
+
+**Given** la barre d'application
+**When** elle est affichée
+**Then** elle porte le nombre de lignes et de relevés, l'écart de réconciliation cumulé et le taux de correction manuelle, sur l'ensemble de la base
+
+**Given** un compteur global et un compteur d'en-tête de page
+**When** ils portent la même grandeur sur des portées différentes
+**Then** leur portée est explicite dans le libellé, et aucun des deux ne répète l'autre
+
+### Story 16.4: Refonte des six écrans
+
+En tant qu'utilisateur,
+je veux voir plus de lignes sans défiler et repérer d'un coup d'œil ce qui a bougé,
+afin de corriger et de comprendre plus vite.
+
+**Acceptance Criteria:**
+
+**Given** la liste des transactions d'un mois
+**When** elle est affichée sur un écran de bureau
+**Then** au moins 20 lignes sont visibles sans défilement
+**And** un filtre par libellé permet d'en atteindre une sans dérouler la liste entière
+
+**Given** un montant de transaction dans une liste
+**When** il est affiché
+**Then** il est neutre ; seuls les totaux, les écarts et les alertes portent une couleur
+
+**Given** les quatre indicateurs d'une période
+**When** ils sont affichés
+**Then** ils forment un bandeau unique séparé par des filets, sans ombre
+
+**Given** les tests existants — unitaires et de bout en bout
+**When** ils sont exécutés après la refonte
+**Then** ils passent, les seules modifications admises portant sur des libellés délibérément changés
+
+### Story 16.5: Descente vers les transactions depuis la trajectoire d'une rubrique
+
+> **Statut : conçue, NON implémentée.** Dessinée sur le canevas du 2026-09-05 et validée, mais
+> laissée hors de la refonte : contrairement au reste de l'epic 16, elle demande une capacité
+> d'API nouvelle (`GET /api/transactions` ne sait filtrer que par POSTE, pas par RUBRIQUE).
+> Le périmètre étant verrouillé, l'ajout est signalé plutôt que fait en passant.
+
+En tant qu'utilisateur,
+je veux ouvrir une tranche de la courbe d'une rubrique pour en voir les lignes,
+afin de corriger une catégorie à l'endroit où je la vois déraper, sans changer de page.
+
+**Acceptance Criteria:**
+
+**Given** une rubrique suivie sur douze tranches
+**When** l'utilisateur active un point de la courbe ou la ligne de la tranche correspondante
+**Then** les transactions de cette tranche pour cette cible s'affichent sous le graphique
+
+**Given** une cible qui est une RUBRIQUE et non un poste
+**When** ses lignes sont demandées
+**Then** l'endpoint sait les filtrer par rubrique, sans que le client agrège lui-même
+
+**Given** une ligne affichée dans cette descente
+**When** l'utilisateur la reclasse
+**Then** le geste est le même que sur `/analyse`, et la courbe reflète la correction
