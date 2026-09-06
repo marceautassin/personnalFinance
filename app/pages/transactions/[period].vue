@@ -3,6 +3,9 @@ import { useTransactions } from '~/composables/useTransactions'
 import { useApiError } from '~/composables/useApiError'
 import { isDegraded } from '~~/shared/types/statement-reliability'
 import { ratio, formatRatio } from '~~/shared/types/ratio'
+import { cents, formatEuros } from '~~/shared/types/money'
+import { type MovementNature, NATURE_OPTIONS } from '~~/shared/types/movement-nature'
+import { flattenReferential } from '~/composables/useCategories'
 
 // Validation du paramètre dynamique : Nuxt rejoue la guard à chaque navigation
 // (re-mount ou réutilisation du composant), évitant le bypass d'un throw top-level setup.
@@ -18,12 +21,15 @@ const period = computed(() => route.params.period as string)
 const mutationError = ref<string | null>(null)
 
 const { data, pending, error, mutateCategory, ruleSuggestion, dismissSuggestion } = useTransactions(period)
-const { addRule, previewRule } = useRules()
+const { addRule, previewRule, applyRuleToHistory } = useRules()
 const { data: groups } = useCategories()
+const groupsWithItems = computed(() => groups.value.filter(g => g.items.length > 0))
 
 const { mapError } = useApiError()
 
 const savingRule = ref(false)
+/** Compte rendu de la dernière application d'une règle à l'historique (story 18.2). */
+const applyReport = ref<string | null>(null)
 
 /** Au-delà, une règle mérite d'être relue avant d'être créée. Seuil d'attention, pas de blocage. */
 const WIDE_RULE_THRESHOLD = 25
@@ -73,7 +79,14 @@ const suggestionTarget = computed(() => {
  * du coin — et une règle posée sans le dire se découvrirait des mois plus tard, en cherchant
  * pourquoi les chiffres ont bougé.
  */
-async function onAcceptSuggestion() {
+/**
+ * Crée la règle proposée, et l'applique à l'historique si on le lui demande (story 18.2).
+ *
+ * Le moment est le bon : l'utilisateur vient de constater que le modèle s'est trompé sur un
+ * libellé récurrent. Lui faire rouvrir `/regles` pour appliquer ce qu'il vient d'écrire, c'est
+ * lui faire porter la corvée que la règle supprime.
+ */
+async function onAcceptSuggestion(applyToHistory = false) {
   const suggestion = ruleSuggestion.value
   if (!suggestion || savingRule.value) return
   const pattern = editablePattern.value.trim()
@@ -82,14 +95,38 @@ async function onAcceptSuggestion() {
     return
   }
   mutationError.value = null
+  applyReport.value = null
   savingRule.value = true
+
   const outcome = await addRule({ pattern, categoryItemCode: suggestion.categoryItemCode })
-  savingRule.value = false
-  if (outcome.error) mutationError.value = outcome.error
-  else {
-    dismissSuggestion()
-    suggestionReach.value = null
+  if (outcome.error || !outcome.rule) {
+    savingRule.value = false
+    mutationError.value = outcome.error ?? 'La règle n\'a pas pu être créée.'
+    return
   }
+
+  if (applyToHistory) {
+    const applied = await applyRuleToHistory(outcome.rule.id)
+    if ('result' in applied) {
+      const { updatedCount, skippedManualCount } = applied.result
+      applyReport.value = updatedCount === 0
+        ? 'Règle créée. Aucune ligne de l\'historique n\'a changé de poste.'
+        : `Règle créée et appliquée : ${updatedCount} ligne(s) reclassée(s)`
+          + (skippedManualCount > 0 ? `, ${skippedManualCount} laissée(s) de côté car corrigée(s) à la main.` : '.')
+    }
+    else {
+      // La règle EXISTE : l'échec ne porte que sur son application. Le dire, sinon
+      // l'utilisateur croit avoir tout perdu et la recrée. L'encart reste ouvert pour qu'un
+      // second essai soit possible sans quitter l'écran.
+      mutationError.value = `Règle créée, mais son application a échoué : ${applied.error ?? 'raison inconnue'}`
+      savingRule.value = false
+      return
+    }
+  }
+
+  savingRule.value = false
+  dismissSuggestion()
+  suggestionReach.value = null
 }
 
 const monthFormatter = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
@@ -125,11 +162,44 @@ const filter = ref('')
 const normalize = (value: string) =>
   value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
+/**
+ * Filtres de requalification (story 18.1).
+ *
+ * Le poste et la nature s'ajoutent à la recherche de libellé, et les trois se CUMULENT. C'est
+ * ce qui permet d'isoler les lignes tombées au repli et de les ranger sans les chercher à
+ * l'œil — le poste `divers-non-categorise` porte à lui seul 311 des 1 855 lignes de la base.
+ */
+const itemFilter = ref('')
+const natureFilter = ref<'' | MovementNature>('')
+
+const natureByItem = computed(() =>
+  new Map(flattenReferential(groups.value).map(i => [i.code, i.nature])),
+)
+
 const visibleTransactions = computed(() => {
   const needle = normalize(filter.value.trim())
-  if (needle === '') return data.value.transactions
-  return data.value.transactions.filter(t => normalize(t.label).includes(needle))
+  return data.value.transactions.filter((t) => {
+    if (needle !== '' && !normalize(t.label).includes(needle)) return false
+    if (itemFilter.value !== '' && t.categoryItemCode !== itemFilter.value) return false
+    if (natureFilter.value !== '' && natureByItem.value.get(t.categoryItemCode) !== natureFilter.value) return false
+    return true
+  })
 })
+
+/** Un filtre sans sous-total oblige à additionner de tête ce qu'on vient d'isoler. */
+const visibleTotalCents = computed(() =>
+  cents(visibleTransactions.value.reduce((sum, t) => sum + t.amountCents, 0)),
+)
+
+const hasFilter = computed(() =>
+  filter.value.trim() !== '' || itemFilter.value !== '' || natureFilter.value !== '',
+)
+
+function clearFilters() {
+  filter.value = ''
+  itemFilter.value = ''
+  natureFilter.value = ''
+}
 
 /**
  * Compteurs BORNÉS AU MOIS affiché — la barre d'application porte, elle, les mêmes grandeurs
@@ -254,7 +324,7 @@ const periodCorrectionRate = computed(() =>
           class="input input--sm tx-page__suggestion-input"
           maxlength="120"
           aria-label="Motif de la règle"
-          @keyup.enter="onAcceptSuggestion"
+          @keyup.enter="onAcceptSuggestion(false)"
         >
       </label>
       <span>
@@ -276,9 +346,21 @@ const periodCorrectionRate = computed(() =>
         type="button"
         class="btn btn--primary btn--sm tx-page__suggestion-accept"
         :aria-disabled="savingRule"
-        @click="onAcceptSuggestion"
+        @click="onAcceptSuggestion(false)"
       >
         {{ savingRule ? 'Création…' : 'Créer la règle' }}
+      </button>
+      <!-- Une règle écrite après coup ne sert qu'aux relevés futurs si rien ne la rejoue sur
+           l'historique : c'est là que le geste a le plus de valeur (story 18.2). -->
+      <button
+        v-if="(suggestionReach ?? 0) > 0"
+        type="button"
+        class="btn btn--sm"
+        :aria-disabled="savingRule"
+        :aria-label="`Créer la règle et la ranger sur les ${suggestionReach} ligne(s) déjà en base`"
+        @click="onAcceptSuggestion(true)"
+      >
+        Créer et appliquer à l'historique
       </button>
       <button
         type="button"
@@ -288,6 +370,14 @@ const periodCorrectionRate = computed(() =>
         Non merci
       </button>
     </div>
+
+    <p
+      v-if="applyReport"
+      class="tx-page__apply-report"
+      role="status"
+    >
+      {{ applyReport }}
+    </p>
 
     <template v-if="data.transactions.length > 0">
       <div class="tx-page__tools">
@@ -300,20 +390,79 @@ const periodCorrectionRate = computed(() =>
             placeholder="Ex : croix rouge"
           >
         </label>
+
+        <label class="tx-page__filter">
+          <span class="tx-page__filter-label">Poste</span>
+          <select
+            v-model="itemFilter"
+            class="input input--sm"
+          >
+            <option value="">
+              Tous
+            </option>
+            <optgroup
+              v-for="group in groupsWithItems"
+              :key="group.code"
+              :label="group.label"
+            >
+              <option
+                v-for="item in group.items"
+                :key="item.code"
+                :value="item.code"
+              >
+                {{ item.label }}
+              </option>
+            </optgroup>
+          </select>
+        </label>
+
+        <label class="tx-page__filter">
+          <span class="tx-page__filter-label">Nature</span>
+          <select
+            v-model="natureFilter"
+            class="input input--sm"
+          >
+            <option value="">
+              Toutes
+            </option>
+            <option
+              v-for="[value, label] in NATURE_OPTIONS"
+              :key="value"
+              :value="value"
+            >
+              {{ label }}
+            </option>
+          </select>
+        </label>
+
+        <button
+          v-if="hasFilter"
+          type="button"
+          class="btn btn--quiet btn--sm"
+          @click="clearFilters"
+        >
+          Tout afficher
+        </button>
+
+        <!-- Le sous-total accompagne le compte : isoler des lignes sans savoir ce qu'elles
+             pèsent oblige à les additionner de tête (story 18.1). -->
         <span
-          v-if="filter.trim() !== ''"
+          v-if="hasFilter"
           class="tx-page__filter-count"
           role="status"
         >
-          {{ visibleTransactions.length }} sur {{ data.transactions.length }}
+          {{ visibleTransactions.length }} sur {{ data.transactions.length }} ·
+          <strong>{{ formatEuros(visibleTotalCents) }}</strong>
         </span>
       </div>
 
+      <!-- L'état vide doit dire que le FILTRE est en cause : « aucune transaction » laisserait
+           croire que le mois est vide (story 18.1). -->
       <p
         v-if="visibleTransactions.length === 0"
         class="tx-page__pending"
       >
-        Aucun libellé ne contient « {{ filter.trim() }} ».
+        Aucune ligne de ce mois ne passe les filtres actifs.
       </p>
       <TransactionList
         v-else
@@ -329,10 +478,10 @@ const periodCorrectionRate = computed(() =>
 .tx-page__title { min-width: 10rem; }
 .tx-page__pending { color: var(--color-text-muted); }
 
-.tx-page__tools { display: flex; align-items: center; gap: var(--space-3); }
+.tx-page__tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .tx-page__filter { display: flex; align-items: center; gap: var(--space-2); }
 .tx-page__filter-label { font-size: var(--font-size-sm); color: var(--color-text-muted); }
-.tx-page__filter-input { width: 20rem; }
+.tx-page__filter-input { width: 100%; max-width: 20rem; }
 .tx-page__filter-count { font-size: var(--font-size-sm); color: var(--color-text-muted); }
 
 /* La proposition de règle est le seul encart bordé d'accent : c'est une question posée à
