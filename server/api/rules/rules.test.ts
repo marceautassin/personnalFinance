@@ -67,6 +67,7 @@ interface Rule {
   itemLabel: string
   groupLabel: string
   matchCount: number
+  pendingCount?: number
 }
 
 const create = (pattern: string, code = 'alimentation-courses') =>
@@ -194,6 +195,63 @@ describe('GET /api/rules', () => {
     await create('carrefour')
     const rules = (await getHandler(makeEvent({ method: 'GET' }))) as Rule[]
     expect(rules[0]!.matchCount).toBe(0)
+  })
+
+  /**
+   * Story 18.9 — l'état est CALCULÉ à chaque lecture. Un drapeau stocké divergerait de la
+   * réalité dès l'ingestion suivante.
+   */
+  describe('état d\'application (story 18.9)', () => {
+    const firstRule = async () => ((await getHandler(makeEvent({ method: 'GET' }))) as Rule[])[0]!
+
+    it('annonce les lignes en retard quand l\'historique n\'est pas rangé', async () => {
+      seedTransaction('CARTE 01/03 CARREFOUR MARKET')
+      seedTransaction('CARTE 04/03 carrefour city')
+      await create('carrefour', 'alimentation-courses')
+
+      const rule = await firstRule()
+      expect(rule.matchCount).toBe(2)
+      expect(rule.pendingCount).toBe(2)
+    })
+
+    it('tombe à zéro en retard une fois la règle appliquée', async () => {
+      seedTransaction('CARTE 01/03 CARREFOUR MARKET')
+      const created = await create('carrefour', 'alimentation-courses')
+      await applyHandler(makeEvent({ method: 'POST', id: String(created.id) }))
+
+      const rule = await firstRule()
+      expect(rule.matchCount).toBe(1)
+      expect(rule.pendingCount).toBe(0)
+    })
+
+    it('distingue « aucune ligne couverte » de « à jour »', async () => {
+      seedTransaction('VIR SALAIRE ACME')
+      await create('carrefour', 'alimentation-courses')
+
+      const rule = await firstRule()
+      expect(rule.matchCount).toBe(0)
+      expect(rule.pendingCount).toBe(0)
+    })
+
+    /** Une ligne manuelle ne sera pas déplacée : l'annoncer « à ranger » promettrait du vent. */
+    it('ne compte pas une ligne corrigée à la main comme en retard', async () => {
+      seedTransaction('CARTE 01/03 CARREFOUR MARKET', { code: 'loisirs-sport', isManual: true })
+      await create('carrefour', 'alimentation-courses')
+
+      const rule = await firstRule()
+      expect(rule.matchCount).toBe(1)
+      expect(rule.pendingCount).toBe(0)
+    })
+
+    /** Le départage vaut aussi pour l'état : une règle plus longue décide du poste d'arrivée. */
+    it('ne compte pas en retard une ligne qu\'une règle plus longue range déjà bien', async () => {
+      seedTransaction('CARTE 01/03 CARREFOUR MARKET', { code: 'style-habillement' })
+      await create('carrefour', 'alimentation-courses')
+      await create('carrefour market', 'style-habillement')
+
+      const rules = (await getHandler(makeEvent({ method: 'GET' }))) as Rule[]
+      expect(rules.find(r => r.pattern === 'carrefour')!.pendingCount).toBe(0)
+    })
   })
 
   it('ordonne par ancienneté, ce qui fixe le départage à motifs de longueur égale', async () => {

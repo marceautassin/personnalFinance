@@ -25,6 +25,15 @@ export const ClassificationRuleWithLabelsSchema = ClassificationRuleSchema.exten
   groupLabel: z.string(),
   /** Transactions déjà en base que cette règle couvre — pour juger de sa portée. */
   matchCount: z.number().int().min(0),
+  /**
+   * Parmi les lignes couvertes, celles qu'une application déplacerait encore (story 18.9).
+   *
+   * `0` avec `matchCount > 0` signifie « historique à jour ». Calculé à chaque lecture : un
+   * drapeau stocké divergerait de la réalité dès l'ingestion suivante. Optionnel dans le
+   * schéma parce que la réponse de création (`POST`) ne le porte pas — une règle qui vient de
+   * naître n'a par définition rien appliqué.
+   */
+  pendingCount: z.number().int().min(0).optional(),
 })
 
 export const NewClassificationRuleInputSchema = z

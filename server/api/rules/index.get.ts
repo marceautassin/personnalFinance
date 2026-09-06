@@ -1,8 +1,9 @@
 import { defineEventHandler } from 'h3'
 import { asc, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { classificationRules, categoryItems, categoryGroups, transactions } from '~~/server/db/schema'
+import { classificationRules, categoryItems, categoryGroups } from '~~/server/db/schema'
 import { normalizeForMatch } from '~~/server/services/rule-matcher'
+import { coverageByRule } from '~~/server/utils/rule-coverage'
 import type { ClassificationRuleWithLabels } from '~~/shared/schemas/classification-rule.schema'
 
 /**
@@ -11,10 +12,11 @@ import type { ClassificationRuleWithLabels } from '~~/shared/schemas/classificat
  * `matchCount` compte les transactions DÉJÀ en base que la règle couvre. C'est ce qui rend une
  * règle jugeable avant de l'écrire : un motif trop large se voit à son compteur.
  *
- * Le comptage se fait en SQL sur le libellé brut, insensible à la casse. Il reste une
- * APPROXIMATION du moteur, qui lui compare des formes normalisées sans accents ; un motif
- * accentué peut donc afficher un compte plus bas que la réalité. L'écart est assumé : ce
- * chiffre sert à évaluer une portée, pas à décider d'un classement.
+ * Le comptage utilise EXACTEMENT la comparaison du moteur (`normalizeForMatch`) : ce n'est
+ * plus une approximation depuis le 2026-09-06, où un `LIKE` SQL manquait les libellés
+ * accentués et annonçait zéro ligne couverte sur des règles qui en couvraient.
+ *
+ * `pendingCount` dit, parmi ces lignes, combien une application déplacerait encore (story 18.9).
  */
 export default defineEventHandler(async (): Promise<ClassificationRuleWithLabels[]> => {
   const rows = await db
@@ -31,18 +33,14 @@ export default defineEventHandler(async (): Promise<ClassificationRuleWithLabels
     .innerJoin(categoryGroups, eq(categoryGroups.code, categoryItems.groupCode))
     .orderBy(asc(classificationRules.id))
 
-  // Le comptage se fait EN MÉMOIRE, avec la comparaison du moteur : un `LIKE` SQL manquait
-  // les libellés accentués, le motif étant stocké sans accents (revue du 2026-09-06). Les
-  // libellés ne sont normalisés qu'une fois, puis confrontés à chaque motif.
-  const haystacks = db.select({ label: transactions.label }).from(transactions).all()
-    .map(t => normalizeForMatch(t.label))
+  // Couverture et retard sont CALCULÉS, jamais stockés (story 18.9) : un drapeau en base
+  // divergerait de la réalité dès l'ingestion suivante.
+  const coverage = coverageByRule(rows)
 
-  return rows.map(r => ({
+  return rows.map((r, i) => ({
     ...r,
-    matchCount: haystacks.reduce(
-      (n, h) => n + (h.includes(normalizeForMatch(r.pattern)) ? 1 : 0),
-      0,
-    ),
+    matchCount: coverage[i]!.coveredCount,
+    pendingCount: coverage[i]!.pendingCount,
   }))
 })
 

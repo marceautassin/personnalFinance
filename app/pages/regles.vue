@@ -50,6 +50,34 @@ async function onSubmit() {
   }
 }
 
+/**
+ * Où en est une règle vis-à-vis de l'historique (story 18.9).
+ *
+ * Trois états, et non deux : « aucune ligne couverte » n'est pas « à jour ». Les confondre
+ * ferait passer une règle qui n'attrape rien — un motif mal écrit, typiquement — pour une
+ * règle en ordre.
+ */
+function stateOf(rule: ClassificationRuleWithLabels) {
+  const pending = rule.pendingCount ?? 0
+  // `pendingCount` absent avec des lignes couvertes : la réponse ne porte pas l'état. Le
+  // replier sur « à jour » afficherait une règle en ordre sans l'avoir vérifié.
+  if (rule.pendingCount === undefined && rule.matchCount > 0) {
+    return { kind: 'unknown' as const, icon: '?', label: 'état inconnu', pending: 0 }
+  }
+  if (rule.matchCount === 0) {
+    return { kind: 'empty' as const, icon: '—', label: 'aucune ligne couverte', pending }
+  }
+  if (pending === 0) {
+    return { kind: 'clean' as const, icon: '✓', label: `à jour · ${rule.matchCount} ligne(s)`, pending }
+  }
+  return {
+    kind: 'pending' as const,
+    icon: '⚠',
+    label: `${pending} à ranger sur ${rule.matchCount}`,
+    pending,
+  }
+}
+
 async function onConfirmApply() {
   const rule = pendingApply.value
   pendingApply.value = null
@@ -101,6 +129,10 @@ async function onConfirmDelete() {
         l'ingestion, <strong>par-dessus la catégorisation automatique</strong>. « Appliquer »
         la rejoue sur les relevés déjà importés ; les lignes corrigées à la main n'y sont
         jamais touchées.
+      </p>
+      <p class="rules__lead">
+        Une règle naît le plus souvent d'une ligne mal rangée :
+        <NuxtLink to="/a-ranger">voir les lignes non catégorisées</NuxtLink>.
       </p>
     </header>
 
@@ -207,8 +239,14 @@ async function onConfirmDelete() {
             {{ rule.pattern }}
           </td>
           <td>{{ rule.groupLabel }} · {{ rule.itemLabel }}</td>
-          <td class="rules__num">
-            {{ rule.matchCount }}
+          <td>
+            <span
+              class="rules__state"
+              :class="`rules__state--${stateOf(rule).kind}`"
+            >
+              <span aria-hidden="true">{{ stateOf(rule).icon }}</span>
+              {{ stateOf(rule).label }}
+            </span>
           </td>
           <td class="rules__actions">
             <!-- `aria-disabled` et non `disabled` : le bouton reste focalisable et dit
@@ -216,11 +254,11 @@ async function onConfirmDelete() {
             <button
               type="button"
               class="btn btn--sm"
-              :aria-disabled="applyingId !== null || rule.matchCount === 0"
-              :aria-label="rule.matchCount === 0
-                ? `Appliquer la règle ${rule.pattern} à l'historique — indisponible, aucune ligne couverte`
-                : `Appliquer la règle ${rule.pattern} aux ${rule.matchCount} ligne(s) de l'historique`"
-              @click="rule.matchCount > 0 && applyingId === null ? pendingApply = rule : null"
+              :aria-disabled="applyingId !== null || stateOf(rule).kind !== 'pending'"
+              :aria-label="stateOf(rule).kind === 'pending'
+                ? `Appliquer la règle ${rule.pattern} aux ${stateOf(rule).pending} ligne(s) en retard`
+                : `Appliquer la règle ${rule.pattern} à l'historique — indisponible, ${stateOf(rule).label}`"
+              @click="stateOf(rule).kind === 'pending' && applyingId === null ? pendingApply = rule : null"
             >
               {{ applyingId === rule.id ? 'Application…' : 'Appliquer' }}
             </button>
@@ -248,7 +286,7 @@ async function onConfirmDelete() {
     <ConfirmDialog
       :open="pendingApply !== null"
       title="Appliquer la règle à l'historique"
-      :message="`Rejouer les règles sur les ${pendingApply?.matchCount} ligne(s) que « ${pendingApply?.pattern} » couvre ? Elles iront dans ${pendingApply?.groupLabel} · ${pendingApply?.itemLabel}, sauf celles qu'une règle plus précise réclame. Les lignes corrigées à la main ne sont pas touchées.`"
+      :message="`Rejouer les règles sur les ${pendingApply ? stateOf(pendingApply).pending : 0} ligne(s) en retard que « ${pendingApply?.pattern} » couvre ? Elles iront dans ${pendingApply?.groupLabel} · ${pendingApply?.itemLabel}, sauf celles qu'une règle plus précise réclame. Les lignes corrigées à la main ne sont pas touchées.`"
       confirm-label="Appliquer"
       @confirm="onConfirmApply"
       @cancel="pendingApply = null"
@@ -266,6 +304,12 @@ async function onConfirmDelete() {
 </template>
 
 <style scoped>
+.rules__state { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-sm); }
+.rules__state--clean { color: var(--color-success); }
+.rules__state--pending { color: var(--color-danger); }
+.rules__state--empty { color: var(--color-text-muted); }
+.rules__state--unknown { color: var(--color-text-muted); }
+
 .rules__report {
   margin-top: var(--space-2);
   font-size: var(--font-size-sm);

@@ -10,9 +10,8 @@ import { countCoveredTransactions } from '~~/server/utils/rule-coverage'
  * `/regles`, donc après coup : une règle « DUPONT Jean » aurait sorti 7 604 € de
  * remboursement d'emprunt des dépenses avant que quiconque ne le voie (revue du 2026-09-05).
  *
- * Le comptage porte sur le libellé brut, insensible à la casse — une APPROXIMATION du moteur,
- * qui compare des formes sans accents. Il sert à jauger une portée, pas à décider d'un
- * classement.
+ * Le comptage utilise la comparaison du moteur, accents compris : le chiffre sur lequel
+ * l'utilisateur décide de créer une règle doit dire la même chose que ce que la règle fera.
  */
 export default defineEventHandler((event): { pattern: string, matchCount: number } => {
   const raw = getQuery(event).pattern

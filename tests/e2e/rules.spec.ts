@@ -26,8 +26,9 @@ test.describe('Règles de classement', () => {
     await expect(row).toContainText('motif e2e')
     await expect(row).toContainText('Alimentation · Courses')
 
-    // Aucune transaction en base ne contient ce motif : la portée annoncée est nulle.
-    await expect(row).toContainText('0')
+    // Aucune transaction en base ne contient ce motif. La colonne « Historique » distingue ce
+    // cas de « à jour » : une règle qui n'attrape rien n'est pas une règle en ordre (18.9).
+    await expect(row).toContainText('aucune ligne couverte')
 
     await page.reload()
     await expect(page.getByRole('row', { name: /motif e2e/i })).toBeVisible()
