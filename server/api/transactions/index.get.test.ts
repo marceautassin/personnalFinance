@@ -210,4 +210,50 @@ describe('GET /api/transactions — descente par bornes et par poste', () => {
     await expect(handler(eventWithQuery('from=2026-04-30&to=2026-04-01')))
       .rejects.toMatchObject({ statusCode: 422 })
   })
+
+  /**
+   * Filtre par RUBRIQUE — ajouté le 2026-09-06 pour la trajectoire d'une rubrique sur
+   * `/evolution` : la suivre sur douze tranches sans pouvoir en ouvrir une seule laissait un
+   * graphique invérifiable (NFR2).
+   */
+  describe('filtre par rubrique', () => {
+    // La fixture du bloc parent fournit déjà A et B (courses) et C (restaurant) en avril, plus
+    // une ligne de mai. On y ajoute une recette, pour vérifier qu'une AUTRE rubrique est exclue.
+    const seedSalaire = () => {
+      dbMod.db.insert(schema.transactions).values([
+        { statementHash: HASH_A, transactionDate: '2026-04-07', label: 'SALAIRE', amountCents: 300_000, categoryItemCode: 'revenus-salaire' },
+      ]).run()
+    }
+
+    it('rend les lignes de TOUS les postes de la rubrique', async () => {
+      const res = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&group=alimentation'))) as Resp
+
+      expect(res.transactions.map(t => t.label)).toEqual(['A', 'B', 'C'])
+    })
+
+    it('exclut les lignes des autres rubriques', async () => {
+      seedSalaire()
+      const res = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&group=alimentation'))) as Resp
+
+      expect(res.transactions.some(t => t.label === 'SALAIRE')).toBe(false)
+    })
+
+    it('reste borné à la période demandée', async () => {
+      const res = (await handler(eventWithQuery('from=2026-04-16&to=2026-04-30&group=alimentation'))) as Resp
+
+      expect(res.transactions.map(t => t.label)).toEqual(['C'])
+    })
+
+    it('rend une liste vide sur une rubrique sans ligne', async () => {
+      const res = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&group=rubrique-fantome'))) as Resp
+
+      expect(res.transactions).toEqual([])
+    })
+
+    it('refuse item et group ensemble — leur cumul n\'aurait qu\'un sens, le poste', async () => {
+      await expect(
+        handler(eventWithQuery('from=2026-04-01&to=2026-04-30&group=alimentation&item=revenus-salaire')),
+      ).rejects.toMatchObject({ statusCode: 422 })
+    })
+  })
 })

@@ -1,7 +1,7 @@
 import { defineEventHandler } from 'h3'
-import { asc, and, eq, gte, lte } from 'drizzle-orm'
+import { asc, and, eq, gte, lte, inArray } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions } from '~~/server/db/schema'
+import { transactions, categoryItems } from '~~/server/db/schema'
 import { type StatementReliability, worstReliability } from '~~/shared/types/statement-reliability'
 import { reliabilityOverlapping } from '~~/server/utils/statement-reliability'
 import { validateQuery } from '~~/server/utils/validation'
@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
     ? [`${query.month}-01`, `${query.month}-31`]
     : [query.from, query.to]
   const itemFilter = 'month' in query ? undefined : query.item
+  const groupFilter = 'month' in query ? undefined : query.group
 
   const rows = await db
     .select({
@@ -34,6 +35,17 @@ export default defineEventHandler(async (event) => {
       gte(transactions.transactionDate, from),
       lte(transactions.transactionDate, to),
       itemFilter ? eq(transactions.categoryItemCode, itemFilter) : undefined,
+      // Filtre par RUBRIQUE : la rubrique n'est pas portée par la transaction, elle vit sur le
+      // poste. Une sous-requête plutôt qu'une jointure — la projection ne change pas, et
+      // l'index `transactions_item_idx` reste utilisable.
+      groupFilter
+        ? inArray(
+            transactions.categoryItemCode,
+            db.select({ code: categoryItems.code })
+              .from(categoryItems)
+              .where(eq(categoryItems.groupCode, groupFilter)),
+          )
+        : undefined,
     ))
     .orderBy(asc(transactions.transactionDate), asc(transactions.id))
 

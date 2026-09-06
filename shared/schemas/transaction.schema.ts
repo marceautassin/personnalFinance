@@ -62,10 +62,15 @@ export const ExtractedTransactionSchema = z.object({
  * Deux façons de demander des transactions, exclusives l'une de l'autre :
  *
  *  - `month=YYYY-MM` — la vue mensuelle historique ;
- *  - `from`/`to` (+ `item` optionnel) — la DESCENTE depuis un agrégat (AR8, NFR2).
+ *  - `from`/`to` (+ `item` OU `group` optionnel) — la DESCENTE depuis un agrégat (AR8, NFR2).
  *
  * La descente est ce qui rend NFR2 satisfaisable sans précalcul : l'arbre d'analyse ne
  * transporte aucune ligne, il porte de quoi construire cette requête.
+ *
+ * `group` a été ajouté le 2026-09-06 pour la trajectoire d'une rubrique : la suivre sur douze
+ * tranches sans pouvoir en ouvrir une seule laissait un graphique qu'on ne pouvait pas
+ * vérifier. Les deux filtres sont exclusifs — cumuler un poste et une rubrique n'aurait qu'un
+ * sens : le poste, si tant est qu'il appartienne à la rubrique. Autant le refuser.
  */
 export const TransactionListQuerySchema = z.union([
   z.object({
@@ -75,7 +80,13 @@ export const TransactionListQuerySchema = z.union([
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD'),
     to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD'),
     item: z.string().trim().min(1).optional(),
-  }).strict().refine(q => q.from <= q.to, { message: 'from doit précéder to', path: ['from'] }),
+    group: z.string().trim().min(1).optional(),
+  }).strict()
+    .refine(q => q.from <= q.to, { message: 'from doit précéder to', path: ['from'] })
+    .refine(q => !(q.item && q.group), {
+      message: 'item et group sont exclusifs',
+      path: ['group'],
+    }),
 ])
 
 /**
