@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { useEvolution } from '~/composables/useEvolution'
 import { useApiError } from '~/composables/useApiError'
-import { GRANULARITIES, type Granularity } from '~~/shared/types/granularity'
+import { GRANULARITIES, bucketBounds, type Granularity } from '~~/shared/types/granularity'
+import { useTargetTransactions } from '~/composables/useTargetTransactions'
+import { formatDate } from '~/utils/dates'
 import { formatEuros, type Cents } from '~~/shared/types/money'
 
 const route = useRoute()
@@ -55,6 +57,9 @@ const targetPoints = computed(() => {
     bucket: p.bucket,
     label: p.label,
     value: p.totalCents * sign,
+    // La répartition subit la MÊME orientation que la valeur : mélanger une dépense affichée
+    // en positif et ses postes en négatif rendrait l'infobulle illisible.
+    breakdown: p.breakdown.map(b => ({ label: b.label, totalCents: b.totalCents * sign })),
   }))
 })
 
@@ -78,6 +83,23 @@ const driftClass = computed(() => {
  * Écart entre la première et la dernière tranche — la dérive, chiffrée, dans le même sens que
  * la courbe : pour une dépense, un écart positif signifie « on dépense plus qu'au début ».
  */
+/**
+ * Descente vers les lignes d'une tranche de la cible (story 16.5).
+ *
+ * Le graphique montrait une trajectoire sans qu'on puisse l'ouvrir : NFR2 veut qu'un montant
+ * mène toujours à ses lignes.
+ */
+const targetTx = useTargetTransactions()
+
+function onToggleBucket(pointBucket: string) {
+  if (!target.value) return
+  void targetTx.toggle(pointBucket, bucketBounds(pointBucket, granularity.value), target.value)
+}
+
+// Changer de cible, de pas ou de fenêtre referme la tranche ouverte : ses lignes ne la
+// décrivent plus.
+watch([target, granularity, bucket], () => targetTx.reset())
+
 const targetDrift = computed(() => {
   const points = targetPoints.value
   if (points.length < 2) return null
@@ -148,83 +170,12 @@ const targetDrift = computed(() => {
     </p>
 
     <template v-else-if="data">
-      <section aria-labelledby="flow-heading">
-        <h3
-          id="flow-heading"
-          class="evo-page__section"
-        >
-          Recettes et dépenses
-        </h3>
-        <FlowChart :series="data.series" />
-        <!--
-          Le tableau n'est pas un doublon du graphique : c'est SA version lisible. Les SVG sont
-          en `aria-hidden`, et c'est ici que le clavier et le lecteur d'écran trouvent les
-          valeurs. La grille en trois colonnes qu'il remplace ne correspondait à aucune barre.
-        -->
-        <table class="table table--framed evo-page__table">
-          <caption class="table__caption">
-            Recettes, dépenses, résultat et trésorerie cumulée par tranche
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">
-                Période
-              </th>
-              <th scope="col">
-                Recettes
-              </th>
-              <th scope="col">
-                Dépenses
-              </th>
-              <th scope="col">
-                Résultat
-              </th>
-              <th scope="col">
-                Trésorerie cumulée
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="point in data.series"
-              :key="point.bucket"
-              :data-testid="`evo-row-${point.bucket}`"
-              class="evo-page__clickable"
-            >
-              <th scope="row">
-                <NuxtLink
-                  class="evo-page__jump"
-                  :to="{ path: '/analyse', query: { p: point.bucket, g: granularity } }"
-                  :aria-label="`Analyser ${point.label}`"
-                >{{ point.label }}</NuxtLink>
-              </th>
-              <td>{{ formatEuros(point.incomeCents as Cents) }}</td>
-              <td>{{ formatEuros(point.expenseCents as Cents) }}</td>
-              <td :class="{ 'evo-page__neg': point.resultCents < 0 }">
-                {{ formatEuros(point.resultCents as Cents) }}
-              </td>
-              <td :class="{ 'evo-page__neg': point.cumulativeResultCents < 0 }">
-                {{ formatEuros(point.cumulativeResultCents as Cents) }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section aria-labelledby="cumul-heading">
-        <h3
-          id="cumul-heading"
-          class="evo-page__section"
-        >
-          Trésorerie cumulée
-        </h3>
-        <TrendChart
-          :points="cumulativePoints"
-          value-label="Trésorerie cumulée"
-          filled
-        />
-      </section>
-
+      <!--
+        Le suivi d'une cible passe EN TÊTE (recette du 2026-09-06). Il vivait en bas de page :
+        choisir une rubrique dépliait un graphique que l'utilisateur ne voyait pas, et l'outil
+        restait ignoré. C'est pourtant celui qui répond à « qu'est-ce qui a dérapé, et depuis
+        quand » — la question qu'on se pose en arrivant.
+      -->
       <section aria-labelledby="target-heading">
         <div class="evo-page__target-header">
           <h3
@@ -305,31 +256,159 @@ const targetDrift = computed(() => {
               </tr>
             </thead>
             <tbody>
-              <tr
+              <!--
+                PAS de lien vers l'analyse ici, contrairement au tableau du dessus : on suit
+                UNE cible, et partir sur l'analyse générale ferait perdre ce focus. La ligne
+                ouvre ses transactions sur place (recette du 2026-09-06).
+              -->
+              <template
                 v-for="point in data.targetSeries"
                 :key="point.bucket"
-                class="evo-page__clickable"
               >
-                <th scope="row">
-                  <NuxtLink
-                    class="evo-page__jump"
-                    :to="{ path: '/analyse', query: { p: point.bucket, g: granularity } }"
-                    :aria-label="`Analyser ${point.label}`"
-                  >{{ point.label }}</NuxtLink>
-                </th>
-                <!--
+                <tr :class="{ 'evo-page__row--open': targetTx.openBucket.value === point.bucket }">
+                  <th scope="row">
+                    <button
+                      type="button"
+                      class="evo-page__expand"
+                      :aria-expanded="targetTx.openBucket.value === point.bucket"
+                      :aria-label="`${targetTx.openBucket.value === point.bucket ? 'Replier' : 'Déplier'} les transactions de ${point.label}`"
+                      @click="onToggleBucket(point.bucket)"
+                    >
+                      <span aria-hidden="true">{{ targetTx.openBucket.value === point.bucket ? '▾' : '▸' }}</span>
+                      {{ point.label }}
+                    </button>
+                  </th>
+                  <!--
                   Montant NEUTRE : sur une cible de dépense, les douze lignes sont négatives et
                   les peindre toutes en rouge ne distingue plus rien (revue du 2026-09-05). Le
                   signal orienté est porté par l'écart, au-dessus du graphique.
                 -->
-                <td>
-                  {{ formatEuros(point.totalCents as Cents) }}
-                </td>
-                <td>{{ point.transactionCount }}</td>
-              </tr>
+                  <td>
+                    {{ formatEuros(point.totalCents as Cents) }}
+                  </td>
+                  <td>{{ point.transactionCount }}</td>
+                </tr>
+                <tr v-if="targetTx.openBucket.value === point.bucket">
+                  <td
+                    colspan="3"
+                    class="evo-page__tx-cell"
+                  >
+                    <p
+                      v-if="targetTx.loading.value"
+                      class="evo-page__pending"
+                    >
+                      Chargement…
+                    </p>
+                    <p
+                      v-else-if="targetTx.failed.value"
+                      class="evo-page__tx-error"
+                      role="alert"
+                    >
+                      Impossible de charger les lignes de cette tranche.
+                    </p>
+                    <p
+                      v-else-if="targetTx.transactions.value.length === 0"
+                      class="evo-page__pending"
+                    >
+                      Aucune ligne sur cette tranche.
+                    </p>
+                    <ul
+                      v-else
+                      class="evo-page__tx"
+                    >
+                      <li
+                        v-for="tx in targetTx.transactions.value"
+                        :key="tx.id"
+                        class="evo-page__tx-row"
+                      >
+                        <span class="evo-page__tx-date">{{ formatDate(tx.transactionDate) }}</span>
+                        <span class="evo-page__tx-label">{{ tx.label }}</span>
+                        <span class="num">{{ formatEuros(tx.amountCents) }}</span>
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </template>
+      </section>
+
+      <section aria-labelledby="flow-heading">
+        <h3
+          id="flow-heading"
+          class="evo-page__section"
+        >
+          Recettes et dépenses
+        </h3>
+        <FlowChart :series="data.series" />
+        <!--
+          Le tableau n'est pas un doublon du graphique : c'est SA version lisible. Les SVG sont
+          en `aria-hidden`, et c'est ici que le clavier et le lecteur d'écran trouvent les
+          valeurs. La grille en trois colonnes qu'il remplace ne correspondait à aucune barre.
+        -->
+        <table class="table table--framed evo-page__table">
+          <caption class="table__caption">
+            Recettes, dépenses, résultat et trésorerie cumulée par tranche
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">
+                Période
+              </th>
+              <th scope="col">
+                Recettes
+              </th>
+              <th scope="col">
+                Dépenses
+              </th>
+              <th scope="col">
+                Résultat
+              </th>
+              <th scope="col">
+                Trésorerie cumulée
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="point in data.series"
+              :key="point.bucket"
+              :data-testid="`evo-row-${point.bucket}`"
+              class="evo-page__clickable"
+            >
+              <th scope="row">
+                <NuxtLink
+                  class="evo-page__jump"
+                  :to="{ path: '/analyse', query: { p: point.bucket, g: granularity } }"
+                  :aria-label="`Analyser ${point.label}`"
+                >{{ point.label }}</NuxtLink>
+              </th>
+              <td>{{ formatEuros(point.incomeCents as Cents) }}</td>
+              <td>{{ formatEuros(point.expenseCents as Cents) }}</td>
+              <td :class="{ 'evo-page__neg': point.resultCents < 0 }">
+                {{ formatEuros(point.resultCents as Cents) }}
+              </td>
+              <td :class="{ 'evo-page__neg': point.cumulativeResultCents < 0 }">
+                {{ formatEuros(point.cumulativeResultCents as Cents) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section aria-labelledby="cumul-heading">
+        <h3
+          id="cumul-heading"
+          class="evo-page__section"
+        >
+          Trésorerie cumulée
+        </h3>
+        <TrendChart
+          :points="cumulativePoints"
+          value-label="Trésorerie cumulée"
+          filled
+        />
       </section>
     </template>
   </section>
@@ -369,6 +448,37 @@ const targetDrift = computed(() => {
 .evo-page__jump { color: inherit; text-decoration: none; }
 .evo-page__jump::after { content: ''; position: absolute; inset: 0; }
 .evo-page__clickable:focus-within { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+.evo-page__expand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.evo-page__expand:hover { color: var(--color-accent); }
+.evo-page__row--open { background: var(--color-accent-subtle); }
+
+.evo-page__tx-cell { padding: 0 var(--space-3) var(--space-2); }
+.evo-page__tx { list-style: none; display: flex; flex-direction: column; }
+.evo-page__tx-row {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr 7rem;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: var(--font-size-sm);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--color-hairline);
+}
+.evo-page__tx-row:last-child { border-bottom: 0; }
+.evo-page__tx-date { font-family: var(--font-mono); color: var(--color-text-muted); }
+.evo-page__tx-label { overflow-wrap: anywhere; }
+.evo-page__tx-error { color: var(--color-danger); font-size: var(--font-size-sm); }
 
 .evo-page__neg { color: var(--color-danger); }
 </style>

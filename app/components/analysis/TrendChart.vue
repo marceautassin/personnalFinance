@@ -12,7 +12,19 @@ import { formatAxisEuros, niceStep } from '~/utils/axis'
  * SVG inline, sans bibliothèque (AR21).
  */
 const props = withDefaults(defineProps<{
-  points: Array<{ bucket: string, label: string, value: number }>
+  points: Array<{
+    bucket: string
+    label: string
+    value: number
+    /**
+     * Répartition de la valeur, montrée dans l'infobulle (demande du 2026-09-06).
+     *
+     * Une courbe d'Alimentation qui monte ne dit pas si ce sont les courses ou les
+     * restaurants. Optionnelle : une cible qui est déjà un poste n'a rien à répartir, et le
+     * cumul de trésorerie non plus.
+     */
+    breakdown?: Array<{ label: string, totalCents: number }>
+  }>
   /** Aire remplie sous la courbe — pertinente pour un cumul, bruyante pour une trajectoire. */
   filled?: boolean
   height?: number
@@ -116,6 +128,9 @@ const tip = computed(() => {
     label: p.label,
     value: formatEuros(p.value as Cents),
     negative: p.value < 0,
+    // Bornée à cinq lignes : au-delà, l'infobulle couvrirait le graphique qu'elle explique.
+    breakdown: (p.breakdown ?? []).slice(0, 5),
+    hiddenCount: Math.max(0, (p.breakdown?.length ?? 0) - 5),
   }
 })
 </script>
@@ -233,6 +248,15 @@ const tip = computed(() => {
       >
         <strong>{{ tip.label }}</strong>
         <span>{{ valueLabel }}<b :class="{ 'trend__tip-neg': tip.negative }">{{ tip.value }}</b></span>
+        <span
+          v-for="part in tip.breakdown"
+          :key="part.label"
+          class="trend__tip-part"
+        >{{ part.label }}<b>{{ formatEuros(part.totalCents as Cents) }}</b></span>
+        <span
+          v-if="tip.hiddenCount > 0"
+          class="trend__tip-part trend__tip-more"
+        >+ {{ tip.hiddenCount }} autre(s) poste(s)</span>
       </div>
     </div>
   </div>
@@ -263,6 +287,8 @@ const tip = computed(() => {
 .trend__tip[data-anchor='end'] { transform: translateX(-100%); }
 .trend__tip span { display: flex; align-items: center; gap: var(--space-3); }
 .trend__tip b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.trend__tip-part { font-size: var(--font-size-xs); color: var(--color-text-muted); }
+.trend__tip-more { font-style: italic; }
 .trend__tip-neg { color: var(--color-danger); }
 .trend__grid line { stroke: var(--color-border); stroke-width: 1; }
 .trend__zero { stroke: var(--color-text-muted); stroke-width: 1.5; }
