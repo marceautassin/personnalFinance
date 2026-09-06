@@ -14,7 +14,9 @@ test.describe('Analyse — période et états vides', () => {
 
     // « Trésorerie cumulée » a quitté cette page le 2026-09-05 : elle portait sur douze
     // tranches alors que tout le reste décrit la période choisie. Elle vit sur `/evolution`.
-    for (const label of ['Trésorerie de la période', 'Taux de dépense', 'Taux d\'épargne', 'Solde bancaire']) {
+    // « Variation du patrimoine » depuis le 2026-09-06 : même calcul, nommé pour ce qu'il
+    // mesure — « trésorerie » était du vocabulaire comptable, pas la question de l'utilisateur.
+    for (const label of ['Variation du patrimoine', 'Taux de dépense', 'Taux d\'épargne', 'Solde bancaire']) {
       await expect(page.getByText(label, { exact: true })).toBeVisible()
     }
 

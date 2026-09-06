@@ -55,7 +55,15 @@ const balanceIsOffset = computed(() =>
       class="kpi"
       data-testid="indicator-result"
     >
-      <span class="kpi__label">Trésorerie de la période</span>
+      <!--
+        « Variation du patrimoine » et non « trésorerie » (demande du 2026-09-06).
+        C'est le MÊME calcul — recettes plus dépenses, mouvements internes exclus — mais nommé
+        pour ce qu'il mesure. Les mouvements internes déplacent de l'argent entre les comptes
+        de l'utilisateur sans en créer ni en détruire : ce qui reste est donc exactement ce que
+        son patrimoine a gagné ou perdu. Sous son ancien nom comptable, l'utilisateur ne le
+        lisait pas ainsi et cherchait le chiffre ailleurs.
+      -->
+      <span class="kpi__label">Variation du patrimoine</span>
       <strong
         class="kpi__value"
         :class="{ 'amount--bad': isDeficit }"
@@ -65,8 +73,16 @@ const balanceIsOffset = computed(() =>
           <span
             class="indic__flag"
             role="status"
-          >Période déficitaire</span>
-          · hors mouvements internes
+          >Appauvrissement</span>
+          <!--
+            Le financement interne se dit ICI, collé au déficit qu'il comble : c'est le lien
+            que l'écran ne faisait pas. Puiser dans son épargne pour boucler un mois n'est pas
+            une recette, c'est le symptôme.
+          -->
+          <template v-if="indicators.internalCents > 0">
+            · comblé par {{ formatEuros(indicators.internalCents as Cents) }} pris sur vos autres comptes
+          </template>
+          <template v-else>· hors mouvements internes</template>
         </template>
         <template v-else>
           Recettes {{ formatEuros(indicators.incomeCents as Cents) }} · dépenses {{ formatEuros(indicators.expenseCents as Cents) }}
@@ -94,6 +110,8 @@ const balanceIsOffset = computed(() =>
         <template v-else-if="balanceIsOffset">
           Du {{ formatDate(bankBalance!.from) }} au {{ formatDate(bankBalance!.to) }}, mouvements internes compris
         </template>
+        <!-- Le solde bancaire INCLUT les mouvements internes (NFR4) : il peut donc rester
+             stable pendant que le patrimoine baisse, l'épargne comblant l'écart. -->
         <template v-else>Mouvements internes compris : {{ formatEuros(indicators.internalCents as Cents) }}</template>
       </span>
     </div>

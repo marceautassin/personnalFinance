@@ -26,7 +26,7 @@ test.describe('Évolution', () => {
     await page.goto('/evolution?p=2026-08&g=month')
     const table = page.getByRole('table').first()
     await expect(table).toBeVisible()
-    for (const header of ['Période', 'Recettes', 'Dépenses', 'Résultat', 'Trésorerie cumulée']) {
+    for (const header of ['Période', 'Recettes', 'Dépenses', 'Résultat', 'Patrimoine cumulé']) {
       await expect(table.getByRole('columnheader', { name: header })).toBeVisible()
     }
   })

@@ -91,6 +91,13 @@ const driftClass = computed(() => {
  */
 const targetTx = useTargetTransactions()
 
+/** Libellés des postes, pour nommer les groupes de la descente sans second appel. */
+const itemLabels = computed<Record<string, string>>(() =>
+  Object.fromEntries(
+    (data.value?.groups ?? []).flatMap(g => g.items.map(i => [i.code, i.label] as const)),
+  ),
+)
+
 function onToggleBucket(pointBucket: string) {
   if (!target.value) return
   void targetTx.toggle(pointBucket, bucketBounds(pointBucket, granularity.value), target.value)
@@ -312,20 +319,39 @@ const targetDrift = computed(() => {
                     >
                       Aucune ligne sur cette tranche.
                     </p>
-                    <ul
+                    <!--
+                      Regroupées par POSTE : sur une rubrique, une tranche porte jusqu'à
+                      cinquante lignes, et les lire à plat oblige à trier de tête ce qu'on est
+                      précisément venu voir réparti (demande du 2026-09-06).
+                    -->
+                    <div
                       v-else
-                      class="evo-page__tx"
+                      class="evo-page__tx-groups"
                     >
-                      <li
-                        v-for="tx in targetTx.transactions.value"
-                        :key="tx.id"
-                        class="evo-page__tx-row"
+                      <section
+                        v-for="g in targetTx.groups.value"
+                        :key="g.itemCode"
                       >
-                        <span class="evo-page__tx-date">{{ formatDate(tx.transactionDate) }}</span>
-                        <span class="evo-page__tx-label">{{ tx.label }}</span>
-                        <span class="num">{{ formatEuros(tx.amountCents) }}</span>
-                      </li>
-                    </ul>
+                        <h4 class="evo-page__tx-group">
+                          <span>{{ itemLabels[g.itemCode] ?? g.itemCode }}</span>
+                          <span class="evo-page__tx-group-meta">
+                            {{ g.transactions.length }} ligne(s)
+                            <b class="num">{{ formatEuros(g.totalCents) }}</b>
+                          </span>
+                        </h4>
+                        <ul class="evo-page__tx">
+                          <li
+                            v-for="tx in g.transactions"
+                            :key="tx.id"
+                            class="evo-page__tx-row"
+                          >
+                            <span class="evo-page__tx-date">{{ formatDate(tx.transactionDate) }}</span>
+                            <span class="evo-page__tx-label">{{ tx.label }}</span>
+                            <span class="num">{{ formatEuros(tx.amountCents) }}</span>
+                          </li>
+                        </ul>
+                      </section>
+                    </div>
                   </td>
                 </tr>
               </template>
@@ -366,7 +392,7 @@ const targetDrift = computed(() => {
                 Résultat
               </th>
               <th scope="col">
-                Trésorerie cumulée
+                Patrimoine cumulé
               </th>
             </tr>
           </thead>
@@ -402,11 +428,26 @@ const targetDrift = computed(() => {
           id="cumul-heading"
           class="evo-page__section"
         >
-          Trésorerie cumulée
+          Patrimoine financier
         </h3>
+        <!--
+          La courbe cumule depuis le DÉBUT de l'historique, pas depuis le début de la fenêtre
+          (demande du 2026-09-06). Les mouvements internes en sont exclus : déplacer de l'argent
+          entre ses propres comptes n'enrichit ni n'appauvrit. Ce qui reste est donc ce que le
+          patrimoine a gagné ou perdu — et un solde bancaire stable peut très bien masquer une
+          baisse, l'épargne comblant l'écart.
+        -->
+        <p class="evo-page__hint">
+          Recettes moins dépenses, cumulées depuis le début de l'historique. Les virements entre
+          vos comptes n'y entrent pas : ils ne changent pas ce que vous possédez.
+          <template v-if="data.priorCumulativeCents !== 0">
+            La courbe démarre à {{ formatEuros(data.priorCumulativeCents as Cents) }}, acquis
+            avant la première tranche affichée.
+          </template>
+        </p>
         <TrendChart
           :points="cumulativePoints"
-          value-label="Trésorerie cumulée"
+          value-label="Patrimoine"
           filled
         />
       </section>
@@ -478,6 +519,17 @@ const targetDrift = computed(() => {
 .evo-page__tx-row:last-child { border-bottom: 0; }
 .evo-page__tx-date { font-family: var(--font-mono); color: var(--color-text-muted); }
 .evo-page__tx-label { overflow-wrap: anywhere; }
+.evo-page__tx-groups { display: flex; flex-direction: column; gap: var(--space-2); }
+.evo-page__tx-group {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  padding-top: var(--space-1);
+}
+.evo-page__tx-group-meta { font-weight: 400; color: var(--color-text-muted); display: flex; gap: var(--space-2); }
 .evo-page__tx-error { color: var(--color-danger); font-size: var(--font-size-sm); }
 
 .evo-page__neg { color: var(--color-danger); }
