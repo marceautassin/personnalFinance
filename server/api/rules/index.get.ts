@@ -1,5 +1,5 @@
 import { defineEventHandler } from 'h3'
-import { asc, eq, sql } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { classificationRules, categoryItems, categoryGroups, transactions } from '~~/server/db/schema'
 import { normalizeForMatch } from '~~/server/services/rule-matcher'
@@ -25,22 +25,25 @@ export default defineEventHandler(async (): Promise<ClassificationRuleWithLabels
       createdAt: classificationRules.createdAt,
       itemLabel: categoryItems.label,
       groupLabel: categoryGroups.label,
-      // Les jokers du motif sont neutralisés côté SQL (story 17.8) : `REPLACE` imbriqués,
-      // car le motif vient d'une colonne et non d'un paramètre applicatif.
-      matchCount: sql<number>`(
-        SELECT COUNT(*) FROM ${transactions}
-        WHERE LOWER(${transactions.label}) LIKE
-          '%' || REPLACE(REPLACE(REPLACE(LOWER(${classificationRules.pattern}),
-            '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'
-          ESCAPE '\\'
-      )`,
     })
     .from(classificationRules)
     .innerJoin(categoryItems, eq(categoryItems.code, classificationRules.categoryItemCode))
     .innerJoin(categoryGroups, eq(categoryGroups.code, categoryItems.groupCode))
     .orderBy(asc(classificationRules.id))
 
-  return rows.map(r => ({ ...r, matchCount: Number(r.matchCount) }))
+  // Le comptage se fait EN MÉMOIRE, avec la comparaison du moteur : un `LIKE` SQL manquait
+  // les libellés accentués, le motif étant stocké sans accents (revue du 2026-09-06). Les
+  // libellés ne sont normalisés qu'une fois, puis confrontés à chaque motif.
+  const haystacks = db.select({ label: transactions.label }).from(transactions).all()
+    .map(t => normalizeForMatch(t.label))
+
+  return rows.map(r => ({
+    ...r,
+    matchCount: haystacks.reduce(
+      (n, h) => n + (h.includes(normalizeForMatch(r.pattern)) ? 1 : 0),
+      0,
+    ),
+  }))
 })
 
 /** Réexporté pour que les handlers d'écriture partagent la normalisation du moteur. */

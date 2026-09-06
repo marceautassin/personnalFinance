@@ -29,6 +29,21 @@ export function normalizeForMatch(label: string): string {
  * À longueur égale, la règle la plus ancienne gagne : l'ordre reçu fait foi, et l'appelant
  * le fixe par un tri stable.
  */
+/**
+ * Un motif couvre-t-il ce libellé ? Même comparaison que `resolveRule`, isolée.
+ *
+ * **Pourquoi elle existe (revue du 2026-09-06).** Le comptage et la présélection se faisaient
+ * en SQL, par un `LIKE` sur `LOWER(label)`. Or le motif est stocké NORMALISÉ, donc sans
+ * accents, tandis que `label` les conserve — et `LOWER()` de SQLite est ASCII : un motif
+ * `creche` ne trouvait jamais `CRÈCHE`. Le compteur annonçait alors zéro ligne couverte, et
+ * l'application n'en reclassait aucune. Un écart silencieux, dans le sens le plus dangereux :
+ * moins de lignes que le moteur, pas plus.
+ */
+export function patternCovers(label: string, pattern: string): boolean {
+  const needle = normalizeForMatch(pattern)
+  return needle.length > 0 && normalizeForMatch(label).includes(needle)
+}
+
 export function resolveRule(label: string, rules: readonly MatchableRule[]): MatchableRule | null {
   const haystack = normalizeForMatch(label)
   let best: MatchableRule | null = null

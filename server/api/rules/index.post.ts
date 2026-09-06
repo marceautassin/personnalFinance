@@ -1,8 +1,8 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { likeContains, LIKE_ESCAPE_CHAR } from '~~/server/utils/sql-like'
-import { classificationRules, categoryItems, categoryGroups, transactions } from '~~/server/db/schema'
+import { countCoveredTransactions } from '~~/server/utils/rule-coverage'
+import { classificationRules, categoryItems, categoryGroups } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { assertCategoryItemExists } from '~~/server/utils/category-fk'
 import { domainError } from '~~/server/utils/errors'
@@ -65,16 +65,6 @@ export default defineEventHandler(async (event): Promise<ClassificationRuleWithL
     ...inserted,
     itemLabel: item?.itemLabel ?? body.categoryItemCode,
     groupLabel: item?.groupLabel ?? '',
-    matchCount: countMatching(pattern),
+    matchCount: countCoveredTransactions(pattern),
   }
 })
-
-/** Transactions déjà en base dont le libellé contient le motif, à la casse près. */
-function countMatching(pattern: string): number {
-  const row = db
-    .select({ cnt: sql<number>`count(*)` })
-    .from(transactions)
-    .where(sql`LOWER(${transactions.label}) LIKE ${likeContains(pattern)} ESCAPE ${LIKE_ESCAPE_CHAR}`)
-    .get()
-  return Number(row?.cnt ?? 0)
-}

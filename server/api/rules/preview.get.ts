@@ -1,9 +1,6 @@
 import { defineEventHandler, getQuery } from 'h3'
-import { sql } from 'drizzle-orm'
-import { db } from '~~/server/db/client'
-import { transactions } from '~~/server/db/schema'
 import { normalizeForMatch } from '~~/server/services/rule-matcher'
-import { likeContains, LIKE_ESCAPE_CHAR } from '~~/server/utils/sql-like'
+import { countCoveredTransactions } from '~~/server/utils/rule-coverage'
 
 /**
  * GET /api/rules/preview?pattern=… — portée qu'aurait une règle, AVANT de la créer.
@@ -22,11 +19,5 @@ export default defineEventHandler((event): { pattern: string, matchCount: number
   const pattern = normalizeForMatch(typeof raw === 'string' ? raw : '')
   if (pattern.length < 2) return { pattern, matchCount: 0 }
 
-  const row = db
-    .select({ cnt: sql<number>`count(*)` })
-    .from(transactions)
-    .where(sql`LOWER(${transactions.label}) LIKE ${likeContains(pattern)} ESCAPE ${LIKE_ESCAPE_CHAR}`)
-    .get()
-
-  return { pattern, matchCount: Number(row?.cnt ?? 0) }
+  return { pattern, matchCount: countCoveredTransactions(pattern) }
 })
