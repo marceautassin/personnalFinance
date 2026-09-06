@@ -78,10 +78,44 @@ const totalCount = computed(() =>
   groupsWithItems.value.reduce((sum, g) => sum + g.items.length, 0),
 )
 
+/**
+ * Placement du menu — au-dessus ou en dessous, aligné à gauche ou à droite (recette du
+ * 2026-09-06).
+ *
+ * Le menu était posé en absolu sous le déclencheur, toujours du même côté : sur les dernières
+ * lignes d'un relevé, ou sur la colonne de droite, il sortait de l'écran par le bas et par la
+ * droite — donc inutilisable là où on en a le plus besoin, puisqu'on range du haut vers le bas.
+ *
+ * Mesuré à l'ouverture seulement : le menu se ferme au clic extérieur et à `Escape`, il ne
+ * survit donc pas à un défilement assez long pour périmer la mesure.
+ */
+const dropUp = ref(false)
+const alignRight = ref(false)
+const maxHeight = ref<string | null>(null)
+
+/** Hauteur maximale souhaitée du menu, et sa largeur : elles doivent suivre la feuille de style. */
+const MENU_HEIGHT = 320
+const MENU_WIDTH = 292
+const GAP = 8
+
+function updatePlacement() {
+  const rect = triggerRef.value?.getBoundingClientRect()
+  if (!rect) return
+
+  const below = window.innerHeight - rect.bottom - GAP
+  const above = rect.top - GAP
+  // On ne bascule vers le haut que si le bas manque de place ET que le haut en offre plus :
+  // remonter un menu dans un espace encore plus étroit n'arrangerait rien.
+  dropUp.value = below < MENU_HEIGHT && above > below
+  maxHeight.value = `${Math.max(160, Math.min(MENU_HEIGHT, dropUp.value ? above : below))}px`
+  alignRight.value = rect.left + MENU_WIDTH > window.innerWidth - GAP
+}
+
 function toggle() {
   open.value = !open.value
   if (open.value) {
     query.value = ''
+    updatePlacement()
     // Après le rendu du menu : l'input n'existe pas encore au moment du clic.
     void nextTick(() => searchRef.value?.focus())
   }
@@ -158,6 +192,8 @@ onBeforeUnmount(() => {
     <div
       v-if="open"
       class="cat-editor__menu overlay"
+      :class="{ 'cat-editor__menu--up': dropUp, 'cat-editor__menu--right': alignRight }"
+      :style="maxHeight ? { maxHeight } : undefined"
       role="group"
       :aria-label="`Choisir un poste pour la transaction ${transactionId}`"
     >
@@ -271,10 +307,16 @@ onBeforeUnmount(() => {
   left: 0;
   z-index: 10;
   width: 292px;
+  /* Sur un écran étroit, une largeur fixe déborde à elle seule. */
+  max-width: calc(100vw - 16px);
   max-height: 320px;
   overflow-y: auto;
   padding-bottom: var(--space-1);
 }
+/* Le menu se retourne quand la place manque en dessous, et s'aligne à droite quand elle
+   manque à droite (recette du 2026-09-06). */
+.cat-editor__menu--up { top: auto; bottom: calc(100% + 4px); }
+.cat-editor__menu--right { left: auto; right: 0; }
 .cat-editor__search {
   position: sticky;
   top: 0;
