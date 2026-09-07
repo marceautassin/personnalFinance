@@ -15,7 +15,7 @@ type SchemaModule = typeof import('~~/server/db/schema')
 interface Resp {
   buckets: string[]
   series: Array<{ bucket: string, resultCents: number, cumulativeResultCents: number, incomeCents: number, expenseCents: number }>
-  targetSeries: Array<{ bucket: string, totalCents: number }> | null
+  targetSeries: Array<{ bucket: string, totalCents: number, transactionCount: number }> | null
   targetLabel: string | null
   groups: Array<{ code: string, items: Array<{ code: string }> }>
 }
@@ -270,6 +270,31 @@ describe('GET /api/evolution — nature de la cible', () => {
 
       expect(r.priorCumulativeCents).toBe(0)
       expect(r.series.at(-1)!.cumulativeResultCents).toBe(-20_000)
+    })
+  })
+
+  /**
+   * Le `transactionCount` par tranche porte la dérive affichée à l'écran — revue du 2026-09-07.
+   *
+   * L'écran comparait la PREMIÈRE et la DERNIÈRE tranche de la série. Depuis que la vue couvre
+   * une année entière, la série contient les mois à venir, à zéro : la dérive se mesurait
+   * contre décembre et sortait fausse, avec un signal de couleur inversé. C'est ce compteur qui
+   * permet de distinguer une tranche vide d'une tranche à zéro.
+   */
+  describe('tranches porteuses de la cible', () => {
+    it('distingue une tranche sans mouvement d\'une tranche à zéro', async () => {
+      seedTx('2026-01-10', -100_000, 'alimentation-courses')
+      seedTx('2026-02-10', -60_000, 'alimentation-courses')
+      seedTx('2026-02-15', 60_000, 'alimentation-courses')
+
+      const r = await handler(query(`${YEAR_2026}&target=group:alimentation`))
+      const at = (b: string) => r.targetSeries!.find(p => p.bucket === b)!
+
+      // Février est à zéro mais PORTE deux lignes ; décembre n'en porte aucune.
+      expect(at('2026-02').totalCents).toBe(0)
+      expect(at('2026-02').transactionCount).toBe(2)
+      expect(at('2026-12').totalCents).toBe(0)
+      expect(at('2026-12').transactionCount).toBe(0)
     })
   })
 })

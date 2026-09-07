@@ -49,7 +49,8 @@ const targetPoints = computed(() => {
   return (data.value?.targetSeries ?? []).map(p => ({
     bucket: p.bucket,
     label: p.label,
-    value: p.totalCents * sign,
+    // `0 * -1` vaut `-0`, que `formatEuros` rend « -0,00 € » sur les tranches vides.
+    value: p.totalCents === 0 ? 0 : p.totalCents * sign,
     // La répartition subit la MÊME orientation que la valeur : mélanger une dépense affichée
     // en positif et ses postes en négatif rendrait l'infobulle illisible.
     breakdown: p.breakdown.map(b => ({ label: b.label, totalCents: b.totalCents * sign })),
@@ -72,10 +73,6 @@ const driftClass = computed(() => {
   return alarming ? 'evo-page__neg' : undefined
 })
 
-/**
- * Écart entre la première et la dernière tranche — la dérive, chiffrée, dans le même sens que
- * la courbe : pour une dépense, un écart positif signifie « on dépense plus qu'au début ».
- */
 /**
  * Descente vers les lignes d'une tranche de la cible (story 16.5).
  *
@@ -101,10 +98,19 @@ function onToggleBucket(pointBucket: string) {
 // décrivent plus.
 watch([target, period], () => targetTx.reset())
 
+/**
+ * Écart entre la première et la dernière tranche PORTEUSE de la cible.
+ *
+ * ⚠️ Les tranches vides sont écartées, et ce n'est pas cosmétique (revue du 2026-09-07).
+ * Depuis que la vue couvre une année entière, elle contient les mois à venir, à zéro. Comparer
+ * décembre à janvier donnait « −964 € » sur une Alimentation qui avait en réalité AUGMENTÉ
+ * de 318 € entre janvier et août — chiffre faux, et signal de couleur inversé.
+ */
 const targetDrift = computed(() => {
-  const points = targetPoints.value
-  if (points.length < 2) return null
-  return (points.at(-1)!.value - points[0]!.value) as Cents
+  const filled = (data.value?.targetSeries ?? []).filter(p => p.transactionCount > 0)
+  if (filled.length < 2) return null
+  const sign = targetInverted.value ? -1 : 1
+  return ((filled.at(-1)!.totalCents - filled[0]!.totalCents) * sign) as Cents
 })
 </script>
 
@@ -114,7 +120,7 @@ const targetDrift = computed(() => {
       <h2 class="page-head__title">
         Évolution
       </h2>
-      <span class="page-head__sub">Les douze dernières tranches, jusqu'à {{ label }}</span>
+      <span class="page-head__sub">Mois par mois · {{ label }}</span>
 
       <div class="evo-page__period">
         <!-- Tout l'historique n'a pas de voisin : `aria-disabled` plutôt que `disabled`, avec
@@ -174,6 +180,25 @@ const targetDrift = computed(() => {
       Chargement…
     </p>
 
+    <!--
+      Historique vide : trois sections de tableaux sans ligne et de graphiques vides ne disent
+      pas qu'il n'y a rien à montrer — elles laissent croire à une panne (AC de 18.16).
+    -->
+    <div
+      v-else-if="data && data.buckets.length === 0"
+      class="panel state"
+    >
+      <p class="state__title">
+        Aucune transaction dans l'historique.
+      </p>
+      <NuxtLink
+        to="/import"
+        class="btn btn--sm"
+      >
+        Importer un relevé
+      </NuxtLink>
+    </div>
+
     <template v-else-if="data">
       <!--
         Le suivi d'une cible passe EN TÊTE (recette du 2026-09-06). Il vivait en bas de page :
@@ -222,7 +247,7 @@ const targetDrift = computed(() => {
           v-if="!data.targetSeries"
           class="evo-page__pending"
         >
-          Choisis une rubrique ou un poste pour voir sa trajectoire sur les douze tranches.
+          Choisis une rubrique ou un poste pour voir sa trajectoire sur la période affichée.
         </p>
         <template v-else>
           <p class="evo-page__target-summary">
@@ -373,7 +398,7 @@ const targetDrift = computed(() => {
         -->
         <table class="table table--framed evo-page__table">
           <caption class="table__caption">
-            Recettes, dépenses, résultat et trésorerie cumulée par tranche
+            Recettes, dépenses, résultat et patrimoine cumulé, mois par mois
           </caption>
           <thead>
             <tr>
@@ -516,7 +541,10 @@ const targetDrift = computed(() => {
 }
 .evo-page__tx-row:last-child { border-bottom: 0; }
 .evo-page__tx-date { font-family: var(--font-mono); color: var(--color-text-muted); }
-.evo-page__tx-label { overflow-wrap: anywhere; }
+/* `.evo-page__table td { text-align: right }` s'applique aussi à la cellule de descente : les
+   libellés se retrouvaient collés aux montants, à droite (revue du 2026-09-07). */
+.evo-page__tx-label { overflow-wrap: anywhere; text-align: left; }
+.evo-page__tx-date { text-align: left; }
 .evo-page__tx-groups { display: flex; flex-direction: column; gap: var(--space-2); }
 .evo-page__tx-group {
   display: flex;
