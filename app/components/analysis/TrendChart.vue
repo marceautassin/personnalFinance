@@ -117,6 +117,20 @@ const bands = computed(() =>
   }),
 )
 
+/**
+ * Point survolé, ou `null` — jamais un accès direct par index.
+ *
+ * La série n'a plus une longueur fixe depuis que la vue d'évolution suit une période (refonte
+ * du 2026-09-07) : passer de vingt tranches à douze laissait `hovered` pointer au-delà du
+ * tableau, et le rendu levait `Cannot read properties of undefined`.
+ */
+const hoveredPoint = computed(() => (hovered.value === null ? null : props.points[hovered.value] ?? null))
+
+// Changer de série remet le survol à zéro : l'index d'un tableau ne vaut rien dans un autre.
+watch(() => props.points, () => {
+  hovered.value = null
+})
+
 const tip = computed(() => {
   const i = hovered.value
   if (i === null) return null
@@ -221,11 +235,11 @@ const tip = computed(() => {
           class="trend__guide"
         />
         <circle
-          v-if="hovered !== null"
-          :cx="x(hovered)"
-          :cy="y(points[hovered]!.value)"
+          v-if="hoveredPoint"
+          :cx="x(hovered!)"
+          :cy="y(hoveredPoint.value)"
           r="5"
-          :class="points[hovered]!.value < 0 ? 'trend__dot trend__dot--negative' : 'trend__dot'"
+          :class="hoveredPoint.value < 0 ? 'trend__dot trend__dot--negative' : 'trend__dot'"
         />
 
         <rect
