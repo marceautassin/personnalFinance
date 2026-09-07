@@ -1792,3 +1792,42 @@ se mélangent pas (D28)
 comprise : c'est ce que la colonne affiche, et trier sur autre chose donnerait une colonne
 visiblement désordonnée. Pour regrouper un même marchand, la recherche par libellé et l'écran
 « À ranger » sont les bons outils.
+
+### Story 18.18: Filtrer sur plusieurs catégories à la fois
+
+> **Demandé le 2026-09-07 :** « il faudrait que je puisse filtrer sur certaines catégories ».
+> Le filtre ne retenait qu'un seul poste.
+
+En tant qu'utilisateur,
+je veux retenir plusieurs postes, ou des rubriques entières,
+afin de comparer des dépenses qui vont ensemble sans les regarder une par une.
+
+**Acceptance Criteria:**
+
+**Given** le filtre de postes
+**When** aucun poste n'est coché
+**Then** toutes les lignes passent — c'est l'absence de sélection qui ne filtre rien
+
+**Given** plusieurs postes cochés
+**When** la liste est filtrée
+**Then** les lignes de tous ces postes sont retenues, et le compte comme le sous-total suivent
+
+**Given** une rubrique cochée
+**When** elle l'est
+**Then** tous ses postes le sont ; décocher l'un d'eux la laisse dans un état intermédiaire
+
+**Given** une sélection
+**When** le déclencheur du filtre est affiché
+**Then** il nomme le poste unique, ou la rubrique entière, ou compte les postes retenus
+
+**Given** deux postes de même libellé sous deux rubriques différentes
+**When** ils apparaissent dans la recherche
+**Then** leur rubrique les distingue
+
+**Given** une recherche sans résultat
+**When** elle est affichée
+**Then** elle le dit, plutôt que de laisser une liste vide
+
+**Note d'implémentation.** La sélection est une simple liste de codes de POSTES : cocher une
+rubrique coche les siens. Rien n'a besoin de savoir d'où vient une sélection, et le filtrage
+reste une appartenance à un ensemble.

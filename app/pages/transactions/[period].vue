@@ -43,7 +43,6 @@ const { data, pending, error, mutateCategory, ruleSuggestion, dismissSuggestion 
   = useTransactions(period, granularity)
 const { addRule, previewRule, applyRuleToHistory } = useRules()
 const { data: groups } = useCategories()
-const groupsWithItems = computed(() => groups.value.filter(g => g.items.length > 0))
 
 const { mapError } = useApiError()
 
@@ -213,7 +212,8 @@ const normalize = (value: string) =>
  * ce qui permet d'isoler les lignes tombées au repli et de les ranger sans les chercher à
  * l'œil — le poste `divers-non-categorise` porte à lui seul 311 des 1 855 lignes de la base.
  */
-const itemFilter = ref('')
+/** Postes retenus. Vide = aucun filtre de poste — c'est l'absence qui laisse tout passer. */
+const itemFilter = ref<string[]>([])
 const natureFilter = ref<'' | MovementNature>('')
 
 const natureByItem = computed(() =>
@@ -224,7 +224,7 @@ const visibleTransactions = computed(() => {
   const needle = normalize(filter.value.trim())
   return data.value.transactions.filter((t) => {
     if (needle !== '' && !normalize(t.label).includes(needle)) return false
-    if (itemFilter.value !== '' && t.categoryItemCode !== itemFilter.value) return false
+    if (itemFilter.value.length > 0 && !itemFilter.value.includes(t.categoryItemCode)) return false
     if (natureFilter.value !== '' && natureByItem.value.get(t.categoryItemCode) !== natureFilter.value) return false
     return true
   })
@@ -236,12 +236,12 @@ const visibleTotalCents = computed(() =>
 )
 
 const hasFilter = computed(() =>
-  filter.value.trim() !== '' || itemFilter.value !== '' || natureFilter.value !== '',
+  filter.value.trim() !== '' || itemFilter.value.length > 0 || natureFilter.value !== '',
 )
 
 function clearFilters() {
   filter.value = ''
-  itemFilter.value = ''
+  itemFilter.value = []
   natureFilter.value = ''
 }
 
@@ -452,30 +452,10 @@ const periodCorrectionRate = computed(() =>
           >
         </label>
 
-        <label class="tx-page__filter">
-          <span class="tx-page__filter-label">Poste</span>
-          <select
-            v-model="itemFilter"
-            class="input input--sm"
-          >
-            <option value="">
-              Tous
-            </option>
-            <optgroup
-              v-for="group in groupsWithItems"
-              :key="group.code"
-              :label="group.label"
-            >
-              <option
-                v-for="item in group.items"
-                :key="item.code"
-                :value="item.code"
-              >
-                {{ item.label }}
-              </option>
-            </optgroup>
-          </select>
-        </label>
+        <span class="tx-page__filter">
+          <span class="tx-page__filter-label">Postes</span>
+          <CategoryFilter v-model="itemFilter" />
+        </span>
 
         <label class="tx-page__filter">
           <span class="tx-page__filter-label">Nature</span>
