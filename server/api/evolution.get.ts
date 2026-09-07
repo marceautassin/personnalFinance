@@ -13,18 +13,20 @@ import {
 } from '~~/server/services/analysis-engine'
 import { bucketBounds, shiftBucket, bucketLabel, bucketOf, type Granularity } from '~~/shared/types/granularity'
 import type { MovementNature } from '~~/shared/types/movement-nature'
+import { cents } from '~~/shared/types/money'
 
 /**
- * GET /api/evolution — la trajectoire sur douze tranches (FR31, FR34).
+ * GET /api/evolution — la trajectoire sur la période regardée (FR31, FR34).
  *
  * Page distincte de l'analyse, et endpoint distinct, parce que la PORTÉE est différente :
- * `/api/analysis` décrit une période, celui-ci en traverse douze. Les mélanger sous un même
+ * `/api/analysis` décrit une période d'un bloc, celui-ci la DÉCOUPE. Les mélanger sous un même
  * sélecteur rendait la page d'analyse incompréhensible — on choisissait « juillet 2026 » et
  * deux blocs sur trois répondaient autre chose (recette du 2026-09-05).
  *
- * La fenêtre est FIXE à douze tranches. Réglable le jour où l'historique le justifiera ;
- * aujourd'hui, un choix de plus serait un choix sans conséquence.
+ * Le découpage est toujours le MOIS : une année en donne douze, un trimestre trois, « tout
+ * l'historique » autant que de mois portant des mouvements (refonte du 2026-09-07).
  */
+
 /**
  * Mois d'une période regardée — les douze d'une année, les trois d'un trimestre.
  *
@@ -175,10 +177,10 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
     return {
       bucket,
       label: bucketLabel(bucket, granularity),
-      incomeCents: point?.incomeCents ?? (0 as AnalysisSeriesPoint['incomeCents']),
-      expenseCents: point?.expenseCents ?? (0 as AnalysisSeriesPoint['expenseCents']),
-      resultCents: result as AnalysisSeriesPoint['resultCents'],
-      cumulativeResultCents: running as AnalysisSeriesPoint['cumulativeResultCents'],
+      incomeCents: cents(point?.incomeCents ?? 0),
+      expenseCents: cents(point?.expenseCents ?? 0),
+      resultCents: cents(result),
+      cumulativeResultCents: cents(running),
     }
   })
 

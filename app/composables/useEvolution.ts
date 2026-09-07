@@ -44,8 +44,9 @@ export function useEvolution(initialPeriod?: string) {
    * moindre mutation invalide les vues, `/api/periods` est refetché, et l'utilisateur était
    * renvoyé sur la dernière période à chaque correction.
    */
+  const periods = usePeriodBounds()
+
   if (!initialPeriod) {
-    const periods = usePeriodBounds()
     // Un drapeau, et non le handle du watcher : avec `immediate: true`, le callback part
     // pendant l'appel à `watch()`, donc AVANT que la constante qui le reçoit ne soit
     // initialisée. Y toucher lève une `ReferenceError`.
@@ -97,8 +98,13 @@ export function useEvolution(initialPeriod?: string) {
       period.value = EVOLUTION_ALL
       return
     }
+    // Depuis « tout l'historique », on n'a pas de date de référence. On prend la dernière
+    // tranche affichée, et à défaut la dernière date CONNUE — jamais le mois calendaire, qui
+    // ouvrirait un écran vide chaque 1er janvier (revue du 2026-09-07).
     const anchor = period.value === EVOLUTION_ALL
-      ? (fetchState.data.value?.buckets.at(-1) ?? new Date().toISOString().slice(0, 7))
+      ? (fetchState.data.value?.buckets.at(-1)
+        ?? periods.data.value?.lastDate?.slice(0, 7)
+        ?? new Date().toISOString().slice(0, 7))
       : period.value
     const firstMonth = anchor.includes('-T')
       ? `${anchor.slice(0, 4)}-${String((Number(anchor.slice(-1)) - 1) * 3 + 1).padStart(2, '0')}`

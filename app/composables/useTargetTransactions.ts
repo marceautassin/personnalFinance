@@ -36,6 +36,10 @@ export function useTargetTransactions() {
       openBucket.value = null
       transactions.value = []
       failed.value = false
+      // Refermer pendant un chargement laissait `loading` à vrai : le `finally` de la requête
+      // en vol est neutralisé par le jeton, personne d'autre ne le retombe (revue du
+      // 2026-09-07).
+      loading.value = false
       return
     }
 

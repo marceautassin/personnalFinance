@@ -334,7 +334,9 @@ function isDeltaAlarming(value: number): boolean {
                 <span class="dist__amount dist__flow">{{ flow(item.outflowCents) }}</span>
                 <span class="dist__amount dist__flow">{{ flow(item.inflowCents) }}</span>
                 <span class="dist__amount">{{ formatEuros(item.totalCents as Cents) }}</span>
-                <span class="dist__count">{{ item.transactionCount }} tx</span>
+                <!-- Colonne d'écart au niveau rubrique : un poste n'en a pas, et y glisser son
+                     compteur le ferait lire sous « vs <période> » (revue du 2026-09-07). -->
+                <span />
               </template>
               <template v-else>
                 <span />

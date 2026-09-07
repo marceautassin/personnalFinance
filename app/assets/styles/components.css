@@ -297,6 +297,9 @@
 /* Trois éléments soudés en un seul objet : deux flèches encadrant un libellé. Séparés, ils se
    lisent comme trois contrôles indépendants. */
 .stepper { display: inline-flex; align-items: center; }
+/* Une flèche indisponible doit SE VOIR : `aria-disabled` la dit au lecteur d'écran, rien ne
+   la disait à l'œil, et elle restait cliquable sans effet (revue du 2026-09-07). */
+.stepper__btn[aria-disabled='true'] { opacity: 0.4; cursor: not-allowed; }
 .stepper__btn {
   width: var(--control-height-sm);
   height: var(--control-height-sm);
