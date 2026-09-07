@@ -234,6 +234,9 @@
   color: var(--color-text-muted);
   white-space: nowrap;
 }
+/* Une ligne neutralisée s'efface : elle ne pèse plus rien dans les totaux, l'étiquette ne doit
+   pas peser davantage à l'écran (epic 19). */
+.tag--muted { background: transparent; border: 1px solid var(--color-hairline); }
 
 /* ============================================================ SURVOL (menu, dialogue) */
 

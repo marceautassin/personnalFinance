@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { analyze, categorySeries, type AnalysisItemRef, type AnalysisTransaction } from './analysis-engine'
+import { analyze, categorySeries, neutralizeSettlements, type AnalysisItemRef, type AnalysisTransaction } from './analysis-engine'
 
 /**
  * NFR3 impose, pour chaque fonction de calcul, un cas nominal et au moins deux cas limites.
@@ -539,5 +539,126 @@ describe('categorySeries', () => {
       REF, 'month', { kind: 'item', code: 'alimentation-courses' }, BUCKETS,
     )
     expect(withRefund[0]!.totalCents).toBe(-18_000)
+  })
+})
+
+/**
+ * Neutralisation des avances remboursées — epic 19.
+ *
+ * L'utilisateur avance des achats pour un tiers et se fait rembourser plus tard, souvent en un
+ * seul virement couvrant plusieurs achats, souvent le mois suivant. Sans traitement, ces lignes
+ * gonflent ses dépenses ET ses recettes alors qu'il n'a ni dépensé ni gagné. Sur ses données
+ * réelles : 47 lignes, environ 8 700 €, 8 % des recettes de l'historique.
+ */
+describe('neutralizeSettlements', () => {
+  const g = (
+    date: string,
+    amountCents: number,
+    settlementGroupId: number | null = 1,
+    code = 'alimentation-courses',
+  ): AnalysisTransaction => ({ transactionDate: date, amountCents, categoryItemCode: code, settlementGroupId })
+
+  const sum = (rows: AnalysisTransaction[]) => rows.reduce((n, t) => n + t.amountCents, 0)
+
+  it('laisse intactes les lignes sans groupe', () => {
+    const rows = [g('2026-01-05', -18_000, null), g('2026-01-06', 5_000, null)]
+    expect(neutralizeSettlements(rows)).toEqual(rows)
+  })
+
+  /** Cas nominal : un virement qui couvre exactement plusieurs achats. */
+  it('efface les deux côtés quand la couverture est exacte', () => {
+    const out = neutralizeSettlements([
+      g('2026-01-05', -18_000),
+      g('2026-01-12', -4_200),
+      g('2026-03-03', 22_200, 1, 'remboursements-divers'),
+    ])
+    expect(out).toEqual([])
+  })
+
+  /** Cas limite — couverture partielle : le reste demeure une dépense, dans SON mois. */
+  it('laisse à charge ce qui n\'est pas remboursé, sur le mois de l\'avance', () => {
+    const out = neutralizeSettlements([
+      g('2026-01-05', -18_000),
+      g('2026-01-12', -4_200),
+      g('2026-02-20', -12_000),
+      g('2026-03-03', 25_000, 1, 'remboursements-divers'),
+    ])
+    // 25 000 couvrent 18 000 puis 4 200 ; il reste 2 800 sur l'avance de février, qui en
+    // devait 12 000 : 9 200 restent à charge, en février.
+    expect(out).toEqual([
+      { transactionDate: '2026-02-20', amountCents: -9_200, categoryItemCode: 'alimentation-courses', settlementGroupId: 1 },
+    ])
+  })
+
+  /** L'imputation part des avances les plus ANCIENNES, quel que soit l'ordre reçu. */
+  it('impute sur les avances les plus anciennes d\'abord', () => {
+    const out = neutralizeSettlements([
+      g('2026-02-20', -10_000),
+      g('2026-01-05', -10_000),
+      g('2026-03-03', 10_000, 1, 'remboursements-divers'),
+    ])
+    // Janvier est couvert, février reste dû.
+    expect(out).toEqual([
+      { transactionDate: '2026-02-20', amountCents: -10_000, categoryItemCode: 'alimentation-courses', settlementGroupId: 1 },
+    ])
+  })
+
+  /** Cas limite — excédent : ce qui dépasse n'a rien remboursé, c'est une recette. */
+  it('rend l\'excédent de remboursement comme une recette', () => {
+    const out = neutralizeSettlements([
+      g('2026-01-05', -10_000),
+      g('2026-03-03', 15_000, 1, 'remboursements-divers'),
+    ])
+    expect(out).toEqual([
+      { transactionDate: '2026-03-03', amountCents: 5_000, categoryItemCode: 'remboursements-divers', settlementGroupId: 1 },
+    ])
+  })
+
+  /** Cas limite — groupe ouvert : sans remboursement, rien n'est neutralisé. */
+  it('ne neutralise rien sur un groupe sans remboursement', () => {
+    const rows = [g('2026-01-05', -18_000), g('2026-01-12', -4_200)]
+    expect(neutralizeSettlements(rows)).toEqual(rows)
+  })
+
+  it('ne neutralise rien sur un groupe sans avance', () => {
+    const rows = [g('2026-03-03', 22_200, 1, 'remboursements-divers')]
+    expect(neutralizeSettlements(rows)).toEqual(rows)
+  })
+
+  /** L'invariant central : rien ne passe d'un mois à l'autre. */
+  it('ne déplace aucun montant d\'un mois vers un autre', () => {
+    const out = neutralizeSettlements([
+      g('2026-01-05', -18_000),
+      g('2026-03-03', 12_000, 1, 'remboursements-divers'),
+    ])
+    // Le reliquat reste daté de JANVIER, pas de mars.
+    expect(out).toEqual([
+      { transactionDate: '2026-01-05', amountCents: -6_000, categoryItemCode: 'alimentation-courses', settlementGroupId: 1 },
+    ])
+  })
+
+  it('traite chaque groupe indépendamment', () => {
+    const out = neutralizeSettlements([
+      g('2026-01-05', -10_000, 1),
+      g('2026-01-06', 10_000, 1, 'remboursements-divers'),
+      g('2026-01-07', -7_000, 2),
+    ])
+    expect(out).toEqual([
+      { transactionDate: '2026-01-07', amountCents: -7_000, categoryItemCode: 'alimentation-courses', settlementGroupId: 2 },
+    ])
+  })
+
+  /** Un groupe équilibré ne change pas le patrimoine : il ne fait que circuler. */
+  it('laisse la somme algébrique inchangée hors couverture', () => {
+    const rows = [
+      g('2026-01-05', -18_000),
+      g('2026-03-03', 12_000, 1, 'remboursements-divers'),
+      g('2026-01-09', -3_000, null),
+    ]
+    expect(sum(neutralizeSettlements(rows))).toBe(sum(rows))
+  })
+
+  it('accepte une liste vide', () => {
+    expect(neutralizeSettlements([])).toEqual([])
   })
 })

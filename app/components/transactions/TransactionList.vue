@@ -5,11 +5,29 @@ import { sortTransactions, type SortKey, type SortDirection } from '~/utils/tran
 
 const props = defineProps<{
   transactions: TransactionListItem[]
+  /** Lignes cochées, portées par la page — c'est elle qui sait quoi en faire (epic 19). */
+  selected?: number[]
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   categoryChange: [transactionId: number, code: string]
+  /**
+   * L'INTENTION, pas le résultat : c'est la page qui tient la sélection et la recalcule.
+   *
+   * Renvoyer ici un tableau déjà calculé perdait un clic sur deux — deux cases cochées coup
+   * sur coup lisaient la même prop, pas encore rafraîchie, et la seconde écrasait la première
+   * (recette du 2026-09-07).
+   */
+  toggleSelect: [transactionId: number]
+  toggleAllVisible: [ids: number[]]
 }>()
+
+const selectedSet = computed(() => new Set(props.selected ?? []))
+
+/** Coche ou décoche tout ce qui est VISIBLE — jamais ce qu'un filtre a écarté. */
+const allVisibleSelected = computed(() =>
+  props.transactions.length > 0 && props.transactions.every(t => selectedSet.value.has(t.id)),
+)
 
 /**
  * Tri par colonne, CLIENT (demande du 2026-09-07).
@@ -70,6 +88,17 @@ const ariaSort = (key: SortKey) =>
     <thead>
       <tr>
         <th
+          scope="col"
+          class="tx-list__col-pick"
+        >
+          <input
+            type="checkbox"
+            :checked="allVisibleSelected"
+            :aria-label="allVisibleSelected ? 'Tout décocher' : 'Cocher toutes les lignes affichées'"
+            @change="emit('toggleAllVisible', allVisibleSelected ? [] : props.transactions.map(t => t.id))"
+          >
+        </th>
+        <th
           v-for="col in COLUMNS"
           :key="col.key"
           scope="col"
@@ -96,7 +125,9 @@ const ariaSort = (key: SortKey) =>
         v-for="tx in sorted"
         :key="tx.id"
         :transaction="tx"
-        @category-change="(id, code) => $emit('categoryChange', id, code)"
+        :selected="selectedSet.has(tx.id)"
+        @toggle-select="(id) => emit('toggleSelect', id)"
+        @category-change="(id, code) => emit('categoryChange', id, code)"
       />
     </tbody>
   </table>
@@ -107,6 +138,7 @@ const ariaSort = (key: SortKey) =>
    survol y sont définis une fois pour les quatre tableaux de l'application. Ne restent ici que
    les LARGEURS de colonne, qui dépendent de ce que cette table-ci contient. */
 .tx-list { table-layout: fixed; }
+.tx-list__col-pick { width: 2.5rem; }
 .tx-list__col-date { width: 5.5rem; }
 .tx-list__col-amount { width: 7.5rem; }
 /* Assez large pour « Abonnements et prélèvements · Streaming » sur une seule ligne : à 32 px

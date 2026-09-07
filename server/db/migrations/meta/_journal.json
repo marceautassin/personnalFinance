@@ -50,6 +50,20 @@
       "when": 1788688533708,
       "tag": "0006_cool_boomerang",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788770439882,
+      "tag": "0007_uneven_joshua_kane",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788771201846,
+      "tag": "0008_exotic_darkstar",
+      "breakpoints": true
     }
   ]
 }

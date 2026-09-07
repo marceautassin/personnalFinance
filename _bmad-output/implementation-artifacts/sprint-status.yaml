@@ -378,6 +378,33 @@ development_status:
   18-17-tri-par-colonne-des-transactions: review
   18-18-filtre-multi-categories: review
   18-19-moyenne-mensuelle-de-la-cible: review
+
+  # Epic 19 - Avances remboursees : neutraliser sans effacer
+  # Capacite NOUVELLE, hors perimetre verrouille du 2026-09-04 : amendement PRD a porter.
+  # Ampleur mesuree : 47 lignes de recettes ressemblant a des remboursements, ~8 700 EUR,
+  # soit 8 % des recettes de l'historique.
+  # Cadrage arrete avec l'utilisateur le 2026-09-07 : les deux cotes sont ECARTES des agregats
+  # (aucun n'est reduit - c'est le seul modele qui ne deplace rien entre les mois), le reste
+  # non couvert demeure une depense dans SON mois, imputation sur les avances les plus
+  # anciennes d'abord, lignes visibles et tracables, neutralisation retroactive assumee.
+  epic-19: in-progress
+  19-1-grouper-des-transactions: review
+  19-2-neutraliser-les-lignes-couvertes: review
+  19-3-voir-et-gerer-ses-groupes: review
+  # Deux pieges rencontres a l'implementation, tous deux corriges :
+  #   • ALTER TABLE de SQLite ne porte PAS d'action de cle etrangere : la migration 0007 a
+  #     produit une contrainte nue la ou le schema declarait `ON DELETE SET NULL`. Le DDL de
+  #     test, lui, la declarait — les tests passaient donc la ou la production levait
+  #     « FOREIGN KEY constraint failed ». Le endpoint libere desormais les lignes lui-meme,
+  #     le schema et le DDL de test disent la verite, et la migration 0008 aligne la base.
+  #   • Le tableau calculait la selection depuis sa prop : deux cases cochees coup sur coup
+  #     lisaient la meme valeur, pas encore rafraichie, et la seconde ecrasait la premiere.
+  #     Le composant n'emet plus qu'une INTENTION, la page tient l'etat.
+  # Verifie de bout en bout sur une COPIE de la base reelle (jamais sur l'originale) :
+  # liaison -> badges -> suppression -> retour a l'etat initial. Sur avril 2026, une avance de
+  # 318,50 EUR et un virement de 410 EUR : depenses -4 112,40 -> -3 793,90, recettes
+  # 2 486,30 -> 2 167,80, et le PATRIMOINE inchange a -1 625,60 EUR.
+  epic-19-retrospective: optional
   # REVUE `pr-reviewer` du 2026-09-07 sur les 22 commits non relus (contexte neuf, validation
   # visuelle FAITE) : 1 BLOQUANT, 4 MAJEURS, 11 mineurs. Tous traites.
   #   • BLOQUANT — la derive de la cible se mesurait contre la DERNIERE tranche de la serie,

@@ -117,6 +117,21 @@ export const transactions = sqliteTable(
       .notNull()
       .references(() => categoryItems.code, { onDelete: 'restrict' }),
     isManual: integer('is_manual', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * Groupe de réconciliation auquel la ligne appartient (epic 19), ou `null`.
+     *
+     * ⚠️ **Aucune action `ON DELETE` n'est déclarée, et c'est délibéré.** `ALTER TABLE` de
+     * SQLite ne sait pas porter d'action de clé étrangère : la migration 0007, qui ajoute cette
+     * colonne à une table existante, produit une contrainte nue. Déclarer `set null` ici
+     * décrirait une base qui n'existe pas — le genre d'écart qui fait passer les tests là où la
+     * production échoue (constaté le 2026-09-07).
+     *
+     * C'est donc `DELETE /api/settlements/:id` qui LIBÈRE explicitement les lignes avant de
+     * supprimer le groupe, dans la même transaction. Une transaction est un fait bancaire ; un
+     * groupe n'est qu'une lecture qu'on en fait, et défaire la lecture ne défait pas le fait.
+     */
+    settlementGroupId: integer('settlement_group_id')
+      .references(() => settlementGroups.id),
     createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
   },
   t => ({
@@ -125,6 +140,7 @@ export const transactions = sqliteTable(
     // Story 17.8 : porte le filtre par poste, le dépliage d'une rubrique et la vérification
     // de clé étrangère avant suppression d'un poste. Sans lui, chacune scannait la table.
     transactionsItemIdx: index('transactions_item_idx').on(t.categoryItemCode),
+    transactionsSettlementIdx: index('transactions_settlement_idx').on(t.settlementGroupId),
   }),
 )
 
@@ -164,6 +180,28 @@ export const classificationRules = sqliteTable(
     classificationRulesItemIdx: index('classification_rules_item_idx').on(t.categoryItemCode),
   }),
 )
+
+/**
+ * settlement_groups — avances faites pour un tiers, et le ou les virements qui les remboursent.
+ *
+ * **Pourquoi une table et non un drapeau** (epic 19). Un remboursement groupe PLUSIEURS achats,
+ * arrive souvent un mois plus tard, et ne tombe pas toujours juste. Il faut donc un objet qui
+ * réunit N lignes, pas une marque posée sur chacune : c'est le groupe qui porte la
+ * réconciliation, et lui seul sait ce qui est couvert.
+ *
+ * Le groupe ne stocke AUCUN montant : tout se recalcule depuis ses lignes. Un total persisté
+ * divergerait dès qu'une ligne entre ou sort — c'est la même raison qui interdit les agrégats
+ * dans ce produit (D19).
+ */
+export const settlementGroups = sqliteTable('settlement_groups', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  /** Libellé libre — « courses parents », « voyage Espagne ». */
+  label: text('label').notNull(),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+})
+
+export type SettlementGroupRow = typeof settlementGroups.$inferSelect
+export type NewSettlementGroupRow = typeof settlementGroups.$inferInsert
 
 export type ClassificationRuleRow = typeof classificationRules.$inferSelect
 export type NewClassificationRuleRow = typeof classificationRules.$inferInsert

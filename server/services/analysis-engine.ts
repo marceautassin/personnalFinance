@@ -23,6 +23,82 @@ export interface AnalysisTransaction {
   transactionDate: string
   amountCents: number
   categoryItemCode: string
+  /** Groupe de réconciliation (epic 19), ou `null` — voir `neutralizeSettlements`. */
+  settlementGroupId?: number | null
+}
+
+/**
+ * Écarte des agrégats ce qu'une avance remboursée fait seulement CIRCULER (epic 19).
+ *
+ * **Le problème.** L'utilisateur avance des achats pour un tiers — courses, bouteille de gaz —
+ * et se fait rembourser plus tard, souvent en un seul virement couvrant plusieurs achats, et
+ * souvent le mois suivant. Sans traitement, ces lignes gonflent ses dépenses ET ses recettes,
+ * alors qu'il n'a ni dépensé ni gagné.
+ *
+ * **Le modèle, arrêté avec lui le 2026-09-07 : on ÉCARTE les deux côtés, on n'en réduit
+ * aucun.** C'est le seul qui ne déplace rien entre les mois. Réduire l'avance du montant
+ * remboursé obligerait à choisir quel mois porte la réduction — janvier, où l'achat a eu lieu,
+ * ou mars, où le virement est arrivé — et ferait donc bouger un mois par le fait d'un autre.
+ * Écarter chaque ligne dans SON mois laisse les deux justes.
+ *
+ * **Ce qui n'est pas couvert reste dû.** Le remboursement s'impute sur les avances les plus
+ * ANCIENNES d'abord — l'ordre d'un compte, celui que l'utilisateur reconnaît. Le reliquat d'une
+ * avance partiellement couverte demeure une dépense, dans son mois et sa rubrique. Un excédent
+ * de remboursement, lui, redevient une recette : c'est de l'argent reçu qui n'a rien remboursé.
+ *
+ * Transformation PURE : la base garde `amount_cents` tel qu'il figure au relevé (D28). Rien
+ * n'est écrit, rien n'est supprimé — les lignes restent traçables (NFR2).
+ */
+export function neutralizeSettlements(
+  transactions: readonly AnalysisTransaction[],
+): AnalysisTransaction[] {
+  const groups = new Map<number, AnalysisTransaction[]>()
+  const out: AnalysisTransaction[] = []
+
+  for (const tx of transactions) {
+    const id = tx.settlementGroupId
+    if (id === null || id === undefined) {
+      out.push(tx)
+      continue
+    }
+    const bucket = groups.get(id)
+    if (bucket) bucket.push(tx)
+    else groups.set(id, [tx])
+  }
+
+  for (const lines of groups.values()) {
+    // Les avances sont les SORTIES, les remboursements les entrées. Le signe est le fait
+    // bancaire, pas la nature du poste : une avance rangée en « Alimentation » et un
+    // remboursement rangé en « Remboursements » se compensent quand même.
+    const advances = lines.filter(t => t.amountCents < 0)
+      .sort((a, b) => a.transactionDate.localeCompare(b.transactionDate))
+    const refunds = lines.filter(t => t.amountCents > 0)
+
+    // `-` : les avances sont négatives, la couverture se raisonne en positif.
+    let remaining = refunds.reduce((sum, t) => sum + t.amountCents, 0)
+
+    for (const advance of advances) {
+      const owed = -advance.amountCents
+      const covered = Math.min(remaining, owed)
+      remaining -= covered
+      const residual = covered - owed
+      // Une avance entièrement couverte disparaît des agrégats ; une avance partiellement
+      // couverte y reste pour ce qui n'a pas été remboursé.
+      if (residual !== 0) out.push({ ...advance, amountCents: residual })
+    }
+
+    // Un remboursement qui excède les avances n'a rien remboursé : c'est une vraie recette.
+    // On la porte sur la ligne d'entrée la plus RÉCENTE, la seule qui puisse en être la cause.
+    if (remaining > 0) {
+      const latest = [...refunds].sort((a, b) => a.transactionDate.localeCompare(b.transactionDate)).at(-1)
+      if (latest) out.push({ ...latest, amountCents: remaining })
+    }
+
+    // Les lignes à montant nul après neutralisation ne sont pas rendues : les garder ferait
+    // compter des transactions qui ne pèsent plus rien dans les totaux qu'elles accompagnent.
+  }
+
+  return out
 }
 
 /** Le référentiel, aplati : de quoi situer un poste dans l'arbre. */
@@ -152,8 +228,12 @@ function totalsByItem(transactions: readonly AnalysisTransaction[]) {
  * signal.
  */
 export function analyze(input: AnalysisInput): AnalysisResult {
-  const { transactions, referential, granularity } = input
-  const previous = input.previousTransactions ?? []
+  const { referential, granularity } = input
+  // La neutralisation s'applique AVANT toute agrégation, et à chacune des deux périodes
+  // séparément : une avance de janvier remboursée en mars doit sortir de janvier comme de
+  // mars, sans que l'une déteigne sur l'autre (epic 19).
+  const transactions = neutralizeSettlements(input.transactions)
+  const previous = neutralizeSettlements(input.previousTransactions ?? [])
   const hasPrevious = input.hasPrevious ?? input.previousTransactions !== undefined
 
   const byCode = new Map(referential.map(r => [r.code, r]))
@@ -220,7 +300,11 @@ export function analyze(input: AnalysisInput): AnalysisResult {
     })
   }
 
-  const series = buildSeries(input.seriesTransactions ?? transactions, byCode, granularity)
+  const series = buildSeries(
+    input.seriesTransactions ? neutralizeSettlements(input.seriesTransactions) : transactions,
+    byCode,
+    granularity,
+  )
   const indicators = computeIndicators(natures, series)
 
   return { natures, indicators, series, orphanCount }
@@ -307,12 +391,15 @@ export interface CategorySeriesPoint {
  * L'appelant fournit donc les tranches attendues.
  */
 export function categorySeries(
-  transactions: readonly AnalysisTransaction[],
+  rawTransactions: readonly AnalysisTransaction[],
   referential: readonly AnalysisItemRef[],
   granularity: Granularity,
   target: SeriesTarget,
   buckets: readonly string[],
 ): CategorySeriesPoint[] {
+  // Une avance remboursée ne doit pas davantage peser sur la trajectoire d'une rubrique que
+  // sur son total (epic 19).
+  const transactions = neutralizeSettlements(rawTransactions)
   const byCode = new Map(referential.map(r => [r.code, r]))
   const matches = (code: string) => {
     const ref = byCode.get(code)

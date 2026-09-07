@@ -6,6 +6,7 @@ import { ratio, formatRatio } from '~~/shared/types/ratio'
 import { cents, formatEuros } from '~~/shared/types/money'
 import { type MovementNature, NATURE_OPTIONS } from '~~/shared/types/movement-nature'
 import { flattenReferential } from '~/composables/useCategories'
+import { useSettlements } from '~/composables/useSettlements'
 import {
   GRANULARITIES,
   bucketLabel,
@@ -39,12 +40,89 @@ const granularity = computed<Granularity>(() => {
 
 const mutationError = ref<string | null>(null)
 
-const { data, pending, error, mutateCategory, ruleSuggestion, dismissSuggestion }
+const { data, pending, error, refresh, mutateCategory, ruleSuggestion, dismissSuggestion }
   = useTransactions(period, granularity)
 const { addRule, previewRule, applyRuleToHistory } = useRules()
 const { data: groups } = useCategories()
 
 const { mapError } = useApiError()
+
+/**
+ * Sélection de lignes pour créer une réconciliation (epic 19).
+ *
+ * Vidée à chaque changement de période : une sélection qui survivrait au changement porterait
+ * sur des lignes qu'on ne voit plus, et le geste suivant s'appliquerait à l'aveugle.
+ */
+const picked = ref<number[]>([])
+const settlementLabel = ref('')
+const linking = ref(false)
+const { link: linkSettlement, unlink: unlinkSettlement } = useSettlements()
+
+watch(period, () => {
+  picked.value = []
+  settlementLabel.value = ''
+})
+
+/** Somme de ce qui est coché — dire si les deux côtés s'équilibrent AVANT de lier. */
+const pickedBalance = computed(() =>
+  cents(data.value.transactions
+    .filter(t => picked.value.includes(t.id))
+    .reduce((sum, t) => sum + t.amountCents, 0)),
+)
+
+/** La sélection vit ICI : le tableau n'émet qu'une intention (recette du 2026-09-07). */
+function onToggleSelect(id: number) {
+  picked.value = picked.value.includes(id)
+    ? picked.value.filter(x => x !== id)
+    : [...picked.value, id]
+}
+
+/**
+ * Groupe des lignes cochées, quand elles appartiennent TOUTES au même — la condition pour
+ * pouvoir le défaire sans ambiguïté.
+ */
+const pickedGroupId = computed(() => {
+  const groups = new Set(
+    data.value.transactions
+      .filter(t => picked.value.includes(t.id))
+      .map(t => t.settlementGroupId ?? null),
+  )
+  const only = [...groups]
+  return groups.size === 1 && only[0] != null ? only[0] : null
+})
+
+async function onUnlink() {
+  const groupId = pickedGroupId.value
+  if (groupId === null || linking.value) return
+  mutationError.value = null
+  linking.value = true
+  const outcome = await unlinkSettlement(groupId)
+  linking.value = false
+  if (outcome.error) {
+    mutationError.value = outcome.error
+    return
+  }
+  picked.value = []
+  await refresh()
+}
+
+async function onLink() {
+  if (picked.value.length < 2 || linking.value) return
+  mutationError.value = null
+  linking.value = true
+  const outcome = await linkSettlement(
+    settlementLabel.value.trim() || 'Avance remboursée',
+    picked.value,
+  )
+  linking.value = false
+  if (outcome.error) {
+    mutationError.value = outcome.error
+    return
+  }
+  picked.value = []
+  settlementLabel.value = ''
+  await refresh()
+}
 
 const savingRule = ref(false)
 /** Compte rendu de la dernière application d'une règle à l'historique (story 18.2). */
@@ -505,9 +583,69 @@ const periodCorrectionRate = computed(() =>
       >
         Aucune ligne de ce mois ne passe les filtres actifs.
       </p>
+      <!--
+        Barre de réconciliation : elle n'apparaît qu'une fois des lignes cochées, et dit ce
+        qu'elles totalisent. Un solde à zéro annonce une couverture exacte ; sinon, l'écart
+        restera à charge (epic 19).
+      -->
+      <div
+        v-if="picked.length > 0"
+        class="tx-page__link-bar"
+        role="status"
+      >
+        <span>
+          <strong>{{ picked.length }}</strong> ligne(s) ·
+          solde <strong>{{ formatEuros(pickedBalance) }}</strong>
+          <template v-if="pickedBalance === 0"> — couverture exacte</template>
+        </span>
+        <input
+          v-if="pickedGroupId === null"
+          v-model="settlementLabel"
+          type="text"
+          class="input input--sm"
+          maxlength="120"
+          placeholder="Ex : courses parents"
+          aria-label="Nom de la réconciliation"
+        >
+        <!-- Défaire prime sur lier : quand la sélection est déjà un groupe, proposer de la
+             lier n'aurait aucun sens (le serveur la refuserait). -->
+        <button
+          v-if="pickedGroupId !== null"
+          type="button"
+          class="btn btn--danger btn--sm"
+          :aria-disabled="linking"
+          aria-label="Défaire cette réconciliation"
+          @click="onUnlink"
+        >
+          {{ linking ? 'Suppression…' : 'Défaire la réconciliation' }}
+        </button>
+        <button
+          v-else
+          type="button"
+          class="btn btn--primary btn--sm"
+          :aria-disabled="picked.length < 2 || linking"
+          :aria-label="picked.length < 2
+            ? 'Lier — indisponible, il faut au moins deux lignes'
+            : `Lier ces ${picked.length} lignes`"
+          @click="onLink"
+        >
+          {{ linking ? 'Liaison…' : 'Lier ces lignes' }}
+        </button>
+        <button
+          type="button"
+          class="btn btn--quiet btn--sm"
+          @click="picked = []"
+        >
+          Annuler
+        </button>
+      </div>
+
       <TransactionList
-        v-else
+        v-if="visibleTransactions.length > 0"
+        :selected="picked"
         :transactions="visibleTransactions"
+        @toggle-select="onToggleSelect"
+        @toggle-all-visible="ids => picked = ids"
         @category-change="onCategoryChange"
       />
     </template>
@@ -519,6 +657,17 @@ const periodCorrectionRate = computed(() =>
 .tx-page__title { min-width: 10rem; }
 .tx-page__pending { color: var(--color-text-muted); }
 .tx-page__scale { display: flex; align-items: center; gap: var(--space-2); }
+.tx-page__link-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-accent-border, var(--color-border));
+  border-radius: var(--radius-md);
+  background: var(--color-accent-subtle);
+  font-size: var(--font-size-sm);
+}
 
 .tx-page__tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .tx-page__filter { display: flex; align-items: center; gap: var(--space-2); }

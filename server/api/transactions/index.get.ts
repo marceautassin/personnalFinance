@@ -5,6 +5,7 @@ import { transactions, categoryItems } from '~~/server/db/schema'
 import { type StatementReliability, worstReliability } from '~~/shared/types/statement-reliability'
 import { reliabilityOverlapping } from '~~/server/utils/statement-reliability'
 import { validateQuery } from '~~/server/utils/validation'
+import { settlementStatusByTransaction } from '~~/server/utils/settlement-status'
 import { TransactionListQuerySchema } from '~~/shared/schemas/transaction.schema'
 
 export default defineEventHandler(async (event) => {
@@ -29,6 +30,7 @@ export default defineEventHandler(async (event) => {
       amountCents: transactions.amountCents,
       categoryItemCode: transactions.categoryItemCode,
       isManual: transactions.isManual,
+      settlementGroupId: transactions.settlementGroupId,
     })
     .from(transactions)
     .where(and(
@@ -57,5 +59,12 @@ export default defineEventHandler(async (event) => {
     ? worstReliability(statements.map(s => s.reliability))
     : null
 
-  return { transactions: rows, reliability }
+  // L'état de réconciliation est CALCULÉ, en rejouant la neutralisation du moteur : deux
+  // implémentations de la même règle finiraient par diverger (epic 19, story 19.3).
+  const status = settlementStatusByTransaction(rows)
+
+  return {
+    transactions: rows.map(r => ({ ...r, settlementStatus: status.get(r.id) ?? null })),
+    reliability,
+  }
 })

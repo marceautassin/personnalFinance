@@ -1864,3 +1864,120 @@ afin de situer un mois par rapport à l'ordinaire plutôt que par rapport au moi
 **Note de portée.** La moyenne est celle des MOIS, pas celle des transactions. Le panier moyen
 par transaction répond à une autre question — « est-ce que j'achète plus souvent ou plus
 cher ? » — qui reste ouverte.
+
+## Epic 19 — Avances remboursées : neutraliser sans effacer
+
+> **Demandé le 2026-09-07, et qualifié « assez important » par l'utilisateur.** « Il arrive
+> souvent que je fasse des achats pour mes parents et je me rembourse après via un virement. Il
+> faudrait pouvoir lier des transactions de dépenses et de revenus pour qu'elles ne viennent pas
+> polluer mon analyse. » Puis, sur la forme réelle : « je fais plusieurs dépenses (courses,
+> achat de bouteille de gaz etc.) et je me rembourse en UN virement qui regroupe plusieurs
+> dépenses ou un virement du montant exact. Il faut donc un mécanisme de réconciliation qui me
+> permette de garder la trace tout de même, mais ne pas gonfler ou dégonfler artificiellement
+> mes analyses. Sachant aussi qu'un remboursement peut se faire sur un autre mois. »
+
+**Ampleur mesurée sur les données réelles :** 47 lignes de recettes ressemblant à des
+remboursements, environ 8 700 € — « SEJOUR EXEMPLE » 440 €, « MEUBLE EXEMPLE » 610 €. Ce
+n'est pas un cas marginal, c'est 8 % des recettes de l'historique.
+
+**Portée PRD.** Capacité NOUVELLE, absente du périmètre verrouillé du 2026-09-04. Elle sert
+directement NFR4 — ne pas confondre ce qui enrichit et ce qui circule — et la mesure du
+patrimoine de la story 18.14, qu'elle rend plus juste. Amendement à porter au PRD.
+
+**Décisions de cadrage, prises avec l'utilisateur le 2026-09-07.**
+
+1. **Les deux côtés sont ÉCARTÉS des agrégats, aucun n'est réduit.** C'est le seul modèle qui
+   ne déplace rien entre les mois : janvier perd une dépense qui n'était pas la sienne, mars
+   perd une recette qui n'en était pas une. Réduire la dépense du montant remboursé obligerait
+   à choisir quel mois porte la réduction — et c'est là qu'on gonfle ou dégonfle.
+2. **Le reste non couvert demeure une vraie dépense**, dans SON mois et SA rubrique. Le
+   remboursement s'impute sur les avances les plus anciennes d'abord, jusqu'à épuisement.
+3. **Les lignes restent visibles et traçables** : marquées dans la liste, jamais supprimées.
+4. **La neutralisation est rétroactive** : lier en mars une avance de janvier fait baisser les
+   dépenses de janvier après coup. Conséquence assumée du modèle.
+5. **Un groupe peut rester ouvert** : sans remboursement rattaché, rien n'est neutralisé et les
+   dépenses restent à la charge de l'utilisateur — ce qui est la vérité du moment.
+
+### Story 19.1: Grouper des transactions qui se compensent
+
+En tant qu'utilisateur,
+je veux réunir plusieurs dépenses et le ou les virements qui me les remboursent,
+afin que ce que j'ai avancé pour un tiers cesse de peser sur mon analyse.
+
+**Acceptance Criteria:**
+
+**Given** plusieurs transactions
+**When** je les réunis dans un groupe
+**Then** le groupe existe, porte un libellé, et chaque ligne sait à quel groupe elle appartient
+
+**Given** une ligne d'un groupe
+**When** je la retire
+**Then** elle redevient une transaction ordinaire, et le groupe se recalcule
+
+**Given** un groupe
+**When** il ne reste qu'une ligne ou aucune
+**Then** il reste valide — une avance sans remboursement est un groupe ouvert, pas une erreur
+
+**Given** un groupe supprimé
+**When** la suppression a lieu
+**Then** aucune transaction n'est perdue : elles redeviennent simplement libres
+
+### Story 19.2: Neutraliser les lignes couvertes, garder le reste
+
+En tant qu'utilisateur,
+je veux que seules les sommes réellement remboursées disparaissent de mon analyse,
+afin que ce que j'ai payé de ma poche continue d'apparaître.
+
+**Acceptance Criteria:**
+
+**Given** un groupe dont les remboursements couvrent exactement les avances
+**When** la période est agrégée
+**Then** ni les avances ni les remboursements n'entrent dans les dépenses ou les recettes
+
+**Given** un groupe dont les remboursements couvrent partiellement les avances
+**When** la période est agrégée
+**Then** l'imputation se fait sur les avances les plus ANCIENNES d'abord, et le reste non
+couvert compte comme dépense dans son mois et sa rubrique
+
+**Given** un groupe dont les remboursements dépassent les avances
+**When** la période est agrégée
+**Then** l'excédent compte comme une recette — c'est de l'argent reçu qui n'a rien remboursé
+
+**Given** un groupe sans aucun remboursement
+**When** la période est agrégée
+**Then** rien n'est neutralisé : les avances restent des dépenses
+
+**Given** un groupe à cheval sur plusieurs mois
+**When** chaque mois est agrégé
+**Then** aucun montant ne passe d'un mois à l'autre — chaque ligne est traitée dans le sien
+
+**Given** la variation du patrimoine
+**When** elle est calculée sur une période contenant un groupe équilibré
+**Then** elle est inchangée par ce groupe : faire circuler l'argent d'un tiers n'enrichit ni
+n'appauvrit
+
+**Note d'implémentation.** La neutralisation est une transformation PURE appliquée aux lignes
+avant agrégation, dans `analysis-engine`. Elle ne touche jamais la base : `amount_cents` reste
+le montant du relevé (D28). NFR3 s'applique — couverture exacte, partielle, excédentaire,
+groupe ouvert, groupe à cheval sur deux mois.
+
+### Story 19.3: Voir et gérer ses groupes
+
+En tant qu'utilisateur,
+je veux repérer une ligne neutralisée et retrouver le groupe qui l'explique,
+afin que la traçabilité ne soit pas sacrifiée à la propreté des chiffres (NFR2).
+
+**Acceptance Criteria:**
+
+**Given** la liste des transactions
+**When** une ligne appartient à un groupe
+**Then** un BADGE la signale (demandé explicitement le 2026-09-07), et dit si elle est
+neutralisée, partiellement couverte, ou restée à la charge de l'utilisateur
+
+**Given** plusieurs lignes sélectionnées
+**When** je demande à les lier
+**Then** un groupe est créé, et les vues d'analyse se rafraîchissent
+
+**Given** un groupe
+**When** il est affiché
+**Then** on voit ce qu'il totalise d'avances, de remboursements, et ce qui reste à charge

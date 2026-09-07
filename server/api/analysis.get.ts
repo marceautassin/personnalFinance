@@ -69,6 +69,8 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
       transactionDate: transactions.transactionDate,
       amountCents: transactions.amountCents,
       categoryItemCode: transactions.categoryItemCode,
+      // Le moteur en a besoin pour écarter les avances remboursées (epic 19).
+      settlementGroupId: transactions.settlementGroupId,
     })
     .from(transactions)
     .where(and(gte(transactions.transactionDate, start), lte(transactions.transactionDate, end)))

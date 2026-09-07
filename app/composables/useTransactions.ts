@@ -19,6 +19,10 @@ export interface TransactionListItem {
   amountCents: Cents
   categoryItemCode: string
   isManual: boolean
+  /** Groupe de réconciliation (epic 19), ou `null`. */
+  settlementGroupId?: number | null
+  /** Ce que la réconciliation a fait de cette ligne — `null` hors groupe. */
+  settlementStatus?: 'neutralized' | 'partial' | 'outstanding' | null
 }
 
 export interface TransactionsResponse {
