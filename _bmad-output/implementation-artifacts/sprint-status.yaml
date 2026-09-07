@@ -375,3 +375,14 @@ development_status:
   # Le selecteur de l'evolution designait le PAS, la fenetre valant douze tranches de ce pas :
   # « Annee » donnait douze ANNEES. Il designe desormais la PERIODE regardee, decoupee en mois.
   18-16-evolution-par-periode: review
+  # REVUE `pr-reviewer` du 2026-09-07 sur les 22 commits non relus (contexte neuf, validation
+  # visuelle FAITE) : 1 BLOQUANT, 4 MAJEURS, 11 mineurs. Tous traites.
+  #   • BLOQUANT — la derive de la cible se mesurait contre la DERNIERE tranche de la serie,
+  #     or la vue annee contient les mois a venir, a zero. Alimentation affichait -964 EUR
+  #     en neutre quand elle avait AUGMENTE de 361 EUR, signal de couleur inverse.
+  #   • MAJEURS — sous-titres et caption restes sur l'ancien modele (« douze tranches »,
+  #     « tresorerie cumulee »), et aucun etat vide quand l'historique ne porte rien.
+  #   • Trouve en verifiant les correctifs : un index de survol survivait au changement de vue
+  #     et faisait planter le rendu du graphique. La serie n'ayant plus une longueur fixe,
+  #     c'est un defaut introduit par 18.16 elle-meme.
+  # E2E NON joues par le relecteur (port occupe par le serveur de dev) : joues ensuite, 22 verts.
