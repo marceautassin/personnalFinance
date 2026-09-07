@@ -1831,3 +1831,36 @@ afin de comparer des dépenses qui vont ensemble sans les regarder une par une.
 **Note d'implémentation.** La sélection est une simple liste de codes de POSTES : cocher une
 rubrique coche les siens. Rien n'a besoin de savoir d'où vient une sélection, et le filtrage
 reste une appartenance à un ensemble.
+
+### Story 18.19: Moyenne mensuelle de la cible suivie
+
+> **Demandé le 2026-09-07 :** « dans la section suivre une rubrique ce serait chouette de
+> pouvoir avoir le choix entre la somme et la moyenne dans le tableau ». Arbitré en LIGNE DE
+> RÉFÉRENCE : le tableau garde ses sommes, la moyenne s'ajoute en pied et sur la courbe.
+
+En tant qu'utilisateur,
+je veux savoir ce qu'une rubrique me coûte en moyenne par mois,
+afin de situer un mois par rapport à l'ordinaire plutôt que par rapport au mois précédent.
+
+**Acceptance Criteria:**
+
+**Given** une cible suivie
+**When** son tableau est affiché
+**Then** un pied de tableau donne la moyenne mensuelle et le nombre de mois sur lequel elle porte
+
+**Given** une période contenant des mois sans mouvement
+**When** la moyenne est calculée
+**Then** ces mois sont EXCLUS du dénominateur — sur une année en cours, les mois à venir
+écraseraient la moyenne
+
+**Given** une moyenne affichée
+**When** la courbe est tracée
+**Then** une ligne de référence la matérialise, orientée comme la courbe
+
+**Given** une cible sans aucun mouvement sur la période
+**When** le tableau est affiché
+**Then** aucune moyenne n'est annoncée — il n'y en a pas, et zéro n'en serait pas une
+
+**Note de portée.** La moyenne est celle des MOIS, pas celle des transactions. Le panier moyen
+par transaction répond à une autre question — « est-ce que j'achète plus souvent ou plus
+cher ? » — qui reste ouverte.

@@ -5,7 +5,7 @@ import { bucketBounds } from '~~/shared/types/granularity'
 import { EVOLUTION_VIEW_LABELS, type EvolutionView } from '~/composables/useEvolution'
 import { useTargetTransactions } from '~/composables/useTargetTransactions'
 import { formatDate } from '~/utils/dates'
-import { formatEuros, type Cents } from '~~/shared/types/money'
+import { formatEuros, cents, type Cents } from '~~/shared/types/money'
 
 const route = useRoute()
 const router = useRouter()
@@ -106,6 +106,28 @@ watch([target, period], () => targetTx.reset())
  * décembre à janvier donnait « −964 € » sur une Alimentation qui avait en réalité AUGMENTÉ
  * de 318 € entre janvier et août — chiffre faux, et signal de couleur inversé.
  */
+/**
+ * Moyenne mensuelle de la cible sur la période affichée (demande du 2026-09-07).
+ *
+ * ⚠️ Calculée sur les mois qui PORTENT des mouvements, pas sur toutes les tranches. La vue
+ * annuelle contient les mois à venir, à zéro : les compter au dénominateur écraserait la
+ * moyenne d'un tiers en septembre. Le nombre de mois retenus est affiché, pour que le
+ * dénominateur ne soit jamais implicite.
+ */
+const targetAverage = computed(() => {
+  const filled = (data.value?.targetSeries ?? []).filter(p => p.transactionCount > 0)
+  if (filled.length === 0) return null
+  const sign = targetInverted.value ? -1 : 1
+  const total = filled.reduce((sum, p) => sum + p.totalCents, 0)
+  return {
+    months: filled.length,
+    /** Signé comme en base, pour le tableau qui garde le signe bancaire. */
+    rawCents: cents(Math.round(total / filled.length)),
+    /** Orientée comme la courbe, pour la ligne de référence du graphique. */
+    orientedCents: cents(Math.round((total / filled.length) * sign)),
+  }
+})
+
 const targetDrift = computed(() => {
   const filled = (data.value?.targetSeries ?? []).filter(p => p.transactionCount > 0)
   if (filled.length < 2) return null
@@ -260,6 +282,9 @@ const targetDrift = computed(() => {
           <TrendChart
             :points="targetPoints"
             :value-label="targetValueLabel"
+            :reference="targetAverage
+              ? { value: targetAverage.orientedCents, label: `moyenne ${formatEuros(targetAverage.rawCents)}` }
+              : null"
           />
           <p
             v-if="targetInverted"
@@ -379,6 +404,19 @@ const targetDrift = computed(() => {
                 </tr>
               </template>
             </tbody>
+            <!--
+              La moyenne en pied de tableau, avec son dénominateur : « sur 8 mois » dit qu'elle
+              ne porte que sur les mois qui ont vécu, pas sur toutes les tranches affichées.
+            -->
+            <tfoot v-if="targetAverage">
+              <tr class="evo-page__avg">
+                <th scope="row">
+                  Moyenne mensuelle
+                </th>
+                <td>{{ formatEuros(targetAverage.rawCents) }}</td>
+                <td>sur {{ targetAverage.months }} mois</td>
+              </tr>
+            </tfoot>
           </table>
         </template>
       </section>
@@ -512,6 +550,13 @@ const targetDrift = computed(() => {
 .evo-page__jump { color: inherit; text-decoration: none; }
 .evo-page__jump::after { content: ''; position: absolute; inset: 0; }
 .evo-page__clickable:focus-within { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+.evo-page__avg th,
+.evo-page__avg td {
+  border-top: 2px solid var(--color-border);
+  font-weight: 600;
+}
+.evo-page__avg td:last-child { font-weight: 400; color: var(--color-text-muted); }
 
 .evo-page__expand {
   display: inline-flex;

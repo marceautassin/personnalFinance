@@ -30,7 +30,14 @@ const props = withDefaults(defineProps<{
   height?: number
   /** Nom de la grandeur suivie, affiché dans l'infobulle. */
   valueLabel?: string
-}>(), { filled: false, height: 180, valueLabel: 'Montant' })
+  /**
+   * Ligne de référence horizontale — la moyenne, typiquement (demande du 2026-09-07).
+   *
+   * Un chiffre en pied de tableau situe une valeur ; tracé sur la courbe, il montre d'un coup
+   * d'œil quels mois passent au-dessus de l'ordinaire et lesquels restent en dessous.
+   */
+  reference?: { value: number, label: string } | null
+}>(), { filled: false, height: 180, valueLabel: 'Montant', reference: null })
 
 /*
  * Largeur du repère, calée sur la largeur RÉELLE de rendu (conteneur 1 600 px moins ses
@@ -242,6 +249,26 @@ const tip = computed(() => {
           :class="hoveredPoint.value < 0 ? 'trend__dot trend__dot--negative' : 'trend__dot'"
         />
 
+        <!--
+          Tracée AVANT les bandes de survol pour rester sous elles, et après la courbe pour
+          rester lisible par-dessus l'aire remplie.
+        -->
+        <line
+          v-if="reference"
+          :x1="PAD.left"
+          :x2="W - PAD.right"
+          :y1="y(reference.value)"
+          :y2="y(reference.value)"
+          class="trend__ref"
+        />
+        <text
+          v-if="reference"
+          :x="W - PAD.right"
+          :y="y(reference.value) - 4"
+          text-anchor="end"
+          class="trend__ref-label"
+        >{{ reference.label }}</text>
+
         <rect
           v-for="band in bands"
           :key="`h-${band.key}`"
@@ -301,6 +328,14 @@ const tip = computed(() => {
 .trend__tip[data-anchor='end'] { transform: translateX(-100%); }
 .trend__tip span { display: flex; align-items: center; gap: var(--space-3); }
 .trend__tip b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.trend__ref {
+  stroke: var(--color-text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+.trend__ref-label { fill: var(--color-text-muted); font-size: 11px; }
+
 .trend__tip-part { font-size: var(--font-size-xs); color: var(--color-text-muted); }
 .trend__tip-more { font-style: italic; }
 .trend__tip-neg { color: var(--color-danger); }
