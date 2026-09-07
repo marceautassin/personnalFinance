@@ -375,6 +375,7 @@ development_status:
   # Le selecteur de l'evolution designait le PAS, la fenetre valant douze tranches de ce pas :
   # « Annee » donnait douze ANNEES. Il designe desormais la PERIODE regardee, decoupee en mois.
   18-16-evolution-par-periode: review
+  18-17-tri-par-colonne-des-transactions: review
   # REVUE `pr-reviewer` du 2026-09-07 sur les 22 commits non relus (contexte neuf, validation
   # visuelle FAITE) : 1 BLOQUANT, 4 MAJEURS, 11 mineurs. Tous traites.
   #   • BLOQUANT — la derive de la cible se mesurait contre la DERNIERE tranche de la serie,

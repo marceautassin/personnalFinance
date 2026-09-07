@@ -1751,3 +1751,44 @@ pas de voisin
 **Given** un historique vide
 **When** « Tout l'historique » est demandé
 **Then** la série est vide, et l'écran le dit
+
+### Story 18.17: Tri par colonne sur la liste des transactions
+
+> **Demandé le 2026-09-07 :** « dans le tableau transaction est-ce que tu peux mettre le sort
+> sur les colonnes ».
+
+En tant qu'utilisateur,
+je veux trier la liste des transactions par date, libellé, montant ou catégorie,
+afin de retrouver la plus grosse dépense d'une période sans la chercher ligne à ligne.
+
+**Acceptance Criteria:**
+
+**Given** la liste des transactions
+**When** elle s'affiche sans qu'on ait rien trié
+**Then** l'ordre est celui de l'API — date croissante — et rien ne bouge
+
+**Given** un en-tête de colonne
+**When** il est activé
+**Then** la liste se trie sur cette colonne, et un second clic inverse le sens
+
+**Given** un tri actif
+**When** la colonne est annoncée à un lecteur d'écran
+**Then** son état de tri l'est aussi
+
+**Given** deux lignes égales sur le critère de tri
+**When** elles sont ordonnées
+**Then** leur ordre est stable d'un rendu à l'autre
+
+**Given** un tri par montant
+**When** il s'applique
+**Then** il porte sur le montant SIGNÉ : une dépense de 500 € et un remboursement de 500 € ne
+se mélangent pas (D28)
+
+**Given** un tri par catégorie
+**When** il s'applique
+**Then** il porte sur le libellé affiché, pas sur le code qui le porte
+
+**Note de portée.** Le tri par libellé porte sur le libellé bancaire ENTIER, date d'opération
+comprise : c'est ce que la colonne affiche, et trier sur autre chose donnerait une colonne
+visiblement désordonnée. Pour regrouper un même marchand, la recherche par libellé et l'écran
+« À ranger » sont les bons outils.
