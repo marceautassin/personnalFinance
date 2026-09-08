@@ -140,3 +140,40 @@
 - **Un excédent de remboursement est porté EN BLOC par une seule ligne** (`server/services/analysis-engine.ts:92-95`). Quand plusieurs remboursements dépassent les avances, tout le surplus est posé sur la ligne d'entrée la plus récente : `remaining` peut alors excéder le montant de CETTE ligne. Cas extrême : deux virements de +100 € dans un groupe sans avance → l'un affiche `200,00 € (100,00 €)` avec le badge « remboursé en partie », l'autre `0,00 €`. Le total du groupe reste juste, mais la ligne affiche un montant qui ne figure sur aucun relevé — un accroc à NFR2 que la story 19.4 a rendu VISIBLE sans le créer. Le corriger demande de répartir le surplus entre les remboursements, c'est-à-dire de toucher `neutralizeSettlements` : la spec 19.4 range explicitement cette modification en « Ask First ». **ARBITRÉ le 2026-09-08 : on laisse en l'état.** Le cas demande un groupe dont les remboursements dépassent les avances ET qui en compte plusieurs — il n'existe pas dans l'historique, et le total reste juste. À rouvrir si l'usage le fait apparaître ; ne pas le re-signaler comme un oubli d'ici là.
 - **L'invariant « pied de descente = total du poste » n'a pas de garde automatique croisant le moteur.** Les tests comparent la somme des montants effectifs à une valeur écrite à la main, jamais au résultat de `analyze()`. Le risque est faible (les deux passent par le même `neutralizeSettlements`), mais une divergence de PORTÉE entre l'endpoint et le moteur — le défaut même corrigé par 19.4, deux fois — passerait au vert. Un test d'intégration comparant `/api/transactions` à `/api/analysis` sur la même période fermerait le trou.
 - **Le sous-total de la vue mensuelle somme les montants du relevé** (`app/pages/transactions/[period].vue:312`), là où les deux descentes somment les montants effectifs. C'est un CHOIX documenté dans le code — cet écran est le relevé, et c'est là qu'on sélectionne des lignes à lier en comparant ce que la banque a débité. À revoir seulement si l'usage montre que la double lecture gêne.
+
+## Deferred from: demande du 2026-09-08 — reporté au profit de la refonte de la navigation
+
+- **Rapprocher les virements du compte joint des dépenses qu'ils remboursent.** 30 lignes
+  `VIR INST M J DUPONT OU MME A DUPO`, **+7 915,50 €**, toutes entrantes, aujourd'hui rangées en
+  `internes-virement-comptes` (poste de 71 lignes, net −6 218 €). Formulation de l'utilisateur :
+  « ce sont des remboursements pour certaines dépenses que je fais. Il faudrait donc que je les
+  groupe avec les dépenses **mais je ne veux pas faire de bêtise en faisant cela**. »
+  Ce n'est donc PAS une requalification de nature : c'est l'usage à grande échelle du mécanisme
+  de réconciliation de l'epic 19 — et la crainte exprimée est le vrai sujet. Ce qui manque pour
+  y aller sans risque, à cadrer : retrouver quelles dépenses un virement rembourse (30 lignes
+  contre ~1 800 dépenses, à la main c'est irréalisable), voir l'effet AVANT de valider, et
+  défaire un groupe sans séquelle. À noter : la réconciliation écarte les DEUX côtés, donc
+  chaque rapprochement retire aussi la dépense correspondante des dépenses — l'effet sur le
+  patrimoine n'est pas +7 915 €, il est nul par construction. C'est probablement ce que
+  l'utilisateur veut vérifier avant de s'engager.
+- **Précision du 2026-09-08 sur l'alimentation du compte joint**, qui nomme le risque : « ce
+  compte joint est alimenté par des virements pour charges par exemple, par le crédit d'impôt et
+  de l'argent que nous avions dessus ». L'argent qui en revient est donc un MÉLANGE — une part
+  est la sienne, qu'il y a virée lui-même (on voit sortir `VIR SEPA DUPONT Jean charges`
+  −298,50 €, `charges enfant` −286,50 €, `credit impot - charges` −1 420 €), une autre est la
+  contribution de sa conjointe aux dépenses qu'il a avancées. **Conséquence :** rapprocher
+  aveuglément un virement entrant des dépenses qu'il « rembourse » effacerait des dépenses qu'il
+  a réellement supportées — pour la part financée par son propre argent. C'est précisément la
+  bêtise redoutée. Tout cadrage devra donc d'abord répondre à : quelle FRACTION d'un virement du
+  joint est un remboursement, et quelle fraction est de l'argent qui rentre chez lui après
+  détour ? Les sorties vers le joint (~1 610 € + 1 420 € de crédit d'impôt sur l'historique) sont
+  la clé de ce calcul et doivent entrer dans le modèle, pas seulement les entrées.
+
+## Deferred from: story 20.1 — navigation en deux menus (2026-09-08)
+
+- **`latestPeriod` est `null` pendant le chargement, pas seulement sur base vide**
+  (`app/components/shared/AppBar.vue`). L'entrée « Toutes » se replie alors sur l'année du
+  CALENDRIER : cliquer avant la résolution de `useStatementsList` ouvre l'écran le plus dense du
+  produit sur son état vide — précisément ce que le repli cherchait à éviter. Antérieur à la
+  story 20.1 : l'onglet « Transactions » avait déjà ce comportement. Se corrige en distinguant
+  « en cours de chargement » de « base vide ».

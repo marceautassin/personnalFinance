@@ -442,3 +442,27 @@ development_status:
   #     et faisait planter le rendu du graphique. La serie n'ayant plus une longueur fixe,
   #     c'est un defaut introduit par 18.16 elle-meme.
   # E2E NON joues par le relecteur (port occupe par le serveur de dev) : joues ensuite, 22 verts.
+
+  # Epic 20 — Navigation et confort d'usage. Ouvert le 2026-09-08 : l'epic 16 a refondu
+  # l'APPARENCE des ecrans, jamais leur ORGANISATION. Ne touche ni aux calculs ni aux donnees.
+  # Demande de l'utilisateur : « ranger les onglets de maniere logique ».
+  # Sept liens de meme poids -> quatre entrees, dont deux menus. Aucune URL ne change.
+  epic-20: in-progress
+  # REVUE du 2026-09-08 (4 relecteurs en contexte neuf, validation visuelle FAITE par
+  # `pr-reviewer` sur une COPIE de la base) : 0 bloquant, 4 majeurs, une dizaine de mineurs.
+  # Tous traites. Le defaut central etait invisible a l'oeil ET aux tests :
+  #   • `.bar__link` vit dans le style SCOPE d'`AppBar` : il n'atteignait pas le bouton de
+  #     `AppBarMenu`, donc la section courante n'etait jamais surlignee. La classe, elle, etait
+  #     bien posee — les assertions `toHaveClass` passaient sur un ecran faux. La regle passe en
+  #     primitive partagee dans `components.css`, et le test compare desormais la COULEUR
+  #     CALCULEE des deux declencheurs.
+  #   • `overflow: hidden` sur `.bar` en faisait un conteneur de DEFILEMENT : il rognait le menu
+  #     ouvert et faisait defiler la barre sur elle-meme au focus. `overflow-x: clip` rogne sans
+  #     ce travers, et rend la garantie d'origine y compris en fenetre etroite.
+  #   • L'ecouteur clavier pose sur le document confisquait les fleches a TOUTE la page tant
+  #     qu'un menu etait ouvert. Fleches sur la racine, `Escape` sur le document.
+  #   • `Tab` au-dela de la derniere entree laissait le menu ouvert : fermeture sur `focusout`.
+  # Couverture : 15 cas E2E (7 au depart), dont `/reconciliation/<hash>` — la seule logique dont
+  # la forme change — qui n'etait exercee par rien.
+  # Verifications : 595 tests unitaires, 37 E2E (7 skipped), lint et typecheck propres.
+  20-1-navigation-en-deux-menus: review

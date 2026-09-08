@@ -14,6 +14,8 @@ import { formatRatio } from '~~/shared/types/ratio'
  * alors que la ressource rare ici est la largeur — les courbes d'évolution et la répartition
  * en deux colonnes la consomment entièrement.
  */
+import type { MenuEntry } from '~/components/shared/AppBarMenu.vue'
+
 const route = useRoute()
 
 interface NavItem { label: string, href: string, match: string }
@@ -42,24 +44,75 @@ const latestYear = computed(() => latestPeriod.value.slice(0, 4))
 const items = computed<NavItem[]>(() => [
   { label: 'Analyse', href: '/analyse', match: '/analyse' },
   { label: 'Évolution', href: '/evolution', match: '/evolution' },
-  { label: 'Transactions', href: `/transactions/${latestYear.value}`, match: '/transactions' },
-  { label: 'Import', href: '/import', match: '/import' },
-  { label: 'Catégories', href: '/categories', match: '/categories' },
-  { label: 'À ranger', href: '/a-ranger', match: '/a-ranger' },
-  { label: 'Règles', href: '/regles', match: '/regles' },
 ])
+
+/**
+ * Les deux menus — sept liens de même poids ne disaient pas lesquels vont ensemble
+ * (demande du 2026-09-08).
+ *
+ * « À ranger » est une vue des transactions et vivait à l'autre bout de la barre ; Import,
+ * Règles et Catégories alimentent et paramètrent la base sans que rien ne les rapproche.
+ * Aucune page n'est créée, déplacée ni renommée : seule la façon d'y accéder change.
+ */
+interface NavMenu { label: string, entries: MenuEntry[], matches: string[] }
+
+const menus = computed<NavMenu[]>(() => [
+  {
+    label: 'Transactions',
+    entries: [
+      { label: 'Toutes', href: `/transactions/${latestYear.value}` },
+      { label: 'À ranger', href: '/a-ranger' },
+    ],
+    matches: ['/transactions', '/a-ranger'],
+  },
+  {
+    label: 'Données',
+    entries: [
+      { label: 'Import', href: '/import' },
+      { label: 'Règles', href: '/regles' },
+      { label: 'Catégories', href: '/categories' },
+    ],
+    // `/reconciliation/<hash>` s'ouvre depuis la liste des relevés : elle allumait « Import »,
+    // elle allume désormais le menu qui le contient.
+    matches: ['/import', '/regles', '/categories', '/reconciliation'],
+  },
+])
+
+/** Un seul menu ouvert à la fois : l'arbitrage vit ici, pas dans les menus eux-mêmes. */
+const openMenu = ref<string | null>(null)
+function setOpen(label: string, value: boolean) {
+  if (value) {
+    openMenu.value = label
+    return
+  }
+  // Ne referme que SI c'est bien ce menu qui est ouvert. Un `false` émis par un menu déjà
+  // fermé — l'ordre `focusout` puis `click` en produit — éteindrait sinon le voisin qui vient
+  // de s'ouvrir (revue du 2026-09-08).
+  if (openMenu.value === label) openMenu.value = null
+}
 
 /**
  * Actif par PRÉFIXE : `/transactions/2026-08` et `/reconciliation/<hash>` sont des pages de
  * détail qui doivent garder allumée l'entrée d'où l'on vient. `NuxtLink` ne le fait pas seul
  * ici, puisque le `to` porte une période qui n'est presque jamais celle affichée.
  */
-const RECONCILIATION_PARENT = '/import'
-function isActive(item: NavItem): boolean {
+function matchesPath(match: string): boolean {
   const path = route.path
-  if (path.startsWith('/reconciliation')) return item.match === RECONCILIATION_PARENT
-  return path === item.match || path.startsWith(`${item.match}/`)
+  return path === match || path.startsWith(`${match}/`)
 }
+
+function isActive(item: NavItem): boolean {
+  return matchesPath(item.match)
+}
+
+function isMenuActive(menu: NavMenu): boolean {
+  return menu.matches.some(matchesPath)
+}
+
+/** Changer de page referme : un menu resté ouvert par-dessus l'écran suivant est un oubli. */
+watch(() => route.path, () => {
+  openMenu.value = null
+})
 </script>
 
 <template>
@@ -85,6 +138,16 @@ function isActive(item: NavItem): boolean {
       >
         {{ item.label }}
       </NuxtLink>
+
+      <AppBarMenu
+        v-for="menu in menus"
+        :key="menu.label"
+        :label="menu.label"
+        :entries="menu.entries"
+        :active="isMenuActive(menu)"
+        :open="openMenu === menu.label"
+        @update:open="value => setOpen(menu.label, value)"
+      />
     </nav>
 
     <!--
@@ -140,27 +203,20 @@ function isActive(item: NavItem): boolean {
   padding: 0 var(--space-6);
   background: var(--color-bg-elevated);
   border-bottom: 1px solid var(--color-border);
-  /* La barre ne déborde jamais : c'est le cadre de l'application, pas son contenu. */
-  overflow: hidden;
+  /*
+   * `clip` et non `hidden` : les deux rognent, mais `hidden` crée un conteneur de DÉFILEMENT —
+   * il rognait le menu ouvert sous la barre et la faisait défiler sur elle-même dès qu'une
+   * entrée prenait le focus. `overflow-x: clip` laisse `overflow-y` à `visible`, donc le menu
+   * déborde vers le bas, et la barre ne provoque toujours jamais de défilement horizontal de
+   * l'application, y compris en fenêtre étroite (revue du 2026-09-08).
+   */
+  overflow-x: clip;
 }
 .bar__mark { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--color-text); flex-shrink: 0; }
 
 .bar__nav { display: flex; gap: 2px; flex-shrink: 0; }
-.bar__link {
-  height: var(--bar-height);
-  padding: 0 var(--space-3);
-  display: flex;
-  align-items: center;
-  font-size: var(--font-size-base);
-  color: var(--color-text-muted);
-  /* Le trait actif mord sur le filet de la barre : un liseré de 2 px posé DESSUS, et non
-     au-dessus, sinon la barre paraît épaissie sur l'onglet courant. */
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: color var(--transition-fast);
-}
-.bar__link:hover { color: var(--color-text); }
-.bar__link--on { color: var(--color-accent); border-bottom-color: var(--color-accent); font-weight: 500; }
+/* `.bar__link` vit désormais dans `components.css` : le déclencheur de menu le porte aussi, et
+   un style scopé ne franchit pas la frontière d'un composant enfant (revue du 2026-09-08). */
 
 /*
  * Les compteurs CÈDENT en premier quand la place manque.
@@ -170,7 +226,10 @@ function isActive(item: NavItem): boolean {
  * 2026-09-05). Ils disparaissent donc en dessous, plutôt que de pousser le reste : ce sont
  * des indicateurs de contexte, pas de la navigation.
  */
-.bar__stats { margin-left: auto; display: flex; align-items: center; min-width: 0; }
+/* `clip` et non `hidden`, pour la même raison que sur `.bar` : les compteurs portent DEUX liens
+   focusables, et un conteneur de défilement les aurait emportés hors de vue à la tabulation,
+   sans retour possible (revue du 2026-09-08). */
+.bar__stats { margin-left: auto; display: flex; align-items: center; min-width: 0; overflow: clip; }
 @media (width < 1200px) {
   .bar__stats { display: none; }
 }

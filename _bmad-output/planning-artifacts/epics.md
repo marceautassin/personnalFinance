@@ -2019,3 +2019,43 @@ la période regardée, pas l'état absolu du groupe
 **Note d'implémentation.** L'état ET le montant effectif sortent du même rejeu de
 `neutralizeSettlements`. La portée du calcul est celle de l'agrégat affiché : la période, sans
 le filtre de poste ou de rubrique.
+
+## Epic 20 — Navigation et confort d'usage
+
+> **Ouvert le 2026-09-08.** L'epic 16 a refondu l'apparence des écrans ; leur ORGANISATION, elle,
+> n'a jamais été reprise. Demande de l'utilisateur : « ranger les onglets de manière logique ».
+
+La barre alignait sept liens de même poids sans dire lesquels vont ensemble. Cet epic accueille
+les ajustements d'architecture de l'information et de confort nés de l'usage réel — il ne touche
+ni aux calculs, ni aux données, ni au périmètre fonctionnel.
+
+### Story 20.1: Regrouper la navigation en deux menus
+
+En tant qu'utilisateur,
+je veux que les onglets disent ce qui va ensemble,
+afin de trouver un écran sans relire les sept libellés à chaque fois.
+
+**Acceptance Criteria:**
+
+**Given** n'importe quelle page
+**When** je regarde la barre
+**Then** elle porte quatre entrées : Analyse, Évolution, Transactions ▾ et Données ▾ — le premier
+menu contenant « Toutes » et « À ranger », le second Import, Règles et Catégories
+
+**Given** un menu ouvert
+**When** je le parcours au clavier
+**Then** les flèches circulent dans la liste, `Escape` referme, et le focus revient au déclencheur
+
+**Given** une page atteinte par une URL profonde — `/transactions/2026-08`, `/reconciliation/<hash>`
+**When** elle s'affiche
+**Then** l'entrée de menu qui la contient est allumée
+
+**Given** deux menus
+**When** j'en ouvre un alors que l'autre est ouvert
+**Then** le premier se referme — jamais deux à la fois
+
+**Note d'implémentation.** Aucune page n'est créée, déplacée ni renommée, aucune URL ne change :
+seule la façon d'y accéder est reprise. Le déclencheur est un BOUTON et non un lien — un élément
+qui navigue *et* ouvre un menu oblige à deviner ce que fera le clic. Pas de compteur sur les
+entrées : le nombre de non-catégorisés n'est porté par aucune donnée déjà chargée, et l'afficher
+imposerait une requête sur chaque page.

@@ -245,6 +245,33 @@
 .tag--settled { background: var(--color-accent-subtle); color: var(--color-accent); }
 .tag--pending { background: var(--color-warning-subtle); color: var(--color-warning); }
 
+/* ============================================================ BARRE D'APPLICATION */
+
+/*
+ * Entrée de navigation — portée par un `NuxtLink` dans `AppBar`, par un `<button>` dans
+ * `AppBarMenu`.
+ *
+ * Elle vivait dans le style scopé d'`AppBar`, qui ne franchit pas la frontière d'un composant
+ * enfant : le déclencheur des menus s'affichait sans hauteur, sans retrait et surtout SANS
+ * l'indicateur de section courante, alors que la classe était bien posée (revue du 2026-09-08).
+ * Deux composants la portent : sa place est ici.
+ */
+.bar__link {
+  height: var(--bar-height);
+  padding: 0 var(--space-3);
+  display: flex;
+  align-items: center;
+  font-size: var(--font-size-base);
+  color: var(--color-text-muted);
+  /* Le trait actif mord sur le filet de la barre : un liseré de 2 px posé DESSUS, et non
+     au-dessus, sinon la barre paraît épaissie sur l'onglet courant. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--transition-fast);
+}
+.bar__link:hover { color: var(--color-text); }
+.bar__link--on { color: var(--color-accent); border-bottom-color: var(--color-accent); font-weight: 500; }
+
 /* ============================================================ SURVOL (menu, dialogue) */
 
 .overlay {
