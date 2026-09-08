@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { analyze, categorySeries, neutralizeSettlements, type AnalysisItemRef, type AnalysisTransaction } from './analysis-engine'
+import { analyze, categorySeries, neutralizeSettlements, splitJointTransfers, resultTotalCents, type AnalysisItemRef, type AnalysisTransaction } from './analysis-engine'
+import { JOINT_TRANSFER_ITEM_CODE, JOINT_REIMBURSEMENT_ITEM_CODE } from '~~/shared/constants/default-referential'
 
 /**
  * NFR3 impose, pour chaque fonction de calcul, un cas nominal et au moins deux cas limites.
@@ -14,6 +15,8 @@ const REF: AnalysisItemRef[] = [
   { code: 'alimentation-restaurant', label: 'Restaurant', nature: 'expense', groupCode: 'alimentation', groupLabel: 'Alimentation' },
   { code: 'voyages-restaurant', label: 'Restaurant', nature: 'expense', groupCode: 'voyages', groupLabel: 'Voyages' },
   { code: 'internes-virement-epargne', label: 'Virement épargne', nature: 'internal_transfer', groupCode: 'internes', groupLabel: 'Mouvements internes' },
+  { code: JOINT_TRANSFER_ITEM_CODE, label: 'Virement du compte joint', nature: 'internal_transfer', groupCode: 'internes', groupLabel: 'Mouvements internes' },
+  { code: JOINT_REIMBURSEMENT_ITEM_CODE, label: 'Part remboursée', nature: 'expense', groupCode: 'compte-joint', groupLabel: 'Compte joint' },
 ]
 
 const tx = (date: string, amountCents: number, categoryItemCode: string): AnalysisTransaction =>
@@ -550,6 +553,146 @@ describe('categorySeries', () => {
  * gonflent ses dépenses ET ses recettes alors qu'il n'a ni dépensé ni gagné. Sur ses données
  * réelles : 47 lignes, environ 8 700 €, 8 % des recettes de l'historique.
  */
+describe('compte joint — l\'agrégat, la trajectoire et le patrimoine (story 21.1)', () => {
+  const AVEC_JOINT = [
+    tx('2026-03-05', 250_000, 'revenus-salaire'),
+    tx('2026-03-10', -78_000, 'alimentation-courses'),
+    tx('2026-03-20', 78_000, JOINT_TRANSFER_ITEM_CODE),
+  ]
+
+  /** AC1 — la moitié diminue les dépenses ; le solde bancaire, lui, ne bouge pas. */
+  it('la moitié remboursée diminue les dépenses, l\'autre reste interne', () => {
+    const r = run(AVEC_JOINT)
+    const depenses = r.natures.find(n => n.nature === 'expense')!
+    const internes = r.natures.find(n => n.nature === 'internal_transfer')!
+
+    expect(depenses.totalCents).toBe(-78_000 + 39_000)
+    expect(internes.totalCents).toBe(39_000)
+    // Le solde bancaire inclut TOUT : la coupe ne crée ni ne détruit d'argent (NFR4).
+    const soldeBancaire = AVEC_JOINT.reduce((sum, t) => sum + t.amountCents, 0)
+    expect(depenses.totalCents + internes.totalCents + 250_000).toBe(soldeBancaire)
+  })
+
+  it('la part remboursée forme sa propre rubrique, au net inversé', () => {
+    const depenses = run(AVEC_JOINT).natures.find(n => n.nature === 'expense')!
+    const joint = depenses.groups.find(g => g.groupCode === 'compte-joint')!
+    expect(joint.totalCents).toBe(39_000)
+    expect(joint.items[0]!.itemCode).toBe(JOINT_REIMBURSEMENT_ITEM_CODE)
+  })
+
+  /** AC2 — l'analyse et la trajectoire passent par la même coupe. */
+  it('la trajectoire dit le même montant que l\'analyse', () => {
+    const serie = categorySeries(AVEC_JOINT, REF, 'month', { kind: 'item', code: JOINT_REIMBURSEMENT_ITEM_CODE }, ['2026-03'])
+    const depenses = run(AVEC_JOINT).natures.find(n => n.nature === 'expense')!
+    const joint = depenses.groups.find(g => g.groupCode === 'compte-joint')!
+    expect(serie[0]!.totalCents).toBe(joint.totalCents)
+  })
+
+  /**
+   * Le patrimoine ANTÉRIEUR à une fenêtre passe par les mêmes transformations que celui de la
+   * fenêtre : sans quoi un même mois pèse différemment des deux côtés de la borne, et la courbe
+   * cumulée se décale.
+   */
+  it('le résultat total traverse la coupe, comme l\'agrégat', () => {
+    expect(resultTotalCents(AVEC_JOINT, REF)).toBe(250_000 - 78_000 + 39_000)
+    // Sans la coupe, la moitié remboursée ne compterait pas : c'est l'écart qu'on ferme.
+    expect(resultTotalCents(AVEC_JOINT, REF)).not.toBe(250_000 - 78_000)
+  })
+
+  it('une contribution VERS le joint reste entière et interne', () => {
+    const r = run([tx('2026-03-05', 250_000, 'revenus-salaire'), tx('2026-03-20', -32_450, JOINT_TRANSFER_ITEM_CODE)])
+    expect(r.natures.find(n => n.nature === 'internal_transfer')!.totalCents).toBe(-32_450)
+    expect(r.natures.find(n => n.nature === 'expense')).toBeUndefined()
+  })
+})
+
+describe('splitJointTransfers', () => {
+  const joint = (amountCents: number, transactionDate = '2026-04-10') => ({
+    transactionDate,
+    amountCents,
+    categoryItemCode: JOINT_TRANSFER_ITEM_CODE,
+    settlementGroupId: null,
+  })
+
+  it('laisse intacte une ligne d\'un autre poste', () => {
+    const rows = [{ transactionDate: '2026-04-10', amountCents: -4210, categoryItemCode: 'alimentation-courses', settlementGroupId: null }]
+    expect(splitJointTransfers(rows)).toEqual(rows)
+  })
+
+  it('coupe un virement entrant en deux moitiés égales', () => {
+    const out = splitJointTransfers([joint(78_000)])
+    expect(out).toHaveLength(2)
+    expect(out[0]).toMatchObject({ amountCents: 39_000, categoryItemCode: JOINT_REIMBURSEMENT_ITEM_CODE })
+    expect(out[1]).toMatchObject({ amountCents: 39_000, categoryItemCode: JOINT_TRANSFER_ITEM_CODE })
+  })
+
+  /*
+   * Huit des trente-trois virements de l'historique sont impairs : deux arrondis symétriques
+   * feraient perdre ou inventer un centime à chacun.
+   */
+  it('sur un montant impair, la somme est conservée au centime', () => {
+    const out = splitJointTransfers([joint(78_101)])
+    expect(out.map(t => t.amountCents)).toEqual([39_050, 39_051])
+    expect(out.reduce((sum, t) => sum + t.amountCents, 0)).toBe(78_101)
+    // L'arrondi va à l'INTERNE : la moitié qui compte est plancher.
+    expect(out[0]!.categoryItemCode).toBe(JOINT_REIMBURSEMENT_ITEM_CODE)
+  })
+
+  it('ne coupe PAS une sortie vers le joint — c\'est une contribution', () => {
+    const rows = [joint(-32_450)]
+    expect(splitJointTransfers(rows)).toEqual(rows)
+  })
+
+  it('laisse un montant nul intact, sans ligne fantôme', () => {
+    const rows = [joint(0)]
+    expect(splitJointTransfers(rows)).toEqual(rows)
+  })
+
+  it('conserve la date sur les deux moitiés', () => {
+    const out = splitJointTransfers([joint(1_000, '2026-02-03')])
+    expect(out.every(t => t.transactionDate === '2026-02-03')).toBe(true)
+  })
+
+  /*
+   * Les deux mécanismes ne se partagent pas une ligne. La couper la ferait entrer EN DOUBLE
+   * dans son groupe de réconciliation, et la descente — qui donne la priorité à la
+   * réconciliation — dirait alors autre chose que le moteur.
+   */
+  it('ne coupe PAS une ligne déjà rattachée à un groupe de réconciliation', () => {
+    const rows = [{ ...joint(78_000, '2026-02-03'), settlementGroupId: 7 }]
+    expect(splitJointTransfers(rows)).toEqual(rows)
+  })
+
+  /* Un centime ne se coupe pas en deux : émettre une moitié nulle poserait sur la part
+     remboursée un nœud à 0,00 € portant une transaction. */
+  it('ne coupe pas un virement d\'un centime — la moitié serait nulle', () => {
+    const rows = [joint(1)]
+    expect(splitJointTransfers(rows)).toEqual(rows)
+  })
+
+  /*
+   * Le compteur de transactions d'un poste est DÉDOUBLÉ par la coupe : une ligne de relevé pèse
+   * sur deux nœuds. C'est voulu — chaque nœud compte les lignes qui le composent — mais la
+   * somme des compteurs de l'arbre cesse d'égaler le nombre de lignes du relevé.
+   */
+  it('rend deux lignes pour une, chacune sur son poste', () => {
+    const out = splitJointTransfers([joint(78_000)])
+    expect(out.map(t => t.categoryItemCode))
+      .toEqual([JOINT_REIMBURSEMENT_ITEM_CODE, JOINT_TRANSFER_ITEM_CODE])
+  })
+
+  it('la somme de toutes les lignes est inchangée, quel que soit le mélange', () => {
+    const rows = [
+      joint(78_101),
+      joint(-32_450),
+      { transactionDate: '2026-04-11', amountCents: -4210, categoryItemCode: 'alimentation-courses', settlementGroupId: null },
+    ]
+    const before = rows.reduce((s, t) => s + t.amountCents, 0)
+    const after = splitJointTransfers(rows).reduce((s, t) => s + t.amountCents, 0)
+    expect(after).toBe(before)
+  })
+})
+
 describe('neutralizeSettlements', () => {
   const g = (
     date: string,

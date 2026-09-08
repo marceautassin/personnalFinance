@@ -1,4 +1,8 @@
 import type { SettlementStatus } from '~~/shared/types/settlement-status'
+import {
+  JOINT_TRANSFER_ITEM_CODE,
+  JOINT_REIMBURSEMENT_ITEM_CODE,
+} from '~~/shared/constants/default-referential'
 
 /** Texte, ton et explication d'un badge de réconciliation. */
 export interface SettlementBadge {
@@ -51,4 +55,31 @@ export function settlementBadge(status: SettlementStatus | null | undefined): Se
  */
 export function showsOriginalAmount(amountCents: number, effectiveAmountCents: number): boolean {
   return amountCents !== effectiveAmountCents
+}
+
+/**
+ * Le badge d'une ligne de descente — réconciliation OU coupe du compte joint.
+ *
+ * Un virement du joint s'affiche à sa moitié, montant du relevé entre parenthèses, exactement
+ * comme une ligne réconciliée. Sans badge, l'utilisateur voyait un montant divisé par deux sans
+ * rien qui le justifie, là où toutes les autres lignes à montant réduit s'expliquent
+ * (revue du 2026-09-08).
+ *
+ * La réconciliation l'emporte quand les deux s'appliquent : le moteur ne coupe pas une ligne
+ * déjà rattachée à un groupe, l'écran doit dire la même chose.
+ */
+export function lineBadge(
+  tx: { settlementStatus?: SettlementStatus | null, categoryItemCode: string },
+): SettlementBadge | null {
+  const settlement = settlementBadge(tx.settlementStatus)
+  if (settlement) return settlement
+  if (tx.categoryItemCode === JOINT_TRANSFER_ITEM_CODE || tx.categoryItemCode === JOINT_REIMBURSEMENT_ITEM_CODE) {
+    return {
+      text: 'moitié · compte joint',
+      tone: 'tag--settled',
+      title: 'Compte joint alimenté à parts égales : la moitié de ce virement rembourse une '
+        + 'dépense commune, l\'autre moitié est votre propre argent qui revient et ne compte nulle part.',
+    }
+  }
+  return null
 }

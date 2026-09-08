@@ -5,7 +5,7 @@ import { bucketBounds } from '~~/shared/types/granularity'
 import { EVOLUTION_VIEW_LABELS, type EvolutionView } from '~/composables/useEvolution'
 import { useTargetTransactions } from '~/composables/useTargetTransactions'
 import { formatDate } from '~/utils/dates'
-import { settlementBadge, showsOriginalAmount } from '~/utils/settlement-badge'
+import { lineBadge, showsOriginalAmount } from '~/utils/settlement-badge'
 import { formatEuros, cents, type Cents } from '~~/shared/types/money'
 
 const route = useRoute()
@@ -427,11 +427,11 @@ const targetDrift = computed(() => {
                             </span>
                             <span>
                               <small
-                                v-if="settlementBadge(tx.settlementStatus)"
+                                v-if="lineBadge(tx)"
                                 class="tag"
-                                :class="settlementBadge(tx.settlementStatus)!.tone"
-                                :title="settlementBadge(tx.settlementStatus)!.title"
-                              >{{ settlementBadge(tx.settlementStatus)!.text }}</small>
+                                :class="lineBadge(tx)!.tone"
+                                :title="lineBadge(tx)!.title"
+                              >{{ lineBadge(tx)!.text }}</small>
                             </span>
                           </li>
                         </ul>
@@ -628,7 +628,9 @@ const targetDrift = computed(() => {
  * 2026-09-08). Sous 1 000 px, le montant du relevé cède la place au libellé.
  */
 @media (width < 1000px) {
-  .evo-page__tx-row { grid-template-columns: 5.5rem minmax(6rem, 1fr) 7rem 0 8.5rem; }
+  /* Même raison que la descente d'analyse : une piste `1fr` à plancher non nul fait déborder
+     la ligne au lieu de tronquer le libellé. */
+  .evo-page__tx-row { grid-template-columns: 5.5rem minmax(0, 1fr) 7rem 0 auto; }
   .evo-page__tx-original { display: none; }
 }
 .evo-page__tx-original {

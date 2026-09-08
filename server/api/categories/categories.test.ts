@@ -122,6 +122,7 @@ describe('GET /api/categories', () => {
     const groups = await tree()
     expect(groups.map(g => g.code)).toEqual([
       'alimentation', 'transport', 'loisirs', 'abonnements', 'style', 'revenus', 'internes', 'divers',
+      'compte-joint',
     ])
   })
 })
@@ -132,7 +133,8 @@ describe('POST /api/categories/groups', () => {
     const created = (await groupPost(event)) as Group
     expect(created.code).toBe('animaux')
     expect(created.items).toEqual([])
-    expect(created.position).toBe(8)
+    // Neuvième rubrique du référentiel de test depuis l'ajout de « Compte joint » (story 21.1).
+    expect(created.position).toBe(9)
     expect(statusOf(event)).toBe(201)
   })
 
@@ -376,6 +378,33 @@ describe('DELETE /api/categories/items/[code]', () => {
       ApiErrorCode.CategoryProtected,
       409,
     )
+  })
+
+  /*
+   * Les postes du compte joint (story 21.1) ont besoin de cette protection PLUS que les autres :
+   * « Part remboursée » est CALCULÉ, il ne porte jamais de ligne, donc le garde-fou habituel —
+   * « on ne supprime pas un poste qui contient des transactions » — ne le protège de rien. Sa
+   * suppression faisait disparaître silencieusement la moitié coupée de tous les agrégats, puis
+   * empêchait l'application de redémarrer (revue du 2026-09-08).
+   */
+  it('refuse les postes du compte joint, qui ne portent aucune ligne', async () => {
+    for (const code of ['compte-joint-part-remboursee', 'internes-virement-joint']) {
+      await expectError(
+        itemDelete(makeEvent({ method: 'DELETE', code })),
+        ApiErrorCode.CategoryProtected,
+        409,
+      )
+    }
+  })
+
+  it('refuse de changer la nature des postes du compte joint', async () => {
+    for (const code of ['compte-joint-part-remboursee', 'internes-virement-joint']) {
+      await expectError(
+        itemPatch(makeEvent({ method: 'PATCH', code, body: { nature: 'income' } })),
+        ApiErrorCode.CategoryProtected,
+        409,
+      )
+    }
   })
 
   it('la FK ON DELETE RESTRICT bloque aussi une suppression directe en base', () => {

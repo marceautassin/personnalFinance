@@ -379,3 +379,60 @@ describe('GET /api/transactions — état et poids réel des lignes réconcilié
     expect(r.transactions[0]).toMatchObject({ settlementStatus: null, effectiveAmountCents: -4_210 })
   })
 })
+
+/**
+ * Compte joint (story 21.1) — le poste « Part remboursée » est CALCULÉ : aucune ligne ne le
+ * porte en base. Le descendre doit malgré tout mener aux virements qui le composent (NFR2).
+ */
+describe('GET /api/transactions — descente sur la part remboursée du compte joint', () => {
+  beforeEach(() => {
+    seedStatement()
+    dbMod.db.insert(schema.transactions).values([
+      { statementHash: HASH_A, transactionDate: '2026-04-10', label: 'VIR JOINT', amountCents: 78_000, categoryItemCode: 'internes-virement-joint' },
+      { statementHash: HASH_A, transactionDate: '2026-04-12', label: 'VIR JOINT IMPAIR', amountCents: 78_101, categoryItemCode: 'internes-virement-joint' },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'CHARGES VERS JOINT', amountCents: -32_450, categoryItemCode: 'internes-virement-joint' },
+    ]).run()
+  })
+
+  it('mène aux virements sources, à leur moitié qui compte', async () => {
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=compte-joint-part-remboursee'))) as Resp
+
+    // La sortie vers le joint n'y figure pas : une contribution ne rembourse rien.
+    expect(r.transactions.map(t => t.label)).toEqual(['VIR JOINT', 'VIR JOINT IMPAIR'])
+    expect(r.transactions.map(t => t.effectiveAmountCents)).toEqual([39_000, 39_050])
+    // Le montant du relevé reste intact : c'est lui qu'on affiche entre parenthèses.
+    expect(r.transactions.map(t => t.amountCents)).toEqual([78_000, 78_101])
+  })
+
+  it('la rubrique « Compte joint » descend comme son poste', async () => {
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&group=compte-joint'))) as Resp
+    expect(r.transactions.map(t => t.effectiveAmountCents)).toEqual([39_000, 39_050])
+  })
+
+  /*
+   * Le filtre est ADDITIF, pas substitutif : rien n'interdit qu'une vraie ligne soit rangée sur
+   * le poste calculé, ni qu'un autre poste rejoigne la rubrique. Ces lignes-là comptent dans
+   * l'agrégat ; les remplacer par les virements les rendrait introuvables (NFR2).
+   */
+  it('une VRAIE ligne rangée sur le poste calculé reste atteignable', async () => {
+    dbMod.db.insert(schema.transactions).values([
+      { statementHash: HASH_A, transactionDate: '2026-04-18', label: 'RANGEE A LA MAIN', amountCents: -4_500, categoryItemCode: 'compte-joint-part-remboursee' },
+    ]).run()
+
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=compte-joint-part-remboursee'))) as Resp
+
+    expect(r.transactions.map(t => t.label)).toEqual(['VIR JOINT', 'VIR JOINT IMPAIR', 'RANGEE A LA MAIN'])
+    // Elle pèse son montant entier : la coupe ne la concerne pas.
+    expect(r.transactions.at(-1)!.effectiveAmountCents).toBe(-4_500)
+    // Et la somme reste celle du nœud : les deux moitiés plus la ligne réelle.
+    expect(r.transactions.reduce((s, t) => s + t.effectiveAmountCents, 0)).toBe(39_000 + 39_050 - 4_500)
+  })
+
+  it('sur le poste INTERNE, la même ligne pèse l\'autre moitié', async () => {
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=internes-virement-joint'))) as Resp
+
+    expect(r.transactions.map(t => t.effectiveAmountCents)).toEqual([39_000, 39_051, -32_450])
+    // Les deux moitiés d'un impair se recomposent exactement.
+    expect(39_050 + 39_051).toBe(78_101)
+  })
+})

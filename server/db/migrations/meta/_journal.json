@@ -64,6 +64,13 @@
       "when": 1788771201846,
       "tag": "0008_exotic_darkstar",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788848519897,
+      "tag": "0009_joint_account_share",
+      "breakpoints": true
     }
   ]
 }

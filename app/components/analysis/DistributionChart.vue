@@ -5,7 +5,7 @@ import type { RangeTransaction } from '~/composables/useItemTransactions'
 import { formatRatio, ratio, type Ratio } from '~~/shared/types/ratio'
 import type { AnalysisResponse } from '~/composables/useAnalysis'
 import { describeDistributionNode } from '~/utils/distribution-label'
-import { settlementBadge, showsOriginalAmount } from '~/utils/settlement-badge'
+import { lineBadge, showsOriginalAmount } from '~/utils/settlement-badge'
 
 type NatureNode = AnalysisResponse['natures'][number]
 type GroupNode = NatureNode['groups'][number]
@@ -422,11 +422,11 @@ function isDeltaAlarming(value: number): boolean {
                     </span>
                     <span class="dist__tx-badge">
                       <small
-                        v-if="settlementBadge(tx.settlementStatus)"
+                        v-if="lineBadge(tx)"
                         class="tag"
-                        :class="settlementBadge(tx.settlementStatus)!.tone"
-                        :title="settlementBadge(tx.settlementStatus)!.title"
-                      >{{ settlementBadge(tx.settlementStatus)!.text }}</small>
+                        :class="lineBadge(tx)!.tone"
+                        :title="lineBadge(tx)!.title"
+                      >{{ lineBadge(tx)!.text }}</small>
                     </span>
                     <!--
                       Reclassement EN PLACE. Le lien « relevé » qui occupait cette colonne
@@ -584,8 +584,12 @@ function isDeltaAlarming(value: number): boolean {
  * reste dans l'infobulle du badge, qui dit déjà que la ligne ne compte pas.
  */
 @media (width < 1000px) {
-  .dist__tx-row { grid-template-columns: 5.5rem minmax(6rem, 1fr) 5.5rem 0 8.5rem auto; }
+  /* `minmax(0, 1fr)` et non `minmax(6rem, 1fr)` : sous le plancher, une piste `1fr` refuse de
+     descendre plus bas et la ligne DÉBORDE — le badge chevauchait le bouton de reclassement à
+     375 px (revue du 2026-09-08). À zéro, le libellé se tronque, ce qu'il sait faire. */
+  .dist__tx-row { grid-template-columns: 5.5rem minmax(0, 1fr) 5.5rem 0 auto auto; }
   .dist__tx-original { display: none; }
+  .dist__tx-badge { width: auto; }
 }
 
 .dist__bar { width: 100%; height: 5px; }

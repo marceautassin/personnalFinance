@@ -22,7 +22,8 @@
  * Sur erreur après l'étape 8 : `deletePdfByHash(hash)` rollback FS.
  * Sur erreur avant l'étape 8 : rien à rollback (pas de side-effect persistant encore).
  */
-import { eq, and, lte, gte, asc } from 'drizzle-orm'
+import { ne, eq, and, lte, gte, asc } from 'drizzle-orm'
+import { JOINT_REIMBURSEMENT_ITEM_CODE } from '~~/shared/constants/default-referential'
 import { db } from '~~/server/db/client'
 import { bankStatements, transactions, categoryItems, categoryGroups, classificationRules } from '~~/server/db/schema'
 import { applyRules } from '~~/server/services/rule-matcher'
@@ -127,6 +128,11 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
     })
     .from(categoryItems)
     .innerJoin(categoryGroups, eq(categoryItems.groupCode, categoryGroups.code))
+    // Le poste « Part remboursée » du compte joint est CALCULÉ : il n'est alimenté que par la
+    // coupe du moteur, jamais par une ligne de relevé. Le proposer au modèle l'inviterait à y
+    // ranger de vraies transactions, qui compteraient alors en plus de la moitié coupée
+    // (story 21.1, revue du 2026-09-08).
+    .where(ne(categoryItems.code, JOINT_REIMBURSEMENT_ITEM_CODE))
     .orderBy(categoryItems.code))
     // Les libellés sont du texte libre saisi par l'utilisateur et sont concaténés dans le
     // message envoyé au LLM : on neutralise sauts de ligne et caractères de contrôle, qui

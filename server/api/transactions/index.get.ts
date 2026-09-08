@@ -1,11 +1,17 @@
 import { defineEventHandler } from 'h3'
-import { asc, and, eq, gte, lte, inArray } from 'drizzle-orm'
+import { asc, and, or, eq, gt, gte, lte, inArray } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { transactions, categoryItems } from '~~/server/db/schema'
 import { type StatementReliability, worstReliability } from '~~/shared/types/statement-reliability'
 import { reliabilityOverlapping } from '~~/server/utils/statement-reliability'
 import { validateQuery } from '~~/server/utils/validation'
 import { settlementEffectByTransaction } from '~~/server/utils/settlement-status'
+import { jointReimbursedCents } from '~~/server/services/analysis-engine'
+import {
+  JOINT_TRANSFER_ITEM_CODE,
+  JOINT_REIMBURSEMENT_ITEM_CODE,
+  JOINT_GROUP_CODE,
+} from '~~/shared/constants/default-referential'
 import { TransactionListQuerySchema } from '~~/shared/schemas/transaction.schema'
 
 export default defineEventHandler(async (event) => {
@@ -18,8 +24,52 @@ export default defineEventHandler(async (event) => {
     // les bornes ci-dessous sont équivalentes et couvrent tous les jours du mois.
     ? [`${query.month}-01`, `${query.month}-31`]
     : [query.from, query.to]
-  const itemFilter = 'month' in query ? undefined : query.item
-  const groupFilter = 'month' in query ? undefined : query.group
+  const requestedItem = 'month' in query ? undefined : query.item
+  const requestedGroup = 'month' in query ? undefined : query.group
+
+  /*
+   * Le poste « Part remboursée » du compte joint ne porte AUCUNE ligne en base : c'est un poste
+   * calculé, alimenté par la coupe du moteur (story 21.1). Le descendre revient donc à
+   * descendre AUSSI les virements du joint, montrés à leur moitié qui compte — sans quoi ouvrir
+   * un montant bien réel donnerait une liste vide, le contraire de NFR2.
+   *
+   * « Aussi », et non « à la place » : rien n'interdit à l'utilisateur de ranger une ligne sur
+   * ce poste, ni d'ajouter un autre poste à la rubrique. Ces lignes-là comptent dans l'agrégat ;
+   * les remplacer par les virements les rendrait introuvables (revue du 2026-09-08).
+   */
+  const drillsIntoJointShare = requestedItem === JOINT_REIMBURSEMENT_ITEM_CODE
+    || requestedGroup === JOINT_GROUP_CODE
+  const itemFilter = requestedItem
+  const groupFilter = requestedGroup
+
+  /*
+   * Ce que la requête désigne : un poste, une rubrique, ou tout.
+   *
+   * Le filtre par RUBRIQUE passe par une sous-requête et non par une jointure — la projection ne
+   * change pas, et l'index `transactions_item_idx` reste utilisable.
+   *
+   * Quand on descend la part remboursée du compte joint, les virements du joint S'AJOUTENT à ce
+   * que la portée désigne déjà : le poste est calculé, mais rien n'interdit qu'il porte aussi de
+   * vraies lignes, ni que sa rubrique en contienne d'autres (revue du 2026-09-08).
+   */
+  const requestedScope = itemFilter
+    ? eq(transactions.categoryItemCode, itemFilter)
+    : groupFilter
+      ? inArray(
+          transactions.categoryItemCode,
+          db.select({ code: categoryItems.code })
+            .from(categoryItems)
+            .where(eq(categoryItems.groupCode, groupFilter)),
+        )
+      : undefined
+  const scopeFilter = drillsIntoJointShare
+    ? or(
+        requestedScope,
+        // Seules les ENTRÉES nourrissent la part remboursée : une sortie vers le joint est une
+        // contribution, que la coupe laisse entière et interne.
+        and(eq(transactions.categoryItemCode, JOINT_TRANSFER_ITEM_CODE), gt(transactions.amountCents, 0)),
+      )
+    : requestedScope
 
   // Portée de la réconciliation : celle des lignes demandées, sauf quand l'appelant explique un
   // agrégat plus large que sa descente — la trajectoire d'une cible neutralise sur la fenêtre
@@ -43,18 +93,7 @@ export default defineEventHandler(async (event) => {
     .where(and(
       gte(transactions.transactionDate, from),
       lte(transactions.transactionDate, to),
-      itemFilter ? eq(transactions.categoryItemCode, itemFilter) : undefined,
-      // Filtre par RUBRIQUE : la rubrique n'est pas portée par la transaction, elle vit sur le
-      // poste. Une sous-requête plutôt qu'une jointure — la projection ne change pas, et
-      // l'index `transactions_item_idx` reste utilisable.
-      groupFilter
-        ? inArray(
-            transactions.categoryItemCode,
-            db.select({ code: categoryItems.code })
-              .from(categoryItems)
-              .where(eq(categoryItems.groupCode, groupFilter)),
-          )
-        : undefined,
+      scopeFilter,
     ))
     .orderBy(asc(transactions.transactionDate), asc(transactions.id))
 
@@ -98,6 +137,30 @@ export default defineEventHandler(async (event) => {
         .orderBy(asc(transactions.transactionDate), asc(transactions.id))
   const effects = settlementEffectByTransaction(settlementLines)
 
+  /**
+   * Ce qu'un virement du joint pèse SUR LE POSTE DEMANDÉ.
+   *
+   * La coupe en fait deux montants : la part remboursée, qui diminue les dépenses, et le reste,
+   * qui demeure un mouvement interne. Une même ligne pèse donc l'un ou l'autre selon le poste
+   * qu'on est en train d'ouvrir — il n'y a pas de valeur unique à en donner.
+   */
+  function jointEffective(row: { categoryItemCode: string, amountCents: number }): number {
+    if (row.categoryItemCode !== JOINT_TRANSFER_ITEM_CODE || row.amountCents <= 0) {
+      return row.amountCents
+    }
+    const reimbursed = jointReimbursedCents(row.amountCents)
+    if (drillsIntoJointShare) return reimbursed
+    if (requestedItem === JOINT_TRANSFER_ITEM_CODE) return row.amountCents - reimbursed
+    /*
+     * Aucun poste demandé : la ligne pèse son montant ENTIER.
+     *
+     * Ses deux moitiés vivent sur deux postes, mais une liste non filtrée n'en désigne aucun —
+     * n'en rendre qu'une ferait disparaître l'autre de la somme, sans qu'aucune ligne ne la
+     * porte (revue du 2026-09-08).
+     */
+    return row.amountCents
+  }
+
   return {
     transactions: rows.map((r) => {
       const effect = effects.get(r.id)
@@ -106,7 +169,7 @@ export default defineEventHandler(async (event) => {
         settlementStatus: effect?.status ?? null,
         // Hors groupe, ce que la ligne pèse EST son montant : l'appelant somme une seule
         // colonne, sans avoir à savoir laquelle des deux regarder (NFR2).
-        effectiveAmountCents: effect?.effectiveAmountCents ?? r.amountCents,
+        effectiveAmountCents: effect?.effectiveAmountCents ?? jointEffective(r),
       }
     }),
     reliability,

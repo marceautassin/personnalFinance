@@ -177,3 +177,20 @@
   produit sur son état vide — précisément ce que le repli cherchait à éviter. Antérieur à la
   story 20.1 : l'onglet « Transactions » avait déjà ce comportement. Se corrige en distinguant
   « en cours de chargement » de « base vide ».
+
+## Deferred from: story 21.1 — part du compte joint (2026-09-08)
+
+- **`priorRows` charge toutes les transactions antérieures à la fenêtre** (`server/api/evolution.get.ts`).
+  C'était un `SUM` SQL ; c'est désormais une lecture complète, parce que le patrimoine antérieur
+  doit traverser la coupe et la neutralisation, qui vivent dans le moteur. Correct, mais le
+  chargement croît avec l'historique et s'exécute à chaque appel de `/api/evolution`. Négligeable
+  à 1 855 lignes ; à reprendre si l'historique s'allonge beaucoup — en agrégeant côté moteur par
+  tranche plutôt qu'en rendant toutes les lignes.
+- **La rubrique « Compte joint » sera TOUJOURS un nœud « net inversé »** (total positif sur une
+  nature dépense) : elle est donc exclue de la base de répartition et annoncée « à surveiller »
+  quand elle monte, alors qu'une hausse y est une bonne nouvelle. Comportement générique
+  pré-existant sur les nets inversés — « Impôts » subit le même — mais ce poste-ci ne sera jamais
+  dans l'autre cas. À reprendre en même temps que le traitement général des nets inversés.
+- **Dans la trajectoire, les lignes de la cible « Part remboursée » portent le code du poste
+  INTERNE** (`useTargetTransactions` les regroupe sous « Virement du compte joint »). Sans
+  conséquence sur les montants, mais le libellé du groupe induit en erreur.

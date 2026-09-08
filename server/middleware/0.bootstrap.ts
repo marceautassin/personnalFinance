@@ -1,9 +1,9 @@
 import { mkdirSync, existsSync } from 'node:fs'
+import { JOINT_TRANSFER_ITEM_CODE, JOINT_REIMBURSEMENT_ITEM_CODE, DEFAULT_REFERENTIAL } from '~~/shared/constants/default-referential'
 import { defineEventHandler } from 'h3'
 import { db } from '../db/client'
 import { sql } from 'drizzle-orm'
 import { categoryGroups, categoryItems } from '../db/schema'
-import { DEFAULT_REFERENTIAL } from '~~/shared/constants/default-referential'
 
 let isBootstrapped = false
 let bootstrapError: Error | null = null
@@ -48,6 +48,38 @@ const SCHEMA_MARKERS: { label: string, exists: () => boolean }[] = [
   {
     label: 'tables du forecast retirées (`debts`, `fixed_charges`, `sas_config`)',
     exists: () => !tableNames().some(n => ['debts', 'debt_events', 'fixed_charges', 'sas_config', 'tax_settings', 'revenue_models', 'monthly_overrides'].includes(n)),
+  },
+  {
+    /*
+     * Ce marqueur porte sur des DONNÉES et non sur le schéma, à raison : le moteur d'analyse
+     * ignore SILENCIEUSEMENT une ligne dont le poste est absent du référentiel
+     * (`analysis-engine.ts`, `if (!ref) continue`). La coupe du compte joint (story 21.1) émet
+     * un poste calculé : si la migration 0009 n'a pas tourné, la moitié coupée de chaque
+     * virement disparaîtrait des agrégats sans un mot. Mieux vaut refuser de démarrer.
+     */
+    label: 'postes du compte joint, avec leur nature (migration 0009)',
+    exists: () => {
+      // Les tables peuvent ne pas exister sur une base très antérieure : la sonde du référentiel
+      // à deux niveaux le dit déjà, et interroger quand même ferait remonter une erreur SQLite
+      // brute à la place du message qui explique quoi faire. Les sondes sont TOUTES évaluées,
+      // y compris après l'échec d'une précédente : celle-ci doit donc se garder elle-même.
+      const tables = tableNames()
+      if (!tables.includes('category_items') || !tables.includes('category_groups')) return false
+      // Une base VIERGE n'est pas périmée : le seed, qui suit immédiatement, portera ces postes
+      // puisqu'ils sont dans `DEFAULT_REFERENTIAL`. Sans cette porte, cette sonde — qui court
+      // AVANT le seed — refusait de démarrer sur toute base neuve, base des tests E2E comprise.
+      const seeded = db.all<{ cnt: number }>(sql`SELECT count(*) AS cnt FROM category_groups`)
+      if (Number(seeded[0]?.cnt ?? 0) === 0) return true
+      // La NATURE est vérifiée, pas seulement la présence : la coupe suppose que l'un est
+      // interne et l'autre une dépense. Basculée, elle ferait compter la même moitié deux fois
+      // ou la ferait disparaître — sans un mot (revue du 2026-09-08).
+      const rows = db.all<{ code: string }>(sql`
+        SELECT code FROM category_items
+        WHERE (code = ${JOINT_TRANSFER_ITEM_CODE} AND nature = 'internal_transfer')
+           OR (code = ${JOINT_REIMBURSEMENT_ITEM_CODE} AND nature = 'expense')
+      `)
+      return rows.length === 2
+    },
   },
 ]
 

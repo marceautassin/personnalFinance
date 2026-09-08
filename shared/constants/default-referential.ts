@@ -55,6 +55,29 @@ export const FALLBACK_ITEM_CODE = 'divers-non-categorise'
  */
 export const ACCEPT_GAP_ITEM_CODE = 'internes-ecart-accepte'
 
+/**
+ * Compte joint — les deux postes de la coupe (story 21.1), protégés et non supprimables.
+ *
+ * Le compte joint est alimenté à PARTS ÉGALES par les deux titulaires. Un virement qui en revient
+ * rembourse une dépense commune avancée depuis le compte personnel : la moitié est l'argent du
+ * conjoint — un vrai remboursement — et l'autre moitié l'argent de l'utilisateur, DÉJÀ compté en
+ * dépense au titre de sa contribution mensuelle (`logement-charges`, `enfants-*`). Sans la
+ * coupe, cette moitié est comptée deux fois : environ 3 980 € sur l'historique.
+ */
+export const JOINT_TRANSFER_ITEM_CODE = 'internes-virement-joint'
+export const JOINT_REIMBURSEMENT_ITEM_CODE = 'compte-joint-part-remboursee'
+export const JOINT_GROUP_CODE = 'compte-joint'
+
+/**
+ * Part d'un virement du joint qui rembourse réellement, en points de base.
+ *
+ * 50 % : « on met la même chose tous les deux » (arbitrage du 2026-09-08). En points de base
+ * plutôt qu'en flottant — la moitié d'un montant impair doit se répartir au centime près, et
+ * `0.5` invite à un `Math.round` qui perd ou invente un centime. Changer ce taux change tous
+ * les agrégats de l'historique : c'est une décision, pas un réglage.
+ */
+export const JOINT_SHARE_BASIS_POINTS = 5000
+
 export const DEFAULT_REFERENTIAL: ReadonlyArray<DefaultCategoryGroup> = [
   {
     code: 'revenus',
@@ -93,6 +116,20 @@ export const DEFAULT_REFERENTIAL: ReadonlyArray<DefaultCategoryGroup> = [
       // dépenses de la période et fausser le résultat. En mouvement interne, il sort du
       // résultat et reste dans le solde bancaire, ce qui est exactement sa signification.
       { code: ACCEPT_GAP_ITEM_CODE, label: 'Écart de réconciliation accepté', nature: 'internal_transfer' },
+      // Ce qui revient du compte joint. Rangé ici et non en recette : la moitié qui compte
+      // vraiment est coupée à l'agrégation et portée par `compte-joint-part-remboursee`, en
+      // DÉPENSE — c'est une dépense en moins, jamais un gain (story 21.1).
+      { code: JOINT_TRANSFER_ITEM_CODE, label: 'Virement du compte joint', nature: 'internal_transfer' },
+    ],
+  },
+  {
+    // Une rubrique à part, et non un poste glissé dans « Divers » : ce montant ne décrit aucune
+    // dépense qu'on a faite, il décrit la part qu'un tiers a supportée. Le mélanger à des
+    // dépenses réelles rendrait sa rubrique d'accueil illisible.
+    code: JOINT_GROUP_CODE,
+    label: 'Compte joint',
+    items: [
+      { code: JOINT_REIMBURSEMENT_ITEM_CODE, label: 'Part remboursée', nature: 'expense' },
     ],
   },
   {

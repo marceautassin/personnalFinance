@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { TEST_SCHEMA_DDL } from '~~/tests/fixtures/test-schema'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-bootstrap-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
@@ -20,6 +20,9 @@ beforeAll(async () => {
   // @ts-expect-error -- accès interne drizzle pour DDL de test
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
   sqlite.exec(TEST_SCHEMA_DDL)
+  // Le référentiel aussi : une des sondes porte sur des DONNÉES — les postes du compte joint,
+  // dont l'absence ferait disparaître la moitié coupée des agrégats (story 21.1).
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 })
 
 afterAll(() => {

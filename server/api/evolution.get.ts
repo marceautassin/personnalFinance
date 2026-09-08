@@ -1,5 +1,5 @@
 import { defineEventHandler } from 'h3'
-import { and, gte, lte, lt, ne, eq, asc, sql } from 'drizzle-orm'
+import { and, gte, lte, lt, eq, asc, sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { transactions, categoryItems, categoryGroups } from '~~/server/db/schema'
 import { validateQuery } from '~~/server/utils/validation'
@@ -7,6 +7,7 @@ import { EvolutionQuerySchema, EVOLUTION_ALL } from '~~/shared/schemas/evolution
 import {
   analyze,
   categorySeries,
+  resultTotalCents,
   type AnalysisItemRef,
   type AnalysisSeriesPoint,
   type CategorySeriesPoint,
@@ -155,16 +156,20 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
    * Les mouvements internes sont exclus, comme partout : ils déplacent de l'argent entre les
    * comptes de l'utilisateur sans en créer ni en détruire (NFR4).
    */
-  const priorRow = await db
-    .select({ cents: sql<number>`coalesce(sum(${transactions.amountCents}), 0)` })
+  const priorRows = await db
+    .select({
+      transactionDate: transactions.transactionDate,
+      amountCents: transactions.amountCents,
+      categoryItemCode: transactions.categoryItemCode,
+      settlementGroupId: transactions.settlementGroupId,
+    })
     .from(transactions)
-    .innerJoin(categoryItems, eq(categoryItems.code, transactions.categoryItemCode))
-    .where(and(
-      lt(transactions.transactionDate, from),
-      ne(categoryItems.nature, 'internal_transfer'),
-    ))
-    .get()
-  const priorCents = Number(priorRow?.cents ?? 0)
+    .where(lt(transactions.transactionDate, from))
+    .orderBy(asc(transactions.transactionDate), asc(transactions.id))
+  // Par le MOTEUR, et non par une somme SQL : la coupe du compte joint et la neutralisation des
+  // avances doivent s'appliquer ici comme dans la fenêtre, sans quoi le même mois ne pèse pas la
+  // même chose des deux côtés de la borne (revue du 2026-09-08).
+  const priorCents = resultTotalCents(priorRows, referential)
 
   const overview = analyze({ transactions: rows, referential, granularity })
 

@@ -8,7 +8,24 @@ import { itemTransactionCount } from '~~/server/utils/category-references'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { CategoryItemPatchSchema, type CategoryItemWithCount } from '~~/shared/schemas/category.schema'
-import { ACCEPT_GAP_ITEM_CODE } from '~~/shared/constants/default-referential'
+import {
+  ACCEPT_GAP_ITEM_CODE,
+  JOINT_TRANSFER_ITEM_CODE,
+  JOINT_REIMBURSEMENT_ITEM_CODE,
+} from '~~/shared/constants/default-referential'
+
+/**
+ * Postes dont la NATURE est verrouillée.
+ *
+ * Les deux postes du compte joint s'y ajoutent (story 21.1) : le moteur les nomme, et la coupe
+ * suppose que l'un est interne et l'autre une dépense. Basculer l'un des deux ferait compter la
+ * même moitié deux fois, ou la ferait disparaître — sans que rien ne le dise.
+ */
+const NATURE_LOCKED_ITEMS = new Set([
+  ACCEPT_GAP_ITEM_CODE,
+  JOINT_TRANSFER_ITEM_CODE,
+  JOINT_REIMBURSEMENT_ITEM_CODE,
+])
 
 /**
  * Modifie le libellé et/ou la nature d'un poste (FR16, FR17).
@@ -36,7 +53,7 @@ export default defineEventHandler(async (event): Promise<CategoryItemWithCount> 
   // La nature du poste d'écart accepté n'est pas modifiable (story 17.3). La basculer en
   // recette ferait entrer une différence inexpliquée dans le résultat de la période — ce que
   // le correctif vient précisément d'empêcher. Le libellé, lui, reste libre.
-  if (body.nature !== undefined && code === ACCEPT_GAP_ITEM_CODE) {
+  if (body.nature !== undefined && NATURE_LOCKED_ITEMS.has(code)) {
     throw domainError(ApiErrorCode.CategoryProtected, { code, field: 'nature' }, 409)
   }
 

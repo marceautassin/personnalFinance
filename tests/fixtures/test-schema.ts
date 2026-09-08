@@ -88,7 +88,8 @@ export const TEST_REFERENTIAL_DDL = `
     ('style', 'Style', 4),
     ('revenus', 'Revenus', 5),
     ('internes', 'Mouvements internes', 6),
-    ('divers', 'Divers', 7);
+    ('divers', 'Divers', 7),
+    ('compte-joint', 'Compte joint', 8);
   INSERT INTO category_items (code, group_code, label, nature, position) VALUES
     ('alimentation-courses', 'alimentation', 'Courses', 'expense', 0),
     ('alimentation-restaurant', 'alimentation', 'Restaurant', 'expense', 1),
@@ -99,5 +100,10 @@ export const TEST_REFERENTIAL_DDL = `
     ('revenus-salaire', 'revenus', 'Salaire', 'income', 0),
     ('internes-virement-epargne', 'internes', 'Virement épargne', 'internal_transfer', 0),
     ('internes-ecart-accepte', 'internes', 'Écart de réconciliation accepté', 'internal_transfer', 1),
-    ('divers-non-categorise', 'divers', 'Non catégorisé', 'expense', 0);
+    ('divers-non-categorise', 'divers', 'Non catégorisé', 'expense', 0),
+    -- Story 21.1 : la coupe du compte joint émet un poste CALCULÉ. Le DDL de test doit dire la
+    -- même chose que la migration 0009, sinon les tests passeraient là où la production ignore
+    -- silencieusement la moitié coupée (leçon de la migration 0007, epic 19).
+    ('internes-virement-joint', 'internes', 'Virement du compte joint', 'internal_transfer', 2),
+    ('compte-joint-part-remboursee', 'compte-joint', 'Part remboursée', 'expense', 0);
 `

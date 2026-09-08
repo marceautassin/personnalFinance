@@ -15,6 +15,11 @@
 import { type Cents, cents, sumCents } from '~~/shared/types/money'
 import { ratio, type Ratio } from '~~/shared/types/ratio'
 import type { MovementNature } from '~~/shared/types/movement-nature'
+import {
+  JOINT_TRANSFER_ITEM_CODE,
+  JOINT_REIMBURSEMENT_ITEM_CODE,
+  JOINT_SHARE_BASIS_POINTS,
+} from '~~/shared/constants/default-referential'
 import { MOVEMENT_NATURES } from '~~/shared/types/movement-nature'
 import { bucketOf, bucketLabel, type Granularity } from '~~/shared/types/granularity'
 
@@ -49,6 +54,67 @@ export interface AnalysisTransaction {
  * Transformation PURE : la base garde `amount_cents` tel qu'il figure au relevé (D28). Rien
  * n'est écrit, rien n'est supprimé — les lignes restent traçables (NFR2).
  */
+/**
+ * Coupe en deux les virements reçus du compte joint (story 21.1).
+ *
+ * Le compte joint est alimenté à parts égales. Un virement qui en revient rembourse une dépense
+ * commune avancée depuis le compte personnel : la moitié vient du conjoint — un vrai
+ * remboursement, qui doit DIMINUER les dépenses — et l'autre moitié est l'argent de
+ * l'utilisateur, déjà compté en dépense au titre de sa contribution mensuelle. Sans la coupe,
+ * cette moitié-là est comptée deux fois.
+ *
+ * La ligne d'origine n'est pas modifiée en base : comme `neutralizeSettlements`, c'est une
+ * transformation PURE appliquée avant agrégation, et `amount_cents` reste le montant du relevé
+ * (D28). Les deux moitiés portent la même date et la même identité : la descente sait donc
+ * remonter de l'une comme de l'autre à la ligne du relevé (NFR2).
+ *
+ * **Seules les ENTRÉES sont coupées.** Une sortie vers le joint est une contribution, déjà
+ * comptée sur `logement-charges` ou `enfants-*` : la couper reviendrait à la compter à moitié.
+ *
+ * **L'arrondi va à l'interne.** La moitié qui compte est plancher, celle qui ne compte pas porte
+ * le centime en trop : deux arrondis symétriques feraient perdre ou inventer un centime sur un
+ * montant impair, et huit des trente-trois virements de l'historique le sont.
+ */
+/**
+ * La part d'un virement du joint qui rembourse réellement — plancher, le reste allant à
+ * l'interne. Exportée pour que la DESCENTE rejoue le même calcul que l'agrégat : deux
+ * implémentations de la même règle finiraient par diverger (leçon de l'epic 19).
+ */
+export function jointReimbursedCents(amountCents: number): number {
+  if (amountCents <= 0) return 0
+  return Math.floor((amountCents * JOINT_SHARE_BASIS_POINTS) / 10_000)
+}
+
+export function splitJointTransfers(
+  transactions: readonly AnalysisTransaction[],
+): AnalysisTransaction[] {
+  const out: AnalysisTransaction[] = []
+  for (const tx of transactions) {
+    // Une ligne déjà rattachée à un groupe de réconciliation n'est PAS coupée : les deux
+    // mécanismes se disputeraient la même ligne. La couper la ferait entrer en double dans son
+    // groupe — deux moitiés au lieu d'un remboursement — et la descente, qui donne la priorité
+    // à la réconciliation, dirait alors autre chose que le moteur. La réconciliation, plus
+    // précise puisqu'elle nomme les dépenses couvertes, l'emporte (revue du 2026-09-08).
+    const inSettlement = tx.settlementGroupId !== null && tx.settlementGroupId !== undefined
+    if (tx.categoryItemCode !== JOINT_TRANSFER_ITEM_CODE || tx.amountCents <= 0 || inSettlement) {
+      out.push(tx)
+      continue
+    }
+    const reimbursed = jointReimbursedCents(tx.amountCents)
+    // Un virement d'un centime donne une moitié NULLE : l'émettre poserait sur la part
+    // remboursée un nœud à 0,00 € portant une transaction, exactement ce que
+    // `neutralizeSettlements` évite en ne rendant pas ses lignes nulles.
+    if (reimbursed === 0) {
+      out.push(tx)
+      continue
+    }
+    out.push({ ...tx, amountCents: reimbursed, categoryItemCode: JOINT_REIMBURSEMENT_ITEM_CODE })
+    // Le reste, et non un second calcul : c'est ce qui garantit la somme au centime.
+    out.push({ ...tx, amountCents: tx.amountCents - reimbursed })
+  }
+  return out
+}
+
 export function neutralizeSettlements(
   transactions: readonly AnalysisTransaction[],
 ): AnalysisTransaction[] {
@@ -99,6 +165,29 @@ export function neutralizeSettlements(
   }
 
   return out
+}
+
+/**
+ * Résultat brut d'un jeu de lignes — recettes plus dépenses, mouvements internes exclus (NFR4).
+ *
+ * Existe pour que le patrimoine ANTÉRIEUR à une fenêtre passe par les mêmes transformations que
+ * celui de la fenêtre. Il était calculé en SQL, directement sur `amount_cents` : la coupe du
+ * compte joint ne le traversait donc pas, et un même mois pesait différemment selon qu'il
+ * tombait avant la fenêtre ou dedans — la courbe cumulée se décalait de plusieurs milliers
+ * d'euros et bougeait au changement de période (revue du 2026-09-08).
+ *
+ * Le prendre ici, dans le moteur, est ce qui empêche un appelant de l'oublier à nouveau.
+ */
+export function resultTotalCents(
+  rawTransactions: readonly AnalysisTransaction[],
+  referential: readonly AnalysisItemRef[],
+): number {
+  const byCode = new Map(referential.map(r => [r.code, r]))
+  return neutralizeSettlements(splitJointTransfers(rawTransactions)).reduce((sum, tx) => {
+    const nature = byCode.get(tx.categoryItemCode)?.nature
+    if (nature === undefined || nature === 'internal_transfer') return sum
+    return sum + tx.amountCents
+  }, 0)
 }
 
 /** Le référentiel, aplati : de quoi situer un poste dans l'arbre. */
@@ -232,8 +321,8 @@ export function analyze(input: AnalysisInput): AnalysisResult {
   // La neutralisation s'applique AVANT toute agrégation, et à chacune des deux périodes
   // séparément : une avance de janvier remboursée en mars doit sortir de janvier comme de
   // mars, sans que l'une déteigne sur l'autre (epic 19).
-  const transactions = neutralizeSettlements(input.transactions)
-  const previous = neutralizeSettlements(input.previousTransactions ?? [])
+  const transactions = neutralizeSettlements(splitJointTransfers(input.transactions))
+  const previous = neutralizeSettlements(splitJointTransfers(input.previousTransactions ?? []))
   const hasPrevious = input.hasPrevious ?? input.previousTransactions !== undefined
 
   const byCode = new Map(referential.map(r => [r.code, r]))
@@ -301,7 +390,7 @@ export function analyze(input: AnalysisInput): AnalysisResult {
   }
 
   const series = buildSeries(
-    input.seriesTransactions ? neutralizeSettlements(input.seriesTransactions) : transactions,
+    input.seriesTransactions ? neutralizeSettlements(splitJointTransfers(input.seriesTransactions)) : transactions,
     byCode,
     granularity,
   )
@@ -399,7 +488,7 @@ export function categorySeries(
 ): CategorySeriesPoint[] {
   // Une avance remboursée ne doit pas davantage peser sur la trajectoire d'une rubrique que
   // sur son total (epic 19).
-  const transactions = neutralizeSettlements(rawTransactions)
+  const transactions = neutralizeSettlements(splitJointTransfers(rawTransactions))
   const byCode = new Map(referential.map(r => [r.code, r]))
   const matches = (code: string) => {
     const ref = byCode.get(code)

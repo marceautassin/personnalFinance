@@ -466,3 +466,13 @@ development_status:
   # la forme change — qui n'etait exercee par rien.
   # Verifications : 595 tests unitaires, 37 E2E (7 skipped), lint et typecheck propres.
   20-1-navigation-en-deux-menus: review
+
+  # Epic 21 — Compte joint : ne compter que ma moitie. Ouvert le 2026-09-08.
+  # 33 virements recus du joint (+8 264,70 EUR) etaient exclus de tout, alors que les
+  # contributions VERS le joint sont deja comptees en depense : la moitie de chaque virement
+  # etait donc comptee deux fois, ~3 980 EUR sur l'historique.
+  # Arbitrages : pas d'appariement (coupe automatique), et la moitie qui rembourse est une
+  # DEPENSE EN MOINS et non une recette — meme resultat, mais « ou part l'argent » ne doit pas
+  # compter de l'argent qu'on n'a pas depense.
+  epic-21: in-progress
+  21-1-part-du-compte-joint: review

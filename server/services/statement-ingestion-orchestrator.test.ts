@@ -165,7 +165,13 @@ describe('ingestStatement (orchestrator)', () => {
     // (48 postes) — ce qui prouve la lecture DB et non le repli sur la constante. Un poste
     // créé par l'utilisateur doit être proposé au modèle dès l'ingestion suivante.
     const seeded = dbMod.db.select({ code: schema.categoryItems.code }).from(schema.categoryItems).all()
-    expect(passed.map(c => c.code).sort()).toEqual(seeded.map(r => r.code).sort())
+    // Tous les postes de la base SAUF « Part remboursée » : ce poste est CALCULÉ, alimenté par
+    // la coupe du compte joint et par rien d'autre. Le proposer au modèle l'inviterait à y
+    // ranger de vraies lignes, qui compteraient EN PLUS de la moitié coupée (story 21.1).
+    const attendus = seeded.map(r => r.code).filter(c => c !== 'compte-joint-part-remboursee')
+    expect(passed.map(c => c.code).sort()).toEqual(attendus.sort())
+    expect(passed.map(c => c.code)).not.toContain('compte-joint-part-remboursee')
+    expect(passed.map(c => c.code)).toContain('internes-virement-joint')
     expect(passed.length).toBeLessThan(48)
   })
 

@@ -2059,3 +2059,53 @@ seule la façon d'y accéder est reprise. Le déclencheur est un BOUTON et non u
 qui navigue *et* ouvre un menu oblige à deviner ce que fera le clic. Pas de compteur sur les
 entrées : le nombre de non-catégorisés n'est porté par aucune donnée déjà chargée, et l'afficher
 imposerait une requête sur chaque page.
+
+## Epic 21 — Compte joint : ne compter que ma moitié
+
+> **Demandé le 2026-09-08.** « Il faudrait que je les groupe avec les dépenses mais je ne veux
+> pas faire de bêtise en faisant cela. » Puis, sur l'alimentation du compte : « ce compte joint
+> est alimenté par des virements pour charges, par le crédit d'impôt et de l'argent que nous
+> avions dessus », et enfin la règle : « on met la même chose tous les deux donc compte 50 % ».
+
+**Le double comptage, mesuré.** 33 virements reçus du joint (+8 264,70 €) étaient rangés en
+mouvement interne, donc exclus de tout. Or les contributions mensuelles VERS le joint
+(`logement-charges` 298,50 €, `enfants-*` 286,50 €) sont, elles, déjà comptées en dépense. La
+moitié de chaque virement reçu est donc de l'argent déjà dépensé une première fois : environ
+3 980 € comptés deux fois sur l'historique.
+
+**Arbitrage du 2026-09-08.** Pas d'appariement virement ↔ dépenses — écarté explicitement au
+profit d'une coupe automatique. Et la moitié qui rembourse est une **dépense en moins**, pas une
+recette : le résultat est identique dans les deux cas, mais la mission de l'app est « où part
+l'argent », et de l'argent qu'on n'a finalement pas dépensé n'a pas sa place dans les dépenses
+(cohérent avec D28 et l'epic 19).
+
+### Story 21.1: Ne compter que la moitié qui est vraiment à ma charge
+
+En tant qu'utilisateur,
+je veux que ce qui me revient du compte joint cesse d'être compté deux fois,
+afin que mes dépenses disent ce que j'ai réellement supporté.
+
+**Acceptance Criteria:**
+
+**Given** un virement reçu du compte joint
+**When** la période est agrégée
+**Then** la moitié diminue les dépenses et l'autre reste un mouvement interne, sans qu'un
+centime se perde ni s'invente
+
+**Given** une contribution VERS le joint
+**When** la période est agrégée
+**Then** elle reste entière — c'est une dépense, pas un remboursement
+
+**Given** le poste « Part remboursée », qui ne porte aucune ligne en base
+**When** je le déplie
+**Then** j'atteins les virements qui le composent, chacun à sa moitié (NFR2)
+
+**Given** la même période
+**When** je la regarde sur l'analyse puis sur la trajectoire
+**Then** les deux disent le même montant
+
+**Note d'implémentation.** La coupe est une transformation PURE appliquée avant agrégation, aux
+mêmes points que `neutralizeSettlements` : aucun appelant ne doit pouvoir l'oublier. L'arrondi
+va à l'interne — la moitié qui compte est plancher — et huit des trente-trois virements sont
+impairs. Le moteur ignorant SILENCIEUSEMENT un poste absent du référentiel, une sonde de
+démarrage refuse de servir une base semée où ces postes manquent.
