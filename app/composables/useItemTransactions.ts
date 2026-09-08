@@ -1,4 +1,5 @@
 import type { Cents } from '~~/shared/types/money'
+import type { SettlementStatus } from '~~/shared/types/settlement-status'
 import { apiMutate } from '~/utils/api-mutate'
 import { useApiError } from '~/composables/useApiError'
 import { useInvalidate } from '~/composables/useInvalidate'
@@ -9,9 +10,20 @@ export interface RangeTransaction {
   statementHash: string
   transactionDate: string
   label: string
+  /** Le montant du RELEVÉ, intact (D28). */
   amountCents: Cents
+  /**
+   * Ce que la ligne pèse réellement dans les agrégats — `0` si la réconciliation l'a
+   * neutralisée, son montant entier hors groupe.
+   *
+   * C'est cette colonne, et elle seule, qui se somme : additionner `amountCents` sous un
+   * total qui neutralise donne un pied de descente qui ne retombe pas dessus (story 19.4).
+   */
+  effectiveAmountCents: Cents
   categoryItemCode: string
   isManual: boolean
+  /** Ce que la réconciliation a fait de cette ligne — `null` hors groupe (epic 19). */
+  settlementStatus?: SettlementStatus | null
 }
 
 /**

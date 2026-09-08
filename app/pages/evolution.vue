@@ -5,6 +5,7 @@ import { bucketBounds } from '~~/shared/types/granularity'
 import { EVOLUTION_VIEW_LABELS, type EvolutionView } from '~/composables/useEvolution'
 import { useTargetTransactions } from '~/composables/useTargetTransactions'
 import { formatDate } from '~/utils/dates'
+import { settlementBadge, showsOriginalAmount } from '~/utils/settlement-badge'
 import { formatEuros, cents, type Cents } from '~~/shared/types/money'
 
 const route = useRoute()
@@ -88,10 +89,31 @@ const itemLabels = computed<Record<string, string>>(() =>
   ),
 )
 
+/**
+ * Bornes de la FENÊTRE affichée — de la première tranche à la dernière.
+ *
+ * C'est la portée sur laquelle le moteur neutralise avant de répartir par tranche : la descente
+ * doit la déclarer, sinon elle raconterait autre chose que le point qu'elle explique.
+ */
+/** Même mention que la descente d'analyse : deux écrans qui comptent pareil le disent pareil. */
+function groupCountLabel(g: { transactions: unknown[], neutralizedCount: number }): string {
+  const dont = g.neutralizedCount > 0 ? `, dont ${g.neutralizedCount} neutralisée(s)` : ''
+  return `${g.transactions.length} ligne(s)${dont}`
+}
+
+const windowBounds = computed(() => {
+  const buckets = data.value?.buckets ?? []
+  if (buckets.length === 0) return null
+  return {
+    from: bucketBounds(buckets[0]!, 'month').from,
+    to: bucketBounds(buckets.at(-1)!, 'month').to,
+  }
+})
+
 function onToggleBucket(pointBucket: string) {
-  if (!target.value) return
+  if (!target.value || !windowBounds.value) return
   // Les tranches sont toujours des MOIS depuis la refonte du 2026-09-07.
-  void targetTx.toggle(pointBucket, bucketBounds(pointBucket, 'month'), target.value)
+  void targetTx.toggle(pointBucket, bucketBounds(pointBucket, 'month'), target.value, windowBounds.value)
 }
 
 // Changer de cible, de pas ou de fenêtre referme la tranche ouverte : ses lignes ne la
@@ -383,7 +405,7 @@ const targetDrift = computed(() => {
                         <h4 class="evo-page__tx-group">
                           <span>{{ itemLabels[g.itemCode] ?? g.itemCode }}</span>
                           <span class="evo-page__tx-group-meta">
-                            {{ g.transactions.length }} ligne(s)
+                            {{ groupCountLabel(g) }}
                             <b class="num">{{ formatEuros(g.totalCents) }}</b>
                           </span>
                         </h4>
@@ -395,7 +417,22 @@ const targetDrift = computed(() => {
                           >
                             <span class="evo-page__tx-date">{{ formatDate(tx.transactionDate) }}</span>
                             <span class="evo-page__tx-label">{{ tx.label }}</span>
-                            <span class="num">{{ formatEuros(tx.amountCents) }}</span>
+                            <!-- Même rendu que la descente d'analyse : deux descentes du même
+                                 chiffre qui ne le racontent pas pareil se contrediraient. -->
+                            <span class="num">{{ formatEuros(tx.effectiveAmountCents) }}</span>
+                            <span class="evo-page__tx-original">
+                              <template v-if="showsOriginalAmount(tx.amountCents, tx.effectiveAmountCents)">
+                                ({{ formatEuros(tx.amountCents) }})
+                              </template>
+                            </span>
+                            <span>
+                              <small
+                                v-if="settlementBadge(tx.settlementStatus)"
+                                class="tag"
+                                :class="settlementBadge(tx.settlementStatus)!.tone"
+                                :title="settlementBadge(tx.settlementStatus)!.title"
+                              >{{ settlementBadge(tx.settlementStatus)!.text }}</small>
+                            </span>
                           </li>
                         </ul>
                       </section>
@@ -577,12 +614,30 @@ const targetDrift = computed(() => {
 .evo-page__tx { list-style: none; display: flex; flex-direction: column; }
 .evo-page__tx-row {
   display: grid;
-  grid-template-columns: 5.5rem 1fr 7rem;
+  /* date · libellé · montant effectif · montant du relevé · badge */
+  grid-template-columns: 5.5rem minmax(6rem, 1fr) 7rem 7rem 8.5rem;
   gap: var(--space-2);
   align-items: baseline;
   font-size: var(--font-size-sm);
   padding: var(--space-1) 0;
   border-bottom: 1px solid var(--color-hairline);
+}
+/*
+ * Colonnes de largeur FIXE, tenues même vides : en `auto`, une colonne sans contenu s'effondre
+ * et décale la colonne des montants d'une ligne à l'autre (90 px mesurés à la revue du
+ * 2026-09-08). Sous 1 000 px, le montant du relevé cède la place au libellé.
+ */
+@media (width < 1000px) {
+  .evo-page__tx-row { grid-template-columns: 5.5rem minmax(6rem, 1fr) 7rem 0 8.5rem; }
+  .evo-page__tx-original { display: none; }
+}
+.evo-page__tx-original {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 .evo-page__tx-row:last-child { border-bottom: 0; }
 .evo-page__tx-date { font-family: var(--font-mono); color: var(--color-text-muted); }

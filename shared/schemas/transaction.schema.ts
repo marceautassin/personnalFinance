@@ -81,11 +81,35 @@ export const TransactionListQuerySchema = z.union([
     to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD'),
     item: z.string().trim().min(1).optional(),
     group: z.string().trim().min(1).optional(),
+    /**
+     * Portée sur laquelle l'état de réconciliation se calcule, quand elle DÉBORDE les lignes
+     * demandées (story 19.4).
+     *
+     * La trajectoire d'une cible neutralise sur la FENÊTRE entière puis répartit par tranche :
+     * une avance de janvier remboursée en mars ne pèse pas sur le point de janvier. Ouvrir ce
+     * point ne demande que les lignes de janvier — sans ces bornes, l'écran y remettrait
+     * l'avance et le total de la tranche cesserait de valoir le point qu'on vient d'ouvrir.
+     *
+     * Absentes, la portée est `[from, to]` : c'est le cas de la page d'analyse, dont l'agrégat
+     * a exactement les bornes de sa descente.
+     */
+    settlementFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD').optional(),
+    settlementTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD').optional(),
   }).strict()
     .refine(q => q.from <= q.to, { message: 'from doit précéder to', path: ['from'] })
     .refine(q => !(q.item && q.group), {
       message: 'item et group sont exclusifs',
       path: ['group'],
+    })
+    .refine(q => (q.settlementFrom === undefined) === (q.settlementTo === undefined), {
+      message: 'settlementFrom et settlementTo vont par paire',
+      path: ['settlementTo'],
+    })
+    // Une portée plus ÉTROITE que les lignes demandées neutraliserait des lignes affichées en
+    // se fondant sur un groupe amputé : c'est le défaut que la story corrige, pas une option.
+    .refine(q => q.settlementFrom === undefined || (q.settlementFrom <= q.from && q.to <= q.settlementTo!), {
+      message: 'la portée de réconciliation doit contenir [from, to]',
+      path: ['settlementFrom'],
     }),
 ])
 

@@ -234,9 +234,16 @@
   color: var(--color-text-muted);
   white-space: nowrap;
 }
-/* Une ligne neutralisée s'efface : elle ne pèse plus rien dans les totaux, l'étiquette ne doit
-   pas peser davantage à l'écran (epic 19). */
-.tag--muted { background: transparent; border: 1px solid var(--color-hairline); }
+/*
+ * Tons de la réconciliation (epic 19, story 19.4).
+ *
+ * Le parti d'origine — fond transparent, filet gris — effaçait le badge au point qu'on ne le
+ * voyait plus : l'état d'une ligne est justement ce qui explique pourquoi elle ne pèse pas ce
+ * qu'elle affiche. Le bleu dit « traité », l'ambre « en attente ». Ni vert ni rouge : ils
+ * signalent la VARIATION partout ailleurs, et les emprunter ici les rendrait muets.
+ */
+.tag--settled { background: var(--color-accent-subtle); color: var(--color-accent); }
+.tag--pending { background: var(--color-warning-subtle); color: var(--color-warning); }
 
 /* ============================================================ SURVOL (menu, dialogue) */
 

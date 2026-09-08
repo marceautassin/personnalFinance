@@ -23,6 +23,7 @@ const tx = (id: number) => ({
   transactionDate: '2026-03-05',
   label: `op-${id}`,
   amountCents: cents(-100),
+  effectiveAmountCents: cents(-100),
   categoryItemCode: 'alimentation-courses',
   isManual: false,
 })

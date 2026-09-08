@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TransactionListItem } from '~/composables/useTransactions'
 import { formatEuros, type Cents } from '~~/shared/types/money'
+import { settlementBadge } from '~/utils/settlement-badge'
 
 const props = defineProps<{
   transaction: TransactionListItem
@@ -22,30 +23,7 @@ const dayLabel = computed(() => {
 const amountLabel = computed(() => formatEuros(props.transaction.amountCents as Cents))
 
 /** Badge de réconciliation — texte, ton et explication complète en infobulle (NFR20). */
-const settlementBadge = computed(() => {
-  switch (props.transaction.settlementStatus) {
-    case 'neutralized':
-      return {
-        text: 'remboursé',
-        class: 'tag--muted',
-        title: 'Avance remboursée : cette ligne ne compte ni dans les dépenses ni dans les recettes.',
-      }
-    case 'partial':
-      return {
-        text: 'remboursé en partie',
-        class: 'tag--muted',
-        title: 'Partiellement remboursée : seul le reste non couvert compte dans l\'analyse.',
-      }
-    case 'outstanding':
-      return {
-        text: 'à rembourser',
-        class: '',
-        title: 'Liée à une réconciliation, mais pas encore remboursée : elle compte entièrement.',
-      }
-    default:
-      return null
-  }
-})
+const badge = computed(() => settlementBadge(props.transaction.settlementStatus))
 </script>
 
 <template>
@@ -87,11 +65,11 @@ const settlementBadge = computed(() => {
           croire qu'une avance non encore remboursée ne compte plus.
         -->
         <small
-          v-if="settlementBadge"
+          v-if="badge"
           class="tag"
-          :class="settlementBadge.class"
-          :title="settlementBadge.title"
-        >{{ settlementBadge.text }}</small>
+          :class="badge.tone"
+          :title="badge.title"
+        >{{ badge.text }}</small>
       </span>
     </td>
     <!--

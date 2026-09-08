@@ -3,6 +3,7 @@ import type { Cents } from '~~/shared/types/money'
 import type { MutationOutcome } from './useApiError'
 import { useInvalidate } from './useInvalidate'
 import type { StatementReliability } from '~~/shared/types/statement-reliability'
+import type { SettlementStatus } from '~~/shared/types/settlement-status'
 import { bucketBounds, type Granularity } from '~~/shared/types/granularity'
 
 /** Règle que le serveur propose après une correction manuelle (FR43). */
@@ -22,7 +23,7 @@ export interface TransactionListItem {
   /** Groupe de réconciliation (epic 19), ou `null`. */
   settlementGroupId?: number | null
   /** Ce que la réconciliation a fait de cette ligne — `null` hors groupe. */
-  settlementStatus?: 'neutralized' | 'partial' | 'outstanding' | null
+  settlementStatus?: SettlementStatus | null
 }
 
 export interface TransactionsResponse {

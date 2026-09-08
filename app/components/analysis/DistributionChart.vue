@@ -5,6 +5,7 @@ import type { RangeTransaction } from '~/composables/useItemTransactions'
 import { formatRatio, ratio, type Ratio } from '~~/shared/types/ratio'
 import type { AnalysisResponse } from '~/composables/useAnalysis'
 import { describeDistributionNode } from '~/utils/distribution-label'
+import { settlementBadge, showsOriginalAmount } from '~/utils/settlement-badge'
 
 type NatureNode = AnalysisResponse['natures'][number]
 type GroupNode = NatureNode['groups'][number]
@@ -89,9 +90,40 @@ function toggleItem(code: string) {
   expandedItems.value = next
 }
 
-/** Somme des lignes affichées — elle doit retomber sur le total du poste (NFR2). */
+/**
+ * Somme des lignes affichées — elle doit retomber sur le total du poste (NFR2).
+ *
+ * Elle somme le montant EFFECTIF, pas celui du relevé : le moteur écarte des agrégats les
+ * lignes qu'une réconciliation a couvertes, si bien qu'additionner les montants bruts donnait
+ * un pied de descente qui ne retombait pas sur le total affiché juste au-dessus — l'écart
+ * valant exactement l'avance remboursée (story 19.4).
+ */
 function loadedTotal(itemCode: string): number {
-  return (props.transactionsByItem[itemCode] ?? []).reduce((sum, t) => sum + t.amountCents, 0)
+  return (props.transactionsByItem[itemCode] ?? []).reduce((sum, t) => sum + t.effectiveAmountCents, 0)
+}
+
+/**
+ * Combien de lignes ne pèsent plus rien.
+ *
+ * Le poste annonce son nombre de transactions COMPTÉES — dix, là où la descente en liste
+ * vingt. Sans cette mention, l'écart entre les deux chiffres ressemble à un bug.
+ */
+function neutralizedCount(itemCode: string): number {
+  return (props.transactionsByItem[itemCode] ?? []).filter(t => t.settlementStatus === 'neutralized').length
+}
+
+/**
+ * Pied de la descente, construit en TypeScript et non dans le template.
+ *
+ * Un `<template v-if>` posé entre le texte et sa virgule y laissait l'espace du retour à la
+ * ligne : « 20 ligne(s) , dont 10 neutralisée(s) ». En français, la virgule ne prend pas
+ * d'espace avant.
+ */
+function footerLabel(itemCode: string): string {
+  const count = (props.transactionsByItem[itemCode] ?? []).length
+  const neutralized = neutralizedCount(itemCode)
+  const dont = neutralized > 0 ? `, dont ${neutralized} neutralisée(s)` : ''
+  return `${count} ligne(s)${dont}, total ${formatEuros(loadedTotal(itemCode) as Cents)}`
 }
 
 /**
@@ -377,7 +409,25 @@ function isDeltaAlarming(value: number): boolean {
                   >
                     <span class="dist__tx-date">{{ formatDate(tx.transactionDate) }}</span>
                     <span class="dist__tx-label">{{ tx.label }}</span>
-                    <span class="dist__tx-amount">{{ formatEuros(tx.amountCents as Cents) }}</span>
+                    <!--
+                      Le montant affiché est celui qui COMPTE. Le montant du relevé le suit
+                      entre parenthèses quand les deux diffèrent : sans lui, une ligne à
+                      « 0,00 € » n'aurait plus aucune trace de ce qui a été payé (NFR2).
+                    -->
+                    <span class="dist__tx-amount">{{ formatEuros(tx.effectiveAmountCents as Cents) }}</span>
+                    <span class="dist__tx-original">
+                      <template v-if="showsOriginalAmount(tx.amountCents, tx.effectiveAmountCents)">
+                        ({{ formatEuros(tx.amountCents as Cents) }})
+                      </template>
+                    </span>
+                    <span class="dist__tx-badge">
+                      <small
+                        v-if="settlementBadge(tx.settlementStatus)"
+                        class="tag"
+                        :class="settlementBadge(tx.settlementStatus)!.tone"
+                        :title="settlementBadge(tx.settlementStatus)!.title"
+                      >{{ settlementBadge(tx.settlementStatus)!.text }}</small>
+                    </span>
                     <!--
                       Reclassement EN PLACE. Le lien « relevé » qui occupait cette colonne
                       renvoyait vers le PDF d'origine — une information qu'on ne vient jamais
@@ -393,8 +443,7 @@ function isDeltaAlarming(value: number): boolean {
                   </li>
                 </ol>
                 <p class="dist__tx-state">
-                  {{ (transactionsByItem[item.itemCode] ?? []).length }} ligne(s),
-                  total {{ formatEuros(loadedTotal(item.itemCode) as Cents) }}
+                  {{ footerLabel(item.itemCode) }}
                 </p>
               </template>
             </div>
@@ -498,18 +547,46 @@ function isDeltaAlarming(value: number): boolean {
 .dist__tx { padding: 0 var(--space-3) var(--space-2) var(--space-8); }
 .dist__tx-row {
   display: grid;
-  grid-template-columns: 4.5rem 1fr 5.5rem auto;
+  /* date · libellé · montant effectif · montant du relevé · badge · reclassement */
+  grid-template-columns: 5.5rem minmax(6rem, 1fr) 5.5rem 7rem 8.5rem auto;
   align-items: center;
   gap: var(--space-2);
   height: var(--row-height-sm);
   font-size: var(--font-size-sm);
   border-bottom: 1px solid var(--color-hairline);
 }
+/*
+ * Les deux colonnes de la réconciliation sont de largeur FIXE, et tenues même vides.
+ *
+ * En `auto`, une colonne sans contenu s'effondre à zéro : les lignes à badge décalaient alors
+ * la colonne des montants de la largeur du badge — 70 px mesurés à la revue du 2026-09-08. Une
+ * colonne de montants qui bouge d'une ligne à l'autre est illisible, et c'est exactement ce que
+ * la story cherchait à réparer.
+ */
+.dist__tx-badge { width: 8.5rem; }
+.dist__tx-original {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
 .dist__tx-date { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--font-size-xs); }
 .dist__tx-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dist__tx-amount { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .dist__tx-state { margin: var(--space-1) 0 0; color: var(--color-text-muted); font-size: var(--font-size-xs); }
 .dist__tx-state--error { color: var(--color-danger); }
+
+/*
+ * Sous 1 000 px, les six pistes de la ligne de transaction ne tiennent plus : le libellé, seul
+ * `1fr` de la grille, se faisait manger jusqu'à zéro. Le montant du relevé cède la place — il
+ * reste dans l'infobulle du badge, qui dit déjà que la ligne ne compte pas.
+ */
+@media (width < 1000px) {
+  .dist__tx-row { grid-template-columns: 5.5rem minmax(6rem, 1fr) 5.5rem 0 8.5rem auto; }
+  .dist__tx-original { display: none; }
+}
 
 .dist__bar { width: 100%; height: 5px; }
 .dist__fill { fill: var(--color-accent); }

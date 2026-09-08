@@ -308,7 +308,13 @@ const visibleTransactions = computed(() => {
   })
 })
 
-/** Un filtre sans sous-total oblige à additionner de tête ce qu'on vient d'isoler. */
+/**
+ * Un filtre sans sous-total oblige à additionner de tête ce qu'on vient d'isoler.
+ *
+ * Il somme les montants du RELEVÉ, sciemment, et non les montants effectifs des descentes
+ * d'analyse : cet écran est le relevé, et c'est ici qu'on sélectionne des lignes pour les lier
+ * en comparant ce que la banque a débité. Le badge dit, lui, ce que l'analyse en fait.
+ */
 const visibleTotalCents = computed(() =>
   cents(visibleTransactions.value.reduce((sum, t) => sum + t.amountCents, 0)),
 )

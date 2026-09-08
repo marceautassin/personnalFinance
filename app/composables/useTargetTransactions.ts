@@ -17,6 +17,13 @@ export interface TargetTransactionGroup {
   itemCode: string
   transactions: RangeTransaction[]
   totalCents: Cents
+  /**
+   * Lignes qui ne pèsent plus rien.
+   *
+   * Sans ce compte, l'écart entre les lignes listées et le nombre de transactions du tableau
+   * ressemble à un bug — c'est la mention que la descente d'analyse porte déjà.
+   */
+  neutralizedCount: number
 }
 
 export function useTargetTransactions() {
@@ -28,7 +35,20 @@ export function useTargetTransactions() {
   /** Neutralise les réponses d'une tranche qu'on a déjà quittée. */
   let generation = 0
 
-  async function toggle(bucket: string, range: { from: string, to: string }, target: string) {
+  /**
+   * Ouvre — ou referme — la tranche `bucket`.
+   *
+   * `window` porte les bornes de la FENÊTRE affichée, qui débordent celles de la tranche. Le
+   * moteur neutralise sur la fenêtre entière avant de répartir par tranche : sans la lui
+   * transmettre, l'endpoint recalculerait l'état sur le seul mois ouvert et remettrait dans le
+   * total une avance que le point, lui, ne compte pas (revue du 2026-09-08).
+   */
+  async function toggle(
+    bucket: string,
+    range: { from: string, to: string },
+    target: string,
+    window: { from: string, to: string },
+  ) {
     generation += 1
     const token = generation
 
@@ -56,6 +76,8 @@ export function useTargetTransactions() {
         query: {
           from: range.from,
           to: range.to,
+          settlementFrom: window.from,
+          settlementTo: window.to,
           ...(kind === 'group' ? { group: code } : { item: code }),
         },
       })
@@ -101,7 +123,11 @@ export function useTargetTransactions() {
       .map(([itemCode, txs]) => ({
         itemCode,
         transactions: txs,
-        totalCents: cents(txs.reduce((sum, t) => sum + t.amountCents, 0)),
+        // Montant EFFECTIF : le total de la tranche, lui, écarte les lignes qu'une
+        // réconciliation a couvertes. Sommer le brut affichait sous le graphique un total
+        // qui ne valait pas le point qu'on venait d'ouvrir (story 19.4).
+        totalCents: cents(txs.reduce((sum, t) => sum + t.effectiveAmountCents, 0)),
+        neutralizedCount: txs.filter(t => t.settlementStatus === 'neutralized').length,
       }))
       .sort((a, b) => Math.abs(b.totalCents) - Math.abs(a.totalCents))
   })

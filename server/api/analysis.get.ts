@@ -74,6 +74,12 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
     })
     .from(transactions)
     .where(and(gte(transactions.transactionDate, start), lte(transactions.transactionDate, end)))
+    // Ordre EXPLICITE. `neutralizeSettlements` trie les avances par date, et son tri est
+    // stable : deux avances du même jour sont donc départagées par l'ordre d'ARRIVÉE. Le
+    // laisser au hasard du plan d'exécution ferait imputer un remboursement sur l'une ici et
+    // sur l'autre dans `/api/transactions` — deux écrans qui ne raconteraient pas la même
+    // chose du même groupe (revue du 2026-09-08).
+    .orderBy(asc(transactions.transactionDate), asc(transactions.id))
 
   // Période précédente : la tranche calendaire d'avant, déduite de la borne de début. Un
   // décalage en jours donnerait une fenêtre à cheval que personne ne reconnaîtrait comme

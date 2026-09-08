@@ -75,6 +75,8 @@ type Row = {
   statementHash: string
   categoryItemCode: string
   id: number
+  settlementStatus: 'neutralized' | 'partial' | 'outstanding' | null
+  effectiveAmountCents: number
 }
 type Resp = { transactions: Row[], reliability: StatementReliability | null }
 
@@ -255,5 +257,125 @@ describe('GET /api/transactions — descente par bornes et par poste', () => {
         handler(eventWithQuery('from=2026-04-01&to=2026-04-30&group=alimentation&item=revenus-salaire')),
       ).rejects.toMatchObject({ statusCode: 422 })
     })
+  })
+})
+
+/**
+ * Réconciliation (epic 19) — l'état d'une ligne se calcule sur la PÉRIODE, jamais sur ce qui
+ * reste après le filtre de poste.
+ *
+ * Les deux cas ci-dessous sont ceux qui cassaient l'écran avant la story 19.4 : un badge
+ * « à rembourser » posé sur une ligne que le total ne comptait déjà plus, et un pied de
+ * descente qui ne retombait pas sur le total du poste (NFR2).
+ */
+describe('GET /api/transactions — état et poids réel des lignes réconciliées', () => {
+  const linkGroup = (label: string) => {
+    dbMod.db.insert(schema.settlementGroups).values({ label }).run()
+    return dbMod.db.select({ id: schema.settlementGroups.id }).from(schema.settlementGroups).all().at(-1)!.id
+  }
+
+  beforeEach(() => {
+    seedStatement()
+  })
+
+  it('une avance reste neutralisée même quand le filtre de poste exclut son remboursement', async () => {
+    const groupId = linkGroup('courses parents')
+    dbMod.db.insert(schema.transactions).values([
+      // L'avance est en « courses », le virement qui la rembourse en « remboursements ».
+      { statementHash: HASH_A, transactionDate: '2026-04-12', label: 'AVANCE', amountCents: -36_750, categoryItemCode: 'alimentation-courses', settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 36_750, categoryItemCode: 'revenus-salaire', settlementGroupId: groupId },
+    ]).run()
+
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=alimentation-courses'))) as Resp
+
+    expect(r.transactions).toHaveLength(1)
+    expect(r.transactions[0]).toMatchObject({
+      label: 'AVANCE',
+      amountCents: -36_750,
+      settlementStatus: 'neutralized',
+      effectiveAmountCents: 0,
+    })
+  })
+
+  it('la somme des montants effectifs retombe sur le total du poste', async () => {
+    const groupId = linkGroup('courses parents')
+    dbMod.db.insert(schema.transactions).values([
+      { statementHash: HASH_A, transactionDate: '2026-04-12', label: 'AVANCE', amountCents: -36_750, categoryItemCode: 'alimentation-courses', settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 36_750, categoryItemCode: 'revenus-salaire', settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'LIBRE', amountCents: -4_210, categoryItemCode: 'alimentation-courses' },
+    ]).run()
+
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=alimentation-courses'))) as Resp
+
+    expect(r.transactions.reduce((s, t) => s + t.effectiveAmountCents, 0)).toBe(-4_210)
+  })
+
+  it('un remboursement hors période laisse l\'avance à charge dans son mois', async () => {
+    const groupId = linkGroup('avance de janvier')
+    dbMod.db.insert(schema.bankStatements).values({
+      hashSha256: 'b'.repeat(64),
+      periodStart: '2026-01-01',
+      periodEnd: '2026-01-31',
+      openingBalanceCents: 0,
+      closingBalanceCents: 0,
+      gapAccepted: true,
+    }).run()
+    dbMod.db.insert(schema.transactions).values([
+      { statementHash: 'b'.repeat(64), transactionDate: '2026-01-12', label: 'AVANCE', amountCents: -20_000, categoryItemCode: 'alimentation-courses', settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 20_000, categoryItemCode: 'revenus-salaire', settlementGroupId: groupId },
+    ]).run()
+
+    const janvier = (await handler(eventWithQuery('from=2026-01-01&to=2026-01-31'))) as Resp
+    expect(janvier.transactions[0]).toMatchObject({ settlementStatus: 'outstanding', effectiveAmountCents: -20_000 })
+
+    // Sur une période qui contient les deux lignes, la même avance est neutralisée.
+    const annee = (await handler(eventWithQuery('from=2026-01-01&to=2026-12-31'))) as Resp
+    expect(annee.transactions.find(t => t.label === 'AVANCE')).toMatchObject({ settlementStatus: 'neutralized', effectiveAmountCents: 0 })
+  })
+
+  /*
+   * Portée ÉLARGIE — la trajectoire d'une cible sur `/evolution` neutralise sur la fenêtre
+   * entière puis répartit par tranche. Ouvrir une tranche sans le dire remettrait dans son
+   * total une avance que le point, lui, ne compte pas (revue du 2026-09-08).
+   */
+  it('la portée déclarée déborde les lignes demandées et décide de l\'état', async () => {
+    const groupId = linkGroup('avance de janvier')
+    dbMod.db.insert(schema.bankStatements).values({
+      hashSha256: 'b'.repeat(64),
+      periodStart: '2026-01-01',
+      periodEnd: '2026-01-31',
+      openingBalanceCents: 0,
+      closingBalanceCents: 0,
+      gapAccepted: true,
+    }).run()
+    dbMod.db.insert(schema.transactions).values([
+      { statementHash: 'b'.repeat(64), transactionDate: '2026-01-12', label: 'AVANCE', amountCents: -20_000, categoryItemCode: 'alimentation-courses', settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 20_000, categoryItemCode: 'revenus-salaire', settlementGroupId: groupId },
+    ]).run()
+
+    const q = 'from=2026-01-01&to=2026-01-31&settlementFrom=2026-01-01&settlementTo=2026-12-31'
+    const r = (await handler(eventWithQuery(q))) as Resp
+
+    expect(r.transactions.map(t => t.label)).toEqual(['AVANCE'])
+    expect(r.transactions[0]).toMatchObject({ settlementStatus: 'neutralized', effectiveAmountCents: 0 })
+  })
+
+  it('refuse une portée plus ÉTROITE que les lignes demandées', async () => {
+    const q = 'from=2026-01-01&to=2026-12-31&settlementFrom=2026-04-01&settlementTo=2026-04-30'
+    await expect(handler(eventWithQuery(q))).rejects.toMatchObject({ statusCode: 422 })
+  })
+
+  it('refuse une borne de portée orpheline', async () => {
+    await expect(handler(eventWithQuery('from=2026-01-01&to=2026-01-31&settlementFrom=2025-01-01')))
+      .rejects.toMatchObject({ statusCode: 422 })
+  })
+
+  it('une ligne hors groupe pèse son propre montant, sans état', async () => {
+    dbMod.db.insert(schema.transactions).values([
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'LIBRE', amountCents: -4_210, categoryItemCode: 'alimentation-courses' },
+    ]).run()
+
+    const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30'))) as Resp
+    expect(r.transactions[0]).toMatchObject({ settlementStatus: null, effectiveAmountCents: -4_210 })
   })
 })

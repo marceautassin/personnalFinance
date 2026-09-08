@@ -1981,3 +1981,41 @@ neutralisée, partiellement couverte, ou restée à la charge de l'utilisateur
 **Given** un groupe
 **When** il est affiché
 **Then** on voit ce qu'il totalise d'avances, de remboursements, et ce qui reste à charge
+
+### Story 19.4: Voir ce qui ne compte pas, là où on lit les totaux
+
+> **Née de l'usage réel, le 2026-09-08.** « La couleur des badges remboursé n'est pas très
+> visible » et « dans la partie analyse on ne voit pas ces lignes qui ne font pas partie du
+> total ». Derrière la demande cosmétique, deux défauts : le pied de la descente d'analyse
+> sommait les montants BRUTS sous un total qui neutralise, et l'état de réconciliation se
+> calculait sur les lignes déjà filtrées par poste — donc faux dès que le remboursement était
+> rangé ailleurs.
+
+En tant qu'utilisateur,
+je veux repérer dans l'analyse les lignes qui ne pèsent pas ce qu'elles affichent,
+afin de vérifier un total sans avoir à deviner pourquoi il ne tombe pas juste (NFR2).
+
+**Acceptance Criteria:**
+
+**Given** un poste contenant une ligne neutralisée
+**When** je le déplie dans l'analyse
+**Then** le pied de la descente affiche exactement le total du poste affiché au-dessus
+
+**Given** une ligne neutralisée ou partiellement couverte
+**When** elle s'affiche dans une descente
+**Then** elle porte un badge lisible, montre le montant qui COMPTE, et rappelle le montant du
+relevé entre parenthèses
+
+**Given** une avance dont le remboursement est rangé sur un autre poste
+**When** je descends sur le poste de l'avance
+**Then** son état est celui que le moteur lui a donné sur la période, jamais celui qu'un groupe
+amputé de ses remboursements laisserait croire
+
+**Given** une avance dont le remboursement tombe dans un autre mois
+**When** je regarde le mois de l'avance
+**Then** elle est « à rembourser » et compte entière — l'état décrit ce que le moteur a fait sur
+la période regardée, pas l'état absolu du groupe
+
+**Note d'implémentation.** L'état ET le montant effectif sortent du même rejeu de
+`neutralizeSettlements`. La portée du calcul est celle de l'agrégat affiché : la période, sans
+le filtre de poste ou de rubrique.

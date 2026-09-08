@@ -1,5 +1,5 @@
 # generated: 2026-04-30
-# last_updated: 2026-09-06
+# last_updated: 2026-09-08
 # project: personnalFinance
 # project_key: NOKEY
 # tracking_system: file-system
@@ -391,6 +391,32 @@ development_status:
   19-1-grouper-des-transactions: review
   19-2-neutraliser-les-lignes-couvertes: review
   19-3-voir-et-gerer-ses-groupes: review
+  # Nee de l'usage reel, 2026-09-08 : « la couleur des badges rembourse n'est pas tres visible »
+  # et « dans la partie analyse on ne voit pas ces lignes qui ne font pas partie du total ».
+  # L'investigation a trouve deux defauts derriere la demande cosmetique :
+  #   • le pied de la descente d'analyse sommait les montants BRUTS sous un total qui neutralise
+  #     — l'ecart valait exactement l'avance remboursee, rupture de NFR2 ;
+  #   • l'etat de reconciliation se calculait sur les lignes DEJA filtrees par poste : une avance
+  #     rangee en « Alimentation » et remboursee par un virement range ailleurs s'affichait
+  #     « a rembourser » alors que le moteur ne la comptait deja plus.
+  # L'endpoint expose desormais `effectiveAmountCents` et calcule l'etat sur la PERIODE entiere.
+  # REVUE du 2026-09-08 (4 relecteurs en contexte neuf, validation visuelle FAITE sur une COPIE
+  # de la base reelle) : 1 BLOQUANT, 3 MAJEURS, plusieurs mineurs. Tous traites.
+  #   • BLOQUANT — la descente de /evolution violait la regle meme de la story : `categorySeries`
+  #     neutralise sur la FENETRE entiere puis repartit par tranche, la descente n'interrogeait
+  #     qu'une tranche. Point d'aout = -183,50 EUR, descente = -241,50 EUR. L'endpoint accepte
+  #     desormais `settlementFrom`/`settlementTo`, et refuse une portee plus etroite que ses
+  #     lignes. Le meme mois se lit donc « a rembourser » sur l'analyse et « rembourse » sur
+  #     l'evolution : deux portees, deux verites, chacune fidele a SON total.
+  #   • MAJEURS — colonnes en `auto` : une colonne vide s'effondre et decalait la colonne des
+  #     montants de 70 a 90 px d'une ligne a l'autre ; sous 1 000 px les pistes fixes faisaient
+  #     disparaitre le libelle ; le pied de l'evolution ne portait pas « dont N neutralisee(s) ».
+  #   • L'ordre des lignes passees au moteur est desormais EXPLICITE des deux cotes : son tri est
+  #     stable, deux avances du meme jour etaient departagees par le hasard du plan SQL.
+  # Reporte : l'excedent de remboursement porte en bloc par une seule ligne peut lui faire
+  # afficher un montant superieur au sien. Corriger demande de toucher `neutralizeSettlements`.
+  # Verifications : 595 tests unitaires, 22 E2E (7 skipped), lint et typecheck propres.
+  19-4-lisibilite-des-lignes-neutralisees: review
   # Deux pieges rencontres a l'implementation, tous deux corriges :
   #   • ALTER TABLE de SQLite ne porte PAS d'action de cle etrangere : la migration 0007 a
   #     produit une contrainte nue la ou le schema declarait `ON DELETE SET NULL`. Le DDL de
