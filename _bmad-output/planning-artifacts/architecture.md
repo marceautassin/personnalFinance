@@ -1233,3 +1233,197 @@ Toutes les cases de la checklist sont cochées. 29 décisions, patterns définis
 **La suppression du périmètre mort est faite** (146 fichiers, −10 457 lignes, commitée le 2026-09-04).
 
 **Première priorité d'implémentation : la story 12-1**, qui pose le référentiel à deux niveaux et vide les transactions. Elle ouvre la chaîne 12 → 13 → 14 → 15 décrite dans `epics.md`, dont le jalon de mesure du taux de correction (≤ 10 %, story 14-4) conditionne le démarrage de l'epic 15.
+
+---
+
+## Décisions d'architecture — amendement du 2026-09-12
+
+Statue sur les dix contraintes AR24 à AR33 inscrites dans `epics.md` par le PM pendant le découpage
+des epics 22 à 26. Elles étaient des contraintes posées, pas des décisions prises. Chacune est
+ci-dessous **validée, amendée ou durcie**, et les décisions retenues portent les numéros **D30 à D36**.
+
+Les constats ci-dessous viennent de la lecture du code, pas des documents.
+
+### D30 — Propriété des données : le problème n'est pas la colonne, ce sont les clés
+
+**Statue sur AR24 et AR26. AR24 est validée dans son intention et notablement durcie dans sa portée.**
+
+AR24 dit « chaque table métier porte un propriétaire ». C'est **nécessaire et insuffisant**. Le schéma
+actuel repose sur trois **clés primaires textuelles dans un espace de noms global** :
+
+| Table | Clé primaire | Ce qui casse en multi-utilisateur |
+|---|---|---|
+| `category_groups` | `code` (texte) | Vocabulaire de l'utilisateur. **Collision certaine** : les deux membres auront `alimentation` |
+| `category_items` | `code` (texte) | Idem, et `transactions.category_item_code` pointe dessus |
+| `bank_statements` | `hash_sha256` | Collision improbable mais la déduplication (FR5) devient par membre, pas globale |
+
+Les codes de poste sont du **vocabulaire métier édité par l'utilisateur** — c'est écrit dans
+`CLAUDE.md`, et c'est précisément ce qui les rend non partageables. Deux référentiels propres à
+chacun (décision produit du 2026-09-12) garantissent la collision dès le premier poste créé.
+
+**Décision.** Le référentiel passe à une **clé primaire de substitution entière**, le couple
+`(owner_id, code)` devenant une contrainte d'unicité. `transactions.category_item_code` devient une
+clé étrangère vers cet identifiant. Même traitement pour `bank_statements` : le hash reste le critère
+de déduplication, mais **par propriétaire**.
+
+**Rejeté : préfixer le code par le propriétaire** (`u1:alimentation-restaurant`). C'est moins cher,
+et ça fait entrer l'identité dans le vocabulaire métier. Le jour où un membre exporte ou renomme, le
+préfixe fuit dans l'interface. La Rule of Three ne s'applique pas ici : on sait déjà qu'il y aura
+deux propriétaires.
+
+**Conséquence sur le coût, et c'est le vrai sujet.** SQLite ne sait pas porter d'action de clé
+étrangère par `ALTER TABLE` — le code le documente déjà à propos de `settlement_group_id` et de la
+migration 0007. Changer ces clés impose donc un **rebuild de table** : création, copie, bascule, pour
+`category_groups`, `category_items`, `transactions`, `bank_statements` et `classification_rules`.
+
+Sur une base dont la perte était acceptable, c'était sans enjeu. **NFR12 est inversée** : la perte
+n'est plus acceptable, et `AR5` comme `D18` — migration par vidage et ré-ingestion — **ne
+s'appliquent plus**. La migration doit préserver l'historique complet.
+
+**Garde-fous exigés sur cette migration :**
+
+- Sauvegarde vérifiée **restaurable** avant exécution. La story 23.1 en dépend, et l'ordre des epics
+  la place après : **inverser cet ordre, ou dupliquer une sauvegarde ponctuelle dans la story 22.2.**
+- Comptage avant / après sur chaque table, l'écart faisant échouer la migration.
+- Migration versionnée et commitée (D21), jamais un `drizzle push`. La base de développement dérive
+  déjà et `push` veut reconstruire `transactions` : sur cette migration-là, la différence n'est plus
+  cosmétique.
+
+**AR26 est validée telle quelle** et n'a pas besoin d'un numéro de décision : D11 à D16 décrivaient
+des profils **gérés par un utilisateur unique**, sans authentification ni cloisonnement. C'est un
+précédent à relire, pas un modèle à recopier. Le présent D30 les remplace définitivement.
+
+### D31 — Le cloisonnement se pose dans quatre fichiers, et jamais dans le moteur
+
+**Statue sur AR25. Validée sans réserve, et vérifiée dans le code.**
+
+`server/services/analysis-engine.ts` n'importe **rien** du client de base : ses seuls imports sont
+`money`, `ratio`, `movement-nature` et `granularity`. D19 tient. Le moteur ne doit pas apprendre ce
+qu'est un membre.
+
+Le filtrage se pose donc dans les points d'accès aux données, et ils sont **dénombrables** :
+`server/api/analysis.get.ts`, `server/api/evolution.get.ts`, `server/api/transactions/index.get.ts`,
+et `server/utils/settlement-status.ts`. Quatre endroits, pas une dispersion.
+
+**C'est la décision la moins chère du lot, et elle porte le plus loin** : c'est elle qui rend
+l'agent conversationnel (epic 26) conforme au foyer sans être retouché, puisqu'il ne consomme que ces
+endpoints (NFR32). Construire l'agent avant le foyer ne coûte donc rien, **à cette condition seule**.
+
+### D32 — « Settlement » est déjà pris, et pas seulement comme URL
+
+**Statue sur AR27. Validée, et le problème est plus large que signalé.**
+
+Le PM signalait une collision sur `/api/settlements`. Elle porte aussi sur la **table**
+`settlement_groups` et sur la colonne `transactions.settlement_group_id`, livrées à l'epic 19 pour
+les groupes de transactions qui se compensent.
+
+**Décision.** Le règlement entre membres du foyer prend un vocabulaire **distinct et sans recouvrement**
+— champ lexical de la dette et du remboursement entre personnes, pas de la compensation de lignes.
+Le terme exact est laissé au développement, la contrainte est qu'aucun identifiant du foyer ne
+contienne `settlement`.
+
+**Nuance qui compte pour l'epic 25.** Les stories 25.5 et 25.6 **réutilisent délibérément** le
+mécanisme de groupes de l'epic 19 : un groupe éteint la créance et neutralise l'avance en un seul
+geste. Réutiliser le mécanisme est juste ; réutiliser le **nom** pour désigner deux notions
+différentes ne l'est pas.
+
+### D33 — Les trois transformations pures s'appliquent au même endroit, dans un ordre fixé
+
+**Statue sur AR28. Validée, et complétée d'une contrainte que le découpage n'énonçait pas.**
+
+Trois mécanismes coexistent sans fusionner : mouvement interne, dépense commune, et coupe à 50 % des
+virements du compte joint (story 21.1). Le PM a raison de refuser la fusion.
+
+**Ce qu'il manquait : leur ordre d'application.** Ce sont trois transformations pures appliquées avant
+agrégation, aux mêmes points que `neutralizeSettlements`. Composées dans le désordre, elles ne donnent
+pas le même résultat — une dépense commune déjà coupée par la règle du joint serait partagée deux fois.
+
+**Décision.** L'ordre est fixé **en un seul endroit**, une fonction de composition unique que les
+quatre points d'appel invoquent. Aucun appelant ne compose lui-même. C'est le défaut déjà corrigé
+deux fois, en 19.4 puis en 21.1 ; une troisième transformation le rendrait certain.
+
+### D34 — La saisie manuelle est une table à part, et `is_manual` ne doit pas la porter
+
+**Statue sur AR29. Validée, avec un piège à nommer.**
+
+`transactions.is_manual` existe déjà et porte **deux sens** : ligne ajoutée à la main pour résorber
+un écart de réconciliation (FR13), et transaction dont l'utilisateur a corrigé le poste — c'est ce
+second sens qui rend le taux de correction mesurable (FR24, jalon ≤ 10 %).
+
+Une dépense en espèces est un **troisième** sens, et il contredit le premier : la ligne de FR13 entre
+dans la réconciliation, celle de FR55 ne doit surtout pas y entrer. Réutiliser le drapeau casserait à
+la fois l'invariant de réconciliation et la mesure du jalon.
+
+**Décision.** Table distincte pour les dépenses saisies en espèces. Le moteur les reçoit comme des
+lignes parmi d'autres, la réconciliation ne les voit jamais, et `is_manual` garde ses deux sens
+actuels sans en acquérir un troisième.
+
+### D35 — Concurrence : version lue portée par l'écriture
+
+**Statue sur AR30. Validée, avec le mécanisme.**
+
+**Décision.** Concurrence optimiste. Toute entité du décompte du foyer porte une version, entier
+incrémenté à chaque écriture. Une écriture transmet la version sur laquelle elle se fonde ; si elle a
+changé, l'écriture est **refusée** avec une erreur métier dédiée, jamais appliquée par-dessus.
+
+C'est la solution ennuyeuse, et c'est pour ça qu'elle convient : pas de verrou, pas d'état serveur,
+cohérente avec des endpoints sans état. À deux utilisateurs, le conflit sera rare ; il ne doit pas
+être silencieux pour autant.
+
+### D36 — L'agent remplit un formulaire, il n'appelle pas d'outil
+
+**Statue sur AR32 et AR33. Validées, et AR32 durcie.**
+
+Le SDK expose `responseFormat: { type: 'json_schema', strict: true }`, et le code l'utilise déjà.
+**D20 a pourtant établi que cette contrainte est injectée dans le prompt, pas appliquée au décodage.**
+Le drapeau `strict` décrit une intention du fournisseur, pas une garantie. L'appel d'outil emprunte
+le même canal : il hérite de la même faiblesse.
+
+**Décision, en trois points.**
+
+L'agent produit une **requête structurée** — période, granularité, cible — validée par le code avant
+exécution : bornes de dates réelles, granularité dans l'énumération connue, cible existant réellement
+au référentiel du membre. Une requête invalide est rejetée par l'application.
+
+La **grammaire est fermée**. La cible est un code du référentiel, jamais du texte libre ; la
+granularité est une énumération. On ne demande pas au modèle de produire une requête, on lui demande
+de **choisir parmi des valeurs qui existent**. C'est le même principe que la lecture des colonnes
+Débit/Crédit : retirer une décision au modèle plutôt que mieux la lui suggérer.
+
+Ce qui est validé côté code n'a **pas** besoin d'être fiable côté modèle. Le design tient avec un
+modèle médiocre sur ce point et s'améliore si le modèle est bon. C'est ce qui permet à la story 26.1
+d'être un jalon mesurable plutôt qu'un pari.
+
+**AR33 est validée sans réserve** : un seul SDK, confiné (NFR16), inférence en Europe (NFR7), mais
+deux configurations distinctes lues depuis l'environnement (NFR34). Le coût est nul, le bénéfice est
+qu'un réglage de l'agent ne touche jamais le fichier de la catégorisation.
+
+### AR31 — la porte d'exposition
+
+**Validée, et volontairement sans numéro de décision.** C'est une règle de séquencement de projet,
+pas une décision d'architecture. Elle appartient au PRD et au `sprint-status.yaml`, où elle figure
+déjà. L'architecture n'a rien à y ajouter, sinon que la **story 23.1 doit précéder la migration de
+D30**, ce qui est noté ci-dessus.
+
+### Synthèse
+
+| Contrainte | Statut | Décision |
+|---|---|---|
+| AR24 | **durcie** | D30 — clés de substitution, rebuild de tables, migration préservante |
+| AR25 | validée | D31 — quatre points de filtrage, moteur intouché |
+| AR26 | validée | intégrée à D30 |
+| AR27 | **élargie** | D32 — la collision porte aussi sur la table et la colonne |
+| AR28 | **complétée** | D33 — ordre d'application fixé en un seul endroit |
+| AR29 | validée | D34 — table distincte, `is_manual` préservé |
+| AR30 | validée | D35 — concurrence optimiste par version |
+| AR31 | validée | hors architecture, sauf l'ordre 23.1 avant D30 |
+| AR32 | **durcie** | D36 — requête validée par le code, grammaire fermée |
+| AR33 | validée | D36 — un SDK, deux configurations |
+
+**Aucune contrainte n'est contredite.** Deux sont durcies, une élargie, une complétée. Le découpage
+du PM tenait ; ce qu'il sous-estimait est le coût de D30.
+
+**Effet sur l'estimation.** Le foyer était présenté comme « ajouter un propriétaire aux tables ». Il
+s'agit en réalité de reconstruire cinq tables en préservant deux ans de données, sur une base dont la
+perte n'est plus acceptable. C'est la story la plus risquée des vingt-deux, et elle est numérotée
+22.2.
