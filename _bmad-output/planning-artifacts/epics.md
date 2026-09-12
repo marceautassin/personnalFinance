@@ -10,6 +10,12 @@ inputDocuments:
   - _bmad-output/implementation-artifacts/sprint-status.yaml
   - CLAUDE.md
 supersedes: _bmad-output/planning-artifacts/epics-v1-forecast.md
+amendments:
+  - date: '2026-09-12'
+    scope: >-
+      Périmètre foyer (Phase 1 bis du PRD). Inventaire étendu de FR44 à FR62 et
+      de NFR24 à NFR30, NFR2/NFR5/NFR9/NFR12/FR31 mises à jour, AR24 à AR31
+      ajoutées. Epics 22 à 25 ajoutés. Le document est complété, jamais recréé.
 ---
 
 # personnalFinance - Epic Breakdown
@@ -17,6 +23,10 @@ supersedes: _bmad-output/planning-artifacts/epics-v1-forecast.md
 ## Overview
 
 Découpage du PRD réécrit du 2026-09-04 (39 FRs / 23 NFRs / 4 parcours) et de l'amendement d'architecture du même jour (D17-D27) en epics et stories implémentables.
+
+> **Amendement du 2026-09-12 — le périmètre foyer.** Le PRD a été révisé puis validé le même jour : il porte désormais **62 FRs, 30 NFRs et 7 parcours**. Ce qui s'ajoute est la Phase 1 bis, où l'application cesse d'être mono-utilisateur et mono-machine : identité déléguée, second membre cloisonné, dépenses communes partagées à parts égales, saisie des dépenses en espèces, et décompte « qui doit combien à qui ».
+>
+> **Ce document est complété, pas remplacé.** Les epics 12 à 21 restent en l'état ; les nouveaux démarrent à **22**, pour la raison exposée plus bas au sujet de la numérotation.
 
 **Ce document remplace `epics-v1-forecast.md`** (11 epics / 58 stories construits autour du forecast inverse et du dividende SAS, périmètre invalidé par l'usage réel).
 
@@ -93,28 +103,79 @@ Il n'existe pas de spécification UX pour ce projet et il n'y en aura pas : mono
 - **FR38** — L'utilisateur peut consulter les dépenses récurrentes détectées dans son historique, avec leur montant et leur périodicité.
 - **FR39** — L'utilisateur peut comparer explicitement deux périodes de son choix.
 
+**Périmètre foyer — ajouté le 2026-09-12 (Phase 1 bis)**
+
+*Identité et foyer*
+
+- **FR44** — L'utilisateur s'authentifie via un fournisseur d'identité externe. Aucun mot de passe ni empreinte n'est stocké par l'application.
+- **FR45** — Le fondateur peut inviter une personne en désignant son adresse. Invitation à usage unique, expirant sous 7 jours.
+- **FR46** — La personne invitée rejoint le foyer à sa première connexion, dans un espace vierge : aucun relevé, aucune transaction, aucun référentiel hérité.
+- **FR47** — L'utilisateur peut consulter la liste des membres de son foyer.
+- **FR48** — Le fondateur peut retirer un membre. Retrait refusé tant que son solde n'est pas nul, montant restant indiqué.
+- **FR49** — Un membre n'accède ni aux relevés, ni aux transactions, ni au référentiel, ni aux indicateurs d'un autre membre. *(Amendée le 2026-09-12 : seule exception, FR64.)*
+
+*Dépenses communes*
+
+- **FR50** — L'utilisateur peut marquer une transaction comme dépense commune, depuis l'écran où elle est déjà affichée. Le marquage indique explicitement qu'il **rend la dépense visible à l'autre membre**.
+- **FR51** — Une dépense commune est répartie à parts égales, la somme des parts valant le montant au centime.
+- **FR52** — Une dépense commune reste rangée dans le poste du payeur et pèse dans son analyse. Elle n'apparaît dans aucun autre référentiel.
+- **FR53** — L'utilisateur peut retirer le marquage « commune », le solde du foyer étant recalculé immédiatement.
+
+*Saisie manuelle des dépenses en espèces*
+
+- **FR54** — L'utilisateur peut saisir une dépense en espèces : date, libellé, montant, poste.
+- **FR55** — Une saisie manuelle n'entre dans la réconciliation d'aucun relevé et ne peut en faire basculer aucun en « non fiable ».
+- **FR56** — Une saisie manuelle est identifiée comme telle partout où elle contribue à un montant affiché.
+- **FR57** — L'utilisateur peut modifier et supprimer une dépense qu'il a saisie.
+
+*Solde du foyer et règlement*
+
+- **FR58** — Le fondateur peut saisir un solde d'ouverture daté et orienté, relu en toutes lettres avant enregistrement, pour reprendre un décompte tenu ailleurs.
+- **FR59** — L'utilisateur peut consulter qui doit combien à qui, à tout moment.
+- **FR60** — L'utilisateur peut descendre du solde du foyer jusqu'aux dépenses qui le composent, chacune identifiée par son origine.
+- **FR61** — L'utilisateur peut enregistrer un règlement entre deux membres, qui réduit leur solde d'autant.
+- **FR62** — L'utilisateur peut rattacher un règlement à la transaction de son relevé qui le porte. Cette transaction n'est alors comptée ni en recette ni en dépense.
+- **FR63** — Une dépense commune dont l'avance est couverte par un remboursement rattaché — notamment un virement du compte joint — **n'alimente plus le décompte**. Le décompte ne porte que ce que le joint n'a pas soldé.
+- **FR64** — Une dépense marquée commune est visible des **deux** membres : date, libellé, montant, payeur. Elle reste absente du référentiel et de l'analyse de celui qui ne l'a pas payée. **Seule exception au cloisonnement de FR49.**
+
+**Périmètre agent conversationnel — ajouté le 2026-09-12 (premier chantier)**
+
+- **FR65** — L'utilisateur peut ouvrir à tout moment une conversation et poser une question en langage ordinaire sur ses données.
+- **FR66** — L'agent répond en français à partir des agrégats renvoyés par le moteur. Il ne produit aucun montant qui ne lui ait été renvoyé.
+- **FR67** — L'utilisateur peut poser une question de suite sans redonner le contexte.
+- **FR68** — Chaque réponse affiche la période et le filtre sur lesquels elle repose, et ouvre l'écran d'analyse correspondant.
+- **FR69** — L'agent indique explicitement qu'il ne peut pas répondre lorsque la question sort de ce que le moteur sait calculer.
+- **FR70** — L'utilisateur peut retrouver ses conversations passées et en reprendre une avec son contexte.
+- **FR71** — L'utilisateur peut supprimer une conversation.
+- **FR72** — L'agent n'interroge que les données de l'utilisateur connecté et les dépenses marquées communes (FR64).
+- **FR37** — *(absorbée par FR65 à FR72.)* La synthèse narrative était la version non interactive de l'agent.
+
+**FR mises à jour le 2026-09-12**
+
+- **FR31** — *(réécrite)* L'utilisateur choisit **ce qu'il regarde** — un trimestre, une année, ou l'historique complet — et la série est toujours découpée au **mois**. L'ancienne rédaction, « sur plusieurs périodes consécutives », décrivait le comportement d'avant la refonte du 2026-09-07 et ne disait ni combien de périodes, ni qui choisissait la fenêtre. **Aucun travail : l'énoncé rattrape le produit livré.**
+
 ### NonFunctional Requirements
 
 **Justesse financière**
 
 - **NFR1** — Valeurs monétaires en centimes entiers. Aucune arithmétique en virgule flottante. Conversion en euros à l'affichage seulement.
-- **NFR2** — Tout montant affiché est traçable jusqu'aux transactions qui le composent. Aucun agrégat, ratio ou point de courbe sans chemin vers ses lignes sources.
+- **NFR2** — *(élargie le 2026-09-12)* Tout montant affiché est traçable jusqu'aux éléments qui le composent — transactions de relevé, saisies manuelles, solde d'ouverture, règlements — chacun identifié par son origine. Aucun agrégat, ratio, point de courbe ou solde de foyer sans chemin vers ses sources.
 - **NFR3** — Les fonctions de calcul (agrégats par période / nature / rubrique / poste, et les 4 indicateurs) sont couvertes par au moins un cas nominal et deux cas limites : période sans transaction, recettes nulles (division par zéro), montant de signe inattendu pour la nature.
 - **NFR4** — Le résultat d'une période exclut systématiquement les mouvements internes ; le solde bancaire les inclut. Deux valeurs calculées séparément, jamais confondues.
 
 **Sécurité et confidentialité**
 
-- **NFR5** — PDF et base stockés exclusivement sur la machine de l'utilisateur. Aucun fichier source transmis à un tiers.
+- **NFR5** — *(élargie le 2026-09-12)* PDF, base et **sauvegardes** stockés exclusivement sur le **réseau local du foyer** : machine hôte, plus une seconde machine du même réseau pour les sauvegardes. Aucun fichier source transmis à un tiers, ni à un hébergeur de sauvegarde.
 - **NFR6** — Seules la date, le libellé et le montant sont transmis au fournisseur LLM. Aucun nom, IBAN, RIB ni adresse.
 - **NFR7** — L'inférence LLM s'exécute sur une infrastructure hébergée dans l'Union européenne.
 - **NFR8** — Clé d'API lue depuis une variable d'environnement, jamais en base, jamais journalisée, jamais retournée en HTTP.
-- **NFR9** — Aucune authentification ; environnement local de confiance mono-machine. Toute exposition réseau rendrait l'auth bloquante.
+- **NFR9** — *(**INVERSÉE** le 2026-09-12)* Aucun écran, aucun endpoint, aucune donnée n'est accessible sans authentification. L'application est joignable depuis Internet et ne suppose plus aucun environnement de confiance. La condition posée par l'ancienne rédaction — « toute exposition réseau rendrait l'auth bloquante » — est remplie.
 
 **Fiabilité des données**
 
 - **NFR10** — Réconciliation exécutée à chaque ingestion, sans exception ni contournement possible.
 - **NFR11** — Un écart ≥ 1 centime marque le relevé « non fiable » ; l'état est propagé à tout agrégat auquel il contribue.
-- **NFR12** — La perte de la base est acceptable : elle doit être intégralement reconstructible depuis les PDF conservés.
+- **NFR12** — *(**INVERSÉE** le 2026-09-12)* Sauvegarde **quotidienne**, sur une machine du réseau local **distincte de l'hôte**, rétention d'au moins **30 jours**, capacité à restaurer vérifiée par une restauration réelle. La perte de la base n'est plus acceptable : marquages « commune », saisies en espèces, solde d'ouverture et règlements n'existent dans aucun PDF. ⚠️ **AR5 tombe avec elle** — la migration par vidage n'est plus une option.
 - **NFR13** — L'échec d'un relevé n'affecte ni les relevés déjà ingérés, ni les suivants dans la file.
 
 **Intégration LLM**
@@ -139,7 +200,29 @@ Il n'existe pas de spécification UX pour ce projet et il n'y en aura pas : mono
 
 - **NFR23** — Aucune cible chiffrée en V1. Point de vigilance à **mesurer** : temps d'agrégation de l'historique complet lors d'un changement de période.
 
-*Scalabilité : sans objet (mono-utilisateur, mono-machine, volume borné).*
+**Cloisonnement et exposition — ajoutées le 2026-09-12**
+
+- **NFR24** — Séparation des données entre membres appliquée **côté serveur à chaque requête**. Aucun filtrage côté interface ne tient lieu de cloisonnement. *(Amendée le 2026-09-12 : une seule exception, énumérée et close — les dépenses marquées communes, FR64.)*
+- **NFR25** — L'application ne détient aucun secret d'authentification. Identité vérifiée par un fournisseur externe.
+- **NFR26** — Toute requête venue hors du réseau local transite par un canal chiffré. Aucune page accessible sans authentification, indexation refusée.
+
+**Garde-fous de l'agent — ajoutées le 2026-09-12**
+
+- **NFR31** — L'agent ne cite aucun nombre qui ne figure **tel quel** dans ce qu'il a reçu du moteur. Un nombre dérivé — moyenne, écart, pourcentage — n'est énonçable que si le moteur l'a calculé. Forme **vérifiable** de NFR15.
+- **NFR32** — L'agent n'accède à la base par aucun chemin. Il obtient ses données exclusivement par les endpoints d'analyse. Aucun de ses modules n'importe le client de base.
+- **NFR33** — Toute réponse portant un montant expose la période et le filtre d'où il provient, et donne accès à l'écran qui le compose.
+- **NFR34** — Identifiant du modèle et paramètres d'appel lus depuis la configuration d'environnement, **valeur distincte par usage** (catégorisation, agent). Aucun module ne les code en dur. Pas d'écran de paramétrage : changer de modèle impose de re-mesurer le taux de correction.
+- **NFR17** — *(étendue)* L'indisponibilité du fournisseur fait échouer proprement l'ingestion **et l'agent**. Toutes les autres capacités restent intactes.
+- **NFR6** — *(réécrite)* Bloc d'identité coupé avant transmission ; lignes brutes du tableau d'opérations transmises ; nom du titulaire résiduel dans les libellés, assumé.
+
+**Justesse du partage — ajoutées le 2026-09-12**
+
+- **NFR27** — La somme des parts d'une dépense commune égale son montant, au centime. Un montant à moitié impaire est réparti sans perte ni création : jamais deux fois le même arrondi.
+- **NFR28** — Saisies manuelles et transactions de relevé forment **deux jeux distincts**. Une saisie n'entre dans aucun calcul de réconciliation et ne modifie l'état de fiabilité d'aucun relevé.
+- **NFR29** — Une transaction rattachée à un règlement n'est comptée ni en recette ni en dépense. Aucun montant ne contribue à la fois au résultat d'un membre et à l'extinction d'une dette du foyer.
+- **NFR30** — Deux modifications concurrentes du solde du foyer ne peuvent se perdre l'une l'autre. Une écriture fondée sur un état obsolète est **refusée** et son auteur informé, jamais appliquée par-dessus celle de l'autre membre.
+
+*Scalabilité : plus « sans objet ». Deux utilisateurs, un serveur personnel, volume inchangé. Ce qui change est la **concurrence**, portée par NFR30.*
 
 ### Additional Requirements
 
@@ -178,7 +261,22 @@ Issues de l'amendement d'architecture du 2026-09-04. Chacune a un impact direct 
 - **AR20 (D8 amendée)** — Invalidation via `fetchState.refresh()` de l'instance `useFetch` capturée. **Jamais `refreshNuxtData` après un `await`** dans un gestionnaire d'événement — le refetch ne part pas, silencieusement.
 - **AR21 (PRD § Implementation Considerations)** — Graphiques en **SVG inline, sans bibliothèque tierce**.
 - **AR22 (PRD § Accessibility)** — `aria-disabled` + raison dans le nom accessible, jamais `disabled` sur un contrôle porteur d'information ; ne jamais désactiver un élément focalisé.
-- **AR23 (D5 amendée)** — Surface d'API cible : `/api/statements`, `/api/transactions`, `/api/categories`, `/api/analysis`. Rien d'autre.
+- **AR23 (D5 amendée)** — Surface d'API cible : `/api/statements`, `/api/transactions`, `/api/categories`, `/api/analysis`. Rien d'autre. *(Amendée le 2026-09-12, voir AR27.)*
+
+**Périmètre foyer — ajoutées le 2026-09-12**
+
+Ces exigences ne sortent pas d'un amendement d'architecture déjà écrit : **l'architecture n'a pas encore statué sur le multi-utilisateur.** Elles énoncent les contraintes que le découpage impose et que l'architecte devra trancher ou contredire explicitement.
+
+- **AR24 — Propriété des données, migration préservante.** Chaque table métier — relevés, transactions, référentiel, règles, groupes — porte un propriétaire. La migration **préserve l'historique existant** et l'attribue au fondateur. ⚠️ **AR5 et D18 ne s'appliquent plus** : le vidage puis la ré-ingestion était sûr tant que les PDF reconstruisaient tout, la NFR12 inversée ferme cette voie. C'est la contrainte la plus structurante du périmètre.
+- **AR25 — Le cloisonnement se pose dans les endpoints, jamais dans le moteur.** D19 tient : `analysis-engine.ts` reste une fonction pure qui reçoit des lignes. C'est l'endpoint qui restreint les lignes au membre connecté. Le moteur ne connaît pas la notion de membre, et ne doit pas l'apprendre.
+- **AR26 — D11 à D16 sont un précédent, pas un modèle.** Un modèle multi-profils a existé dans l'architecture, retiré le 2026-09-04 comme une fiction. Il décrivait des profils **gérés par un utilisateur unique**, sans authentification ni cloisonnement. À relire pour ne pas refaire les mêmes erreurs, jamais à recopier.
+- **AR27 — Surface d'API étendue (AR23 amendée).** S'ajoutent les ressources du foyer : membres et invitations, dépenses saisies à la main, décompte et règlements entre membres. ⚠️ **Collision de nom à éviter** : `/api/settlements` **existe déjà** et désigne les groupes de transactions qui se compensent (epic 19). Le règlement entre membres du foyer est une autre chose et doit porter un autre nom.
+- **AR28 — Trois mécanismes voisins qui ne fusionnent pas.** Mouvement interne (virement entre comptes du même membre), dépense commune (avance pour le foyer), et coupe à 50 % des virements du compte joint (story 21.1, déjà en production). Les confondre produit des doubles comptages. La story 21.1 n'est pas retouchée.
+- **AR29 — La saisie manuelle vit hors du jeu réconcilié.** Une dépense en espèces n'a aucune ligne bancaire en face. Elle ne peut pas partager la table des transactions de relevé sans casser l'invariant de réconciliation (NFR28), qui est le seul mécanisme de confiance du produit.
+- **AR30 — Écriture concurrente pinée sur l'état lu.** Une modification du solde du foyer porte la version sur laquelle elle se fonde ; si elle a changé, l'écriture est refusée et son auteur informé (NFR30).
+- **AR32 — L'agent ne choisit pas librement, il remplit une requête que l'application valide.** Plutôt que de laisser le modèle appeler les endpoints, il produit une demande structurée — période, granularité, cible — que le code valide **avant** de l'exécuter. Une période absurde est rejetée par l'application, pas par la bonne volonté du modèle. ⚠️ **Pourquoi c'est nécessaire** : D20 a établi que les sorties structurées du fournisseur sont **injectées dans le prompt et non contraintes au décodage**. Si le schéma n'est qu'une instruction, le choix de la période l'est aussi. Ce design tient avec un modèle médiocre sur ce point et s'améliore si le modèle est bon.
+- **AR33 — Deux usages, deux configurations, un seul SDK.** L'agent ne crée pas de second fournisseur : NFR7 lui impose l'inférence en Europe comme à l'ingestion, et NFR16 continue d'exiger un point d'entrée unique vers le SDK. Mais les deux usages n'attendent pas la même chose du modèle — l'un produit du JSON, l'autre tient une conversation — et leurs paramètres sont donc distincts et lus depuis la configuration (NFR34).
+- **AR31 — La porte d'exposition est un jalon, pas une étape.** L'application n'est joignable depuis Internet qu'une fois le cloisonnement vérifié par test et la sauvegarde en place. Exposer avant, c'est accepter de perdre des données qu'aucun PDF ne reconstruit.
 
 ### UX Design Requirements
 
@@ -230,7 +328,54 @@ Issues de l'amendement d'architecture du 2026-09-04. Chacune a un impact direct 
 | FR38 | — | phase 2 | Dépenses récurrentes (`charge-suggester` conservé, sans écran au MVP) |
 | FR39 | — | phase 2 | Comparaison explicite de deux périodes |
 
-**Couverture : 39/39.** 5 FRs sont couverts par le socle sans travail nouveau (FR10, FR11, FR13, FR14, FR36) et 3 sont en phase 2 (FR37-39). Les 31 restants sont portés par les epics 12 à 15.
+**Couverture du périmètre initial : 39/39.** 5 FRs sont couverts par le socle sans travail nouveau (FR10, FR11, FR13, FR14, FR36) et 3 sont en phase 2 (FR37-39). Les 31 restants sont portés par les epics 12 à 15.
+
+#### Périmètre foyer — ajouté le 2026-09-12
+
+| FR | Epic | Statut | Note |
+|---|---|---|---|
+| FR44 | 22 | neuf | Authentification déléguée, aucun mot de passe stocké |
+| FR45 | 22 | neuf | Invitation nominative, usage unique, expiration à 7 jours |
+| FR46 | 22 | neuf | Espace vierge à la première connexion, rien d'hérité |
+| FR47 | 22 | neuf | Liste des membres du foyer |
+| FR48 | 22 | neuf | Retrait refusé tant que le solde n'est pas nul |
+| FR49 | 22 | neuf | Cloisonnement strict, appliqué côté serveur (AR25, NFR24) |
+| FR50 | 24 | neuf | Marquage « commune » depuis l'écran où la ligne est déjà affichée |
+| FR51 | 24 | neuf | Parts égales, somme exacte au centime (NFR27) |
+| FR52 | 24 | neuf | La dépense reste chez le payeur — référentiel propre à chacun |
+| FR53 | 24 | neuf | Retrait du marquage, recalcul immédiat |
+| FR54 | 24 | neuf | Saisie d'une dépense en espèces |
+| FR55 | 24 | neuf | Hors réconciliation — jeu de données distinct (AR29, NFR28) |
+| FR56 | 24 | neuf | Origine d'une saisie manuelle visible partout (NFR2) |
+| FR57 | 24 | neuf | Modification et suppression d'une saisie |
+| FR58 | 25 | neuf | Solde d'ouverture daté, orienté, relu avant enregistrement (Journey 7) |
+| FR59 | 25 | neuf | Qui doit combien à qui |
+| FR60 | 25 | neuf | Descente du solde jusqu'aux dépenses sources (NFR2) |
+| FR61 | 25 | neuf | Enregistrement d'un règlement |
+| FR62 | 25 | neuf | Rattachement du règlement à sa ligne bancaire (NFR29), **réutilise les groupes de l'epic 19** |
+| FR63 | 25 | neuf | Le compte joint éteint la créance — le décompte ne porte que ce qu'il ne solde pas |
+| FR64 | 24 | neuf | Visibilité partagée d'une dépense commune, seule exception à FR49 |
+| FR31 | — | acquis | Réécrite le 2026-09-12 pour rattraper le comportement livré le 2026-09-07. **Aucun travail.** |
+
+#### Périmètre agent conversationnel — premier chantier
+
+| FR | Epic | Statut | Note |
+|---|---|---|---|
+| FR65 | 26 | neuf | Ouvrir une conversation, poser une question en langage ordinaire |
+| FR66 | 26 | neuf | Réponse en français depuis les agrégats, aucun montant non reçu (NFR31) |
+| FR67 | 26 | neuf | Question de suite sans redonner le contexte |
+| FR68 | 26 | neuf | Période et filtre affichés, écran d'analyse ouvrable depuis la réponse (NFR33) |
+| FR69 | 26 | neuf | Refus explicite hors de portée du moteur |
+| FR70 | 26 | neuf | Retrouver et reprendre une conversation |
+| FR71 | 26 | neuf | Supprimer une conversation |
+| FR72 | 26 + 22 | **par construction** | L'agent ne touche pas la base (NFR32) ; le cloisonnement est posé en 22.2. Aucune story dédiée |
+| FR37 | 26 | absorbée | La synthèse narrative devient une question parmi d'autres |
+
+**Couverture du périmètre agent : 8/8.**
+
+**Couverture du périmètre foyer : 21/21.** Aucune FR orpheline. L'epic 23 ne porte aucune FR : il livre NFR5, NFR12 et NFR26, et constitue la porte d'exposition.
+
+**Couverture totale : 72/72.**
 
 ## Epic List
 
@@ -285,6 +430,81 @@ L'utilisateur voit enfin où part son argent : la répartition sur la période d
 Chaîne strictement linéaire, imposée par le PRD § Séquencement du MVP et par la Decision Impact Analysis de l'architecture. Chaque epic est livrable et cohérent seul : après 12 l'application tourne avec un référentiel neuf et sans transactions ; après 13 l'historique court est reclassé et mesuré ; après 14 deux ans de données sont en base et consultables par relevé ; après 15 l'analyse existe.
 
 Aucun epic ne dépend d'un epic **ultérieur** pour fonctionner.
+
+### Epics 22 à 25 — le périmètre foyer
+
+*Ajoutés le 2026-09-12. La numérotation reprend à **22** : les epics 12 à 21 sont consommés, epic 21 compris (coupe du compte joint, story 21.1 en review). Réemployer un numéro ferait cohabiter deux stories sans rapport dans le même dossier d'implémentation, et Vigie confondrait un travail livré avec un travail à faire.*
+
+### Epic 22 : Le foyer et son second membre
+
+Deux personnes ont chacune leur compte, leur espace et leurs données. Chacune dépose ses propres relevés, construit son propre référentiel, et **ne voit rien de ce qui appartient à l'autre**. L'application n'est pas encore joignable depuis l'extérieur.
+
+**FRs couverts :** FR44, FR45, FR46, FR47, FR48, FR49
+**Exigences additionnelles :** AR24, AR25, AR26 · NFR9, NFR24, NFR25
+
+**Cet epic porte la migration, et elle ne se fait qu'une fois.** Chaque table métier prend un propriétaire, et l'historique existant est attribué au fondateur. ⚠️ **AR5 ne s'applique plus** : le vidage suivi d'une ré-ingestion depuis `_data/raw/` était sûr tant que NFR12 garantissait la reconstruction ; la NFR12 inversée ferme cette voie. La migration **préserve** les données.
+
+**Le cloisonnement se teste ici, pas ailleurs.** Il exige deux membres réels, donc il ne peut pas être vérifié avant cet epic — et il doit l'être avant le suivant, qui ouvre l'application sur Internet.
+
+### Epic 23 : Joignable depuis l'extérieur, et sauvegardée
+
+Les deux membres atteignent l'application depuis **n'importe quelle connexion**, sur un canal chiffré, et aucune page ne répond sans authentification. La base est copiée chaque jour sur une autre machine du réseau, et la copie est vérifiée restaurable.
+
+**FRs couverts :** aucun — cet epic porte des exigences non fonctionnelles.
+**Exigences additionnelles :** AR31 · NFR5, NFR12, NFR26
+
+**Un epic apparemment technique, mais dont la valeur est réelle et formulable** : sans lui, le second membre ne peut pas se connecter de là où il est. Grouper la sauvegarde avec l'exposition évite qu'elle devienne une story orpheline indéfiniment repoussée — ce que la porte du PRD interdit précisément.
+
+**C'est la porte d'exposition.** Elle ne s'ouvre qu'une fois le cloisonnement de l'epic 22 vérifié par test. Le serveur est chez l'utilisateur, l'application ne l'est pas : le port est ouvert sur Internet et sera trouvé par des balayages automatiques en quelques heures. D'où l'exigence qu'**aucune** page ne réponde sans identification, pas seulement les pages portant des données.
+
+### Epic 24 : Les dépenses communes
+
+Une dépense du foyer se marque d'un geste, depuis l'écran où elle est déjà affichée, et se partage en deux parts exactes. Les dépenses réglées en espèces entrent enfin quelque part, **sans casser la réconciliation**.
+
+**FRs couverts :** FR50, FR51, FR52, FR53, FR54, FR55, FR56, FR57, FR64
+**Exigences additionnelles :** AR28, AR29 · NFR2, NFR24, NFR27, NFR28
+
+**Trois mécanismes voisins coexistent désormais et ne fusionnent pas** (AR28) : le mouvement interne, la dépense commune, et la coupe à 50 % des virements du compte joint livrée en 21.1. Les confondre produirait des doubles comptages. **La story 21.1 n'est pas retouchée.**
+
+### Epic 25 : Qui doit combien à qui
+
+Le décompte du foyer existe, se reprend depuis l'outil tenu jusqu'ici, se lit jusqu'aux dépenses qui le composent, et **se solde** sans que le virement de remboursement soit compté deux fois.
+
+**FRs couverts :** FR58, FR59, FR60, FR61, FR62, FR63
+**Exigences additionnelles :** AR27, AR30 · NFR2, NFR29, NFR30
+
+**La dernière story ne se reporte pas.** Sans le rattachement du règlement à sa ligne bancaire, chaque remboursement gonfle les recettes de celui qui l'encaisse et le solde ne retombe jamais à zéro. Un décompte qui ne se solde pas ne remplace pas l'outil tiers, il s'y ajoute.
+
+⚠️ **Collision de nom à éviter** (AR27) : `/api/settlements` existe déjà et désigne les groupes de transactions qui se compensent, livrés à l'epic 19. Le règlement entre membres est une autre notion et doit porter un autre nom.
+
+### Epic 26 : L'agent conversationnel
+
+*Ajouté le 2026-09-12. ⚠️ **Numéroté après le foyer, construit avant lui.** C'est le **premier chantier** de la séquence : agent, puis foyer, puis forecast. Les numéros d'epic disent l'ordre d'écriture, pas l'ordre de livraison.*
+
+L'utilisateur pose une question en français — « comment ont évolué mes restaurants entre 2025 et 2026 » — et obtient une réponse, avec le moyen de la vérifier. L'agent interroge le moteur et **rapporte** ; il ne calcule rien et n'agit sur rien.
+
+**FRs couverts :** FR65, FR66, FR67, FR68, FR69, FR70, FR71 · FR37 absorbée
+**Exigences additionnelles :** AR32, AR33 · NFR2, NFR6, NFR15, NFR16, NFR17, NFR31, NFR32, NFR33, NFR34
+
+**FR72 est satisfaite par construction, sans story dédiée.** L'agent n'accède pas à la base (NFR32) et passe par les endpoints d'analyse, où le cloisonnement sera posé par la story 22.2. Le jour où le foyer arrive, l'agent devient conforme **sans être retouché**. C'est le retour sur investissement de NFR32, et la raison pour laquelle cette frontière n'est pas négociable : la franchir pour aller plus vite coûterait une réouverture complète.
+
+### Dépendances entre epics 22 à 25
+
+```
+22 (foyer + cloisonnement)  →  23 (PORTE D'EXPOSITION + sauvegarde)  →  24 (dépenses communes)  →  25 (décompte et règlement)
+```
+
+Chaîne linéaire, imposée par le séquencement de la Phase 1 bis du PRD. Chaque epic est livrable seul : après 22 deux personnes ont chacune leur espace en local ; après 23 elles y accèdent de partout et la base survit ; après 24 les dépenses communes sont marquées et les espèces saisies ; après 25 le décompte se solde.
+
+### Ordre de livraison, tous chantiers confondus
+
+```
+26 (agent)  →  22 → 23 → 24 → 25 (foyer)  →  forecast (non cadré)
+```
+
+Le foyer conserve les numéros 22 à 25, attribués avant que l'ordre ne change. Renuméroter ferait diverger `epics.md` du PRD et des artefacts d'implémentation pour un gain cosmétique.
+
+**Pourquoi 24 et 25 restent séparés malgré des fichiers communs.** Le gabarit recommande de fusionner des epics qui retouchent les mêmes fichiers, et c'est bien le cas ici : les deux modifient la transformation appliquée avant agrégation. Ils sont malgré tout maintenus distincts parce que livrer 24 seul répond à une question qu'aucune analyse sur le papier ne tranche — **marquer les dépenses communes est-il un geste réellement fait ?** Si la réponse est non, l'epic 25 change de forme. C'est une frontière de risque, pas une frontière décorative.
 
 ---
 
@@ -2109,3 +2329,698 @@ mêmes points que `neutralizeSettlements` : aucun appelant ne doit pouvoir l'oub
 va à l'interne — la moitié qui compte est plancher — et huit des trente-trois virements sont
 impairs. Le moteur ignorant SILENCIEUSEMENT un poste absent du référentiel, une sonde de
 démarrage refuse de servir une base semée où ces postes manquent.
+
+## Epic 22 — Le foyer et son second membre
+
+> **Ouvert le 2026-09-12.** Révision du PRD : l'application cesse d'être mono-utilisateur.
+> « Je vais déployer sur une autre machine et on va potentiellement ajouter un user en plus »,
+> puis « il me faut donc pouvoir me logger en tant que marceau et inviter quelqu'un pour
+> rejoindre mon foyer ».
+
+Deux personnes ont chacune leur compte, leur espace et leurs données. Chacune dépose ses relevés,
+construit son référentiel, et ne voit rien de ce qui appartient à l'autre.
+
+**FRs :** FR44, FR45, FR46, FR47, FR48, FR49 · **AR :** AR24, AR25, AR26 · **NFR :** NFR9, NFR24, NFR25
+
+**AR5 ne s'applique plus.** La migration du référentiel se faisait par vidage puis ré-ingestion
+depuis `_data/raw/`, sûre tant que NFR12 garantissait la reconstruction. NFR12 est inversée : la
+migration de propriété **préserve** les données. C'est la contrainte la plus structurante de l'epic.
+
+### Story 22.1: Se connecter avec un compte que l'on a déjà
+
+En tant qu'utilisateur,
+je veux entrer dans l'application avec un compte existant chez un fournisseur d'identité,
+afin de n'avoir ni mot de passe à choisir, ni compte de plus à créer.
+
+**Acceptance Criteria:**
+
+**Given** une session non authentifiée
+**When** j'ouvre n'importe quelle page de l'application
+**Then** je suis renvoyé vers l'écran de connexion, sans qu'aucune donnée n'ait été servie
+
+**Given** une identité vérifiée par le fournisseur
+**When** je reviens sur l'application
+**Then** j'accède à mes écrans, et la base ne contient ni mot de passe ni empreinte de mot de passe (NFR25)
+
+**Given** un appel direct à un endpoint, hors navigateur et sans session
+**When** il est reçu
+**Then** il est refusé avant tout accès à la base (NFR9)
+
+**Note d'implémentation.** Le fournisseur retenu est Google, mais l'exigence porte sur la
+**délégation**, pas sur le fournisseur : aucun code métier ne doit dépendre de son nom. La
+connexion exige Internet, y compris depuis le réseau local — renoncement assumé.
+
+### Story 22.2: Chaque donnée a un propriétaire, et chaque requête s'y limite
+
+En tant qu'utilisateur,
+je veux que mes relevés, mes transactions et mon référentiel m'appartiennent explicitement,
+afin que personne d'autre ne puisse les atteindre quand l'application accueillera quelqu'un.
+
+**Acceptance Criteria:**
+
+**Given** la base existante, avec son historique de deux ans
+**When** la migration s'applique
+**Then** chaque relevé, transaction, rubrique, poste, règle et groupe porte le fondateur comme
+propriétaire, **et aucune ligne n'est perdue** — le nombre de transactions est identique avant et après
+
+**Given** une requête authentifiée
+**When** elle atteint n'importe quel endpoint de données
+**Then** la restriction au propriétaire est appliquée **côté serveur**, jamais par un filtrage
+d'affichage (NFR24)
+
+**Given** une identité forgée désignant des données qui ne lui appartiennent pas
+**When** elle interroge l'endpoint directement
+**Then** la réponse est vide ou refusée, jamais partielle
+
+**Given** le moteur d'analyse
+**When** il calcule
+**Then** il ignore toujours la notion de membre : il reçoit des lignes déjà restreintes par
+l'endpoint (AR25, D19 préservée)
+
+**Note d'implémentation.** Les décisions D11 à D16 décrivaient un modèle multi-profils retiré le
+2026-09-04. Elles modélisaient des profils **gérés par un utilisateur unique**, sans
+authentification ni cloisonnement : à relire comme un précédent, jamais à recopier (AR26).
+
+### Story 22.3: Inviter quelqu'un à rejoindre le foyer
+
+En tant que fondateur du foyer,
+je veux inviter une personne en désignant son adresse,
+afin qu'elle accède à l'application sans que je lui transmette quoi que ce soit de secret.
+
+**Acceptance Criteria:**
+
+**Given** une adresse saisie par le fondateur
+**When** l'invitation est émise
+**Then** elle est à usage unique et expire au bout de 7 jours si elle n'est pas acceptée
+
+**Given** une invitation déjà consommée, ou expirée
+**When** quelqu'un tente de l'utiliser
+**Then** elle est refusée, et le motif du refus est distinct de « invitation inconnue »
+
+**Given** une personne invitée qui se connecte pour la première fois
+**When** elle arrive sur l'application
+**Then** son espace est **vierge** : aucun relevé, aucune transaction, aucun référentiel hérité
+d'un autre membre
+
+**Note d'implémentation.** L'espace vierge n'est pas un écran vide par accident : c'est la preuve
+visible que le cloisonnement de 22.2 fonctionne. Si quoi que ce soit du fondateur apparaît, la
+story 22.2 est en défaut, pas celle-ci.
+
+### Story 22.4: Voir les membres du foyer, et en retirer un
+
+En tant que fondateur du foyer,
+je veux savoir qui en fait partie et pouvoir en retirer quelqu'un,
+afin que la composition du foyer suive la réalité.
+
+**Acceptance Criteria:**
+
+**Given** un foyer de deux membres
+**When** je consulte la liste
+**Then** chaque membre y figure, avec la date à laquelle il a rejoint
+
+**Given** un membre dont le solde n'est pas nul
+**When** je tente de le retirer
+**Then** le retrait est refusé et le **montant restant** est indiqué
+
+**Given** un membre dont le solde est nul
+**When** je le retire
+**Then** il perd l'accès, et ses relevés comme ses transactions **restent en base** — le sort de
+ses données est explicitement hors périmètre (PRD § hors-périmètre, 2026-09-12)
+
+**Note d'implémentation.** Le refus de retirer un membre débiteur n'est pas un garde-fou
+décoratif : sans lui, une erreur de manipulation devient une perte d'argent silencieuse.
+
+## Epic 23 — Joignable depuis l'extérieur, et sauvegardée
+
+> **La porte d'exposition du PRD.** Elle ne s'ouvre qu'une fois le cloisonnement de l'epic 22
+> vérifié par test.
+
+Les deux membres atteignent l'application depuis n'importe quelle connexion, sur un canal chiffré,
+et aucune page ne répond sans authentification. La base est copiée chaque jour sur une autre
+machine du réseau.
+
+**FRs :** aucun — cet epic porte des exigences non fonctionnelles · **AR :** AR31 · **NFR :** NFR5, NFR12, NFR26
+
+**Pourquoi un epic et non deux stories dispersées.** Isolées, la sauvegarde et le durcissement
+seraient repoussées indéfiniment derrière des fonctionnalités visibles. Réunies, elles portent une
+valeur formulable : le second membre peut enfin se connecter d'où il est.
+
+### Story 23.1: La base est sauvegardée, et la sauvegarde est restaurable
+
+En tant qu'utilisateur,
+je veux que la base soit copiée tous les jours ailleurs que sur la machine qui la porte,
+afin qu'une panne ne fasse pas disparaître ce qu'aucun relevé PDF ne permet de reconstruire.
+
+**Acceptance Criteria:**
+
+**Given** l'application en fonctionnement
+**When** vingt-quatre heures s'écoulent
+**Then** une copie de la base existe sur une **machine du réseau local distincte de l'hôte** (NFR5, NFR12)
+
+**Given** trente jours de sauvegardes
+**When** je regarde ce qui est conservé
+**Then** au moins trente versions sont disponibles, la plus ancienne n'étant pas écrasée avant ce délai
+
+**Given** une sauvegarde quelconque
+**When** elle est restaurée sur une base vierge
+**Then** l'application démarre dessus et les données sont intactes — la restauration est **éprouvée**,
+pas supposée
+
+**Given** une sauvegarde qui échoue
+**When** l'échec se produit
+**Then** il est visible, et non silencieux
+
+**Note d'implémentation.** La copie reste **dans le foyer** : NFR5 est préservée, rien ne part chez
+un tiers. La contrepartie est écrite au PRD — cette sauvegarde protège de la panne matérielle et de
+l'erreur humaine, pas du sinistre du logement. La sauvegarde chiffrée hors site est en Phase 3.
+
+### Story 23.2: Rien ne répond sans être identifié, et tout passe par un canal chiffré
+
+En tant qu'utilisateur,
+je veux que l'application soit joignable depuis n'importe où sans être lisible par n'importe qui,
+afin de m'en servir en déplacement sans exposer deux ans de relevés bancaires.
+
+**Acceptance Criteria:**
+
+**Given** une requête venue hors du réseau local
+**When** elle atteint l'application
+**Then** elle transite par un canal chiffré ; une requête en clair est refusée ou redirigée, jamais servie
+
+**Given** n'importe quelle URL de l'application, y compris une page sans donnée
+**When** elle est demandée sans session valide
+**Then** elle ne répond pas — la protection ne se limite pas aux écrans portant des chiffres (NFR26)
+
+**Given** un robot d'indexation
+**When** il explore le domaine
+**Then** l'indexation est refusée
+
+**Given** l'epic 22 dont le cloisonnement n'aurait pas été vérifié par test
+**When** on envisage d'ouvrir l'accès
+**Then** **on ne l'ouvre pas** — c'est une porte, pas une étape (AR31)
+
+**Note d'implémentation.** Le serveur est chez l'utilisateur, l'application ne l'est pas : le port
+est ouvert sur Internet et sera trouvé par des balayages automatiques en quelques heures. C'est ce
+qui justifie qu'aucune page ne réponde, et pas seulement celles qui portent des données.
+
+## Epic 24 — Les dépenses communes
+
+> **Demandé le 2026-09-12.** « On flag des dépenses comme communes (transaction auchan par
+> exemple) et cela abonde sur une cagnotte », et « il y a les deux car il y a des dépenses en cash
+> et des dépenses avec la carte bancaire ».
+
+Une dépense du foyer se marque d'un geste, depuis l'écran où elle est déjà affichée, et se partage
+en deux parts exactes. Les dépenses réglées en espèces entrent enfin quelque part, sans casser la
+réconciliation.
+
+**FRs :** FR50, FR51, FR52, FR53, FR54, FR55, FR56, FR57, FR64 · **AR :** AR28, AR29 · **NFR :** NFR2, NFR24, NFR27, NFR28
+
+**Trois mécanismes voisins, qui ne fusionnent pas (AR28).** Le mouvement interne (virement entre
+comptes du même membre), la dépense commune (avance pour le foyer), et la coupe à 50 % des virements
+du compte joint livrée en 21.1. Les confondre produit des doubles comptages. **La story 21.1 n'est
+pas retouchée.**
+
+> ✅ **Tranché le 2026-09-12 — flux contre stock.** Une dépense commune de 80 € pèse **80 €** dans
+> l'analyse de celui qui l'a payée, parce que 80 € sont sortis de son compte : l'analyse mesure un
+> **flux**. Elle porte **40 €** au décompte du foyer, parce que c'est ce qui est dû : le décompte
+> mesure un **stock**. Les deux chiffres sont justes et répondent à deux questions différentes.
+>
+> **Pourquoi ce n'est pas l'arbitrage de la story 21.1.** En 21.1 il y avait un vrai double
+> comptage : la contribution mensuelle au compte joint était déjà comptée en dépense, et le virement
+> reçu la remboursait — le même euro apparaissait deux fois. Ici rien n'apparaît deux fois : une
+> dépense d'un côté, une créance de l'autre. Le précédent ne s'applique pas.
+
+### Story 24.1: Marquer une dépense comme commune
+
+En tant que membre du foyer,
+je veux désigner une ligne de mon relevé comme dépense du foyer,
+afin qu'elle entre dans notre décompte sans que j'aie à la ressaisir ailleurs.
+
+**Acceptance Criteria:**
+
+**Given** une transaction affichée dans ma liste
+**When** je la marque comme commune
+**Then** le marquage se fait **sans quitter l'écran** où elle est déjà affichée (FR50)
+
+**Given** une dépense commune de 80,00 €
+**When** elle est répartie
+**Then** chaque membre porte une part de 40,00 €, et la somme des parts vaut exactement 80,00 €
+
+**Given** une dépense commune de 641,01 €, dont la moitié n'est pas entière en centimes
+**When** elle est répartie
+**Then** les parts valent 320,50 € et 320,51 € — jamais deux fois le même arrondi, jamais un
+centime perdu ni inventé (NFR27)
+
+**Given** une dépense commune payée par un membre
+**When** l'autre membre consulte son propre référentiel
+**Then** elle n'y apparaît dans **aucune** de ses rubriques : elle reste rangée chez le payeur (FR52)
+
+**Given** une dépense que je m'apprête à marquer
+**When** le marquage m'est proposé
+**Then** il m'est dit explicitement que **ce geste la rend visible à l'autre membre** (FR50)
+
+**Given** une dépense marquée commune
+**When** l'autre membre la consulte depuis le décompte
+**Then** il voit sa date, son libellé, son montant et son payeur — **et rien d'autre** : ni le poste
+sur lequel elle est rangée, ni le relevé dont elle provient, ni aucune ligne voisine (FR64)
+
+**Given** une dépense **non** marquée
+**When** l'autre membre cherche à l'atteindre par n'importe quel chemin
+**Then** elle lui reste invisible (FR49, NFR24)
+
+**Note d'implémentation — le marquage est un acte de divulgation.** FR64 est la **seule** exception
+au cloisonnement, et elle est énumérée et close. Elle existe parce qu'on ne peut pas devoir de
+l'argent à quelqu'un sans avoir le droit de savoir pourquoi : sans elle, FR60 (descendre jusqu'aux
+dépenses sources) et FR49 (ne rien voir d'un autre membre) se contredisent frontalement. Le
+corollaire est assumé : qui veut garder une dépense privée ne la marque pas, et renonce à s'en faire
+rembourser. C'est pourquoi l'avertissement au moment du geste n'est pas un confort.
+
+**Note d'implémentation.** Aucune écriture de montant en base : `amount_cents` reste le montant du
+relevé, conformément à D28. La répartition est une transformation appliquée avant agrégation, au
+même endroit que la coupe du compte joint et que la neutralisation des avances — un appelant ne
+doit pas pouvoir l'oublier, défaut déjà corrigé deux fois en 19.4 et 21.1.
+
+### Story 24.2: Défaire un marquage posé par erreur
+
+En tant que membre du foyer,
+je veux retirer le caractère commun d'une dépense,
+afin qu'une erreur de clic ne reste pas dans notre décompte.
+
+**Acceptance Criteria:**
+
+**Given** une dépense marquée comme commune
+**When** je retire le marquage
+**Then** le décompte du foyer est recalculé immédiatement, sans rechargement de page (FR53)
+
+**Given** une dépense dont le marquage est retiré
+**When** je regarde mon analyse
+**Then** elle est redevenue une dépense ordinaire de mon poste, sans trace de la répartition
+
+### Story 24.3: Saisir une dépense réglée en espèces
+
+En tant que membre du foyer,
+je veux enregistrer une dépense payée en liquide,
+afin que ce que j'ai avancé compte, même sans ligne bancaire en face.
+
+**Acceptance Criteria:**
+
+**Given** une dépense en espèces
+**When** je la saisis
+**Then** je renseigne sa date, son libellé, son montant et son poste (FR54)
+
+**Given** une dépense saisie à la main
+**When** la réconciliation d'un relevé s'exécute
+**Then** cette saisie **n'entre dans aucun calcul de réconciliation** et ne peut faire basculer
+aucun relevé en « non fiable » (FR55, NFR28)
+
+**Given** un relevé déjà marqué « non fiable »
+**When** je saisis une dépense en espèces sur la même période
+**Then** son état de fiabilité est inchangé — la saisie ne le corrige pas davantage qu'elle ne le dégrade
+
+**Note d'implémentation.** Les saisies manuelles forment un **jeu de données distinct** des
+transactions de relevé (AR29). Les loger dans la même table casserait l'invariant de réconciliation,
+qui est le seul mécanisme de confiance du produit. Renoncement assumé du périmètre : la saisie se
+fait depuis un écran de bureau, donc de mémoire ou d'après un ticket, l'application installable sur
+téléphone étant en Phase 3.
+
+### Story 24.4: Reconnaître d'où vient une ligne, partout
+
+En tant que membre du foyer,
+je veux distinguer une dépense saisie à la main d'une ligne de relevé,
+afin de savoir ce qui est adossé à ma banque et ce qui repose sur ma mémoire.
+
+**Acceptance Criteria:**
+
+**Given** un montant affiché composé de lignes de relevé et de saisies manuelles
+**When** je descends jusqu'à ses sources
+**Then** chaque élément porte son origine, lisible sans survol (FR56, NFR2)
+
+**Given** une saisie manuelle
+**When** elle contribue à un agrégat, à un indicateur ou au décompte du foyer
+**Then** son origine reste identifiable à cet endroit aussi — pas seulement sur l'écran de saisie
+
+### Story 24.5: Corriger ou supprimer une dépense que j'ai saisie
+
+En tant que membre du foyer,
+je veux modifier ou effacer une saisie,
+afin qu'un montant tapé de travers ne fausse pas notre décompte indéfiniment.
+
+**Acceptance Criteria:**
+
+**Given** une dépense que j'ai saisie
+**When** je la modifie ou la supprime
+**Then** l'opération aboutit et le décompte du foyer est recalculé (FR57)
+
+**Given** une dépense saisie par l'autre membre
+**When** je tente de la modifier
+**Then** l'opération est refusée — chacun corrige ses propres saisies
+
+## Epic 25 — Qui doit combien à qui
+
+> **L'objectif énoncé le 2026-09-12 :** « mon but est de remplacer le tricount », et sur ce que
+> l'outil doit dire : « qui doit combien à qui ».
+
+Le décompte du foyer existe, se reprend depuis l'outil tenu jusqu'ici, se lit jusqu'aux dépenses qui
+le composent, et **se solde**.
+
+**FRs :** FR58, FR59, FR60, FR61, FR62, FR63 · **AR :** AR27, AR30 · **NFR :** NFR2, NFR29, NFR30
+
+**Le décompte ne porte pas toutes les dépenses communes.** Le compte joint est lui-même un mécanisme
+de règlement : s'y rembourser d'une avance éteint la créance, puisqu'il est alimenté à parts égales.
+Le décompte ne suit donc que ce qui lui échappe — les espèces, les avances jamais remboursées, et
+les dépenses avancées par l'autre membre depuis son propre compte (FR63).
+
+⚠️ **Collision de nom (AR27).** `/api/settlements` existe déjà et désigne les groupes de
+transactions qui se compensent, livrés à l'epic 19. Le règlement entre membres est une autre notion
+et doit porter un autre nom.
+
+**La dernière story ne se reporte pas.** Sans le rattachement du règlement à sa ligne bancaire,
+chaque remboursement gonfle les recettes de celui qui l'encaisse et le solde ne retombe jamais à
+zéro. Un décompte qui ne se solde pas ne remplace pas l'outil tiers, il s'y ajoute.
+
+### Story 25.1: Reprendre le décompte tenu jusqu'ici
+
+En tant que fondateur du foyer,
+je veux saisir le solde qui existe déjà dans notre outil actuel,
+afin de ne pas effacer des mois d'avances croisées en repartant de zéro.
+
+**Acceptance Criteria:**
+
+**Given** un décompte existant dans un outil tiers
+**When** je saisis le solde d'ouverture
+**Then** je renseigne un montant, une date et un **sens** — qui doit à qui (FR58)
+
+**Given** une saisie complète
+**When** je valide
+**Then** l'application **redit la saisie en toutes lettres** — « à cette date, telle personne doit
+tel montant à telle autre » — et exige une confirmation avant d'enregistrer
+
+**Given** un solde d'ouverture enregistré
+**When** je consulte le décompte
+**Then** il en tient compte, et ce solde est atteignable depuis le décompte comme n'importe quelle
+autre composante (NFR2)
+
+**Note d'implémentation.** Le sens inversé est l'erreur la plus probable et la plus coûteuse : elle
+transforme une créance en dette, l'écart vaut le **double** du solde, et aucun autre contrôle ne la
+rattrape. La relecture en toutes lettres est le seul garde-fou, elle n'est pas négociable.
+
+### Story 25.2: Voir qui doit combien à qui
+
+En tant que membre du foyer,
+je veux lire notre situation en une phrase,
+afin de savoir où nous en sommes sans ouvrir une autre application.
+
+**Acceptance Criteria:**
+
+**Given** des dépenses communes et un solde d'ouverture
+**When** j'ouvre l'écran du foyer
+**Then** il affiche qui doit combien à qui, sans que j'aie à interpréter un tableau (FR59)
+
+**Given** un décompte équilibré
+**When** je le consulte
+**Then** il le dit explicitement, plutôt que d'afficher zéro sans commentaire
+
+**Given** les deux membres consultant au même moment
+**When** ils regardent le décompte
+**Then** ils lisent la même valeur
+
+### Story 25.3: Descendre du solde jusqu'aux dépenses qui le composent
+
+En tant que membre du foyer,
+je veux savoir d'où vient le montant affiché,
+afin de pouvoir le vérifier plutôt que de devoir y croire.
+
+**Acceptance Criteria:**
+
+**Given** un solde affiché
+**When** je le déplie
+**Then** j'atteins les dépenses qui le composent, chacune identifiée comme ligne de relevé, saisie
+manuelle, solde d'ouverture ou règlement (FR60, NFR2)
+
+**Given** la liste des composantes
+**When** j'en fais la somme
+**Then** elle vaut exactement le solde affiché, au centime
+
+**Given** une dépense avancée par l'autre membre depuis son propre compte
+**When** je la consulte depuis le décompte
+**Then** je vois sa date, son libellé, son montant et son payeur, **et rien de plus** — ni son poste,
+ni son relevé, ni aucune ligne voisine (FR64)
+
+### Story 25.4: Enregistrer un règlement entre nous
+
+En tant que membre du foyer,
+je veux consigner un remboursement que l'un a fait à l'autre,
+afin que notre décompte redescende.
+
+**Acceptance Criteria:**
+
+**Given** un remboursement effectué entre les deux membres
+**When** je l'enregistre
+**Then** le solde est réduit du montant réglé (FR61)
+
+**Given** un règlement qui solde exactement la dette
+**When** il est enregistré
+**Then** le décompte affiche l'équilibre
+
+**Given** deux membres qui modifient le décompte au même moment
+**When** la seconde écriture se fonde sur un état déjà dépassé
+**Then** elle est **refusée** et son auteur en est informé — jamais appliquée par-dessus celle de
+l'autre (NFR30, AR30)
+
+### Story 25.5: Rattacher le règlement au virement qui le porte
+
+En tant que membre du foyer,
+je veux relier un remboursement à la ligne de mon relevé qui le contient,
+afin que cet argent ne soit pas compté à la fois comme une recette et comme une dette éteinte.
+
+**Acceptance Criteria:**
+
+**Given** un règlement enregistré et le virement correspondant apparu dans mon relevé
+**When** je les rattache
+**Then** cette transaction n'est comptée **ni en recette ni en dépense** de sa période (FR62, NFR29)
+
+**Given** une transaction rattachée à un règlement
+**When** je consulte mon analyse de la période
+**Then** mon résultat est inchangé par ce virement — il n'améliore pas artificiellement mes recettes
+
+**Given** une transaction rattachée
+**When** je défais le rattachement
+**Then** elle redevient une transaction ordinaire et le décompte est recalculé
+
+**Note d'implémentation — réutiliser le regroupement, ne pas en inventer un second.** Le mécanisme
+de groupes livré à l'epic 19 fait déjà exactement ça : relier une avance et son remboursement, et
+neutraliser ce qui est couvert. Le rattachement d'un règlement **est** un groupe. Construire un
+second mécanisme en parallèle garantirait la divergence : on neutraliserait dans l'analyse sans
+solder le décompte, ou l'inverse, et les deux écrans se contrediraient sans que rien ne le signale.
+Un groupe, un geste, deux effets cohérents.
+
+C'est par ailleurs la version large du défaut qui a produit la story 21.1 : un mouvement d'argent
+entre comptes qui, faute d'être reconnu pour ce qu'il est, se lit comme une recette. Aucun montant ne
+doit contribuer simultanément au résultat d'un membre et à l'extinction d'une dette du foyer.
+
+### Story 25.6: Ce que le compte joint a déjà remboursé ne reste pas dû
+
+En tant que membre du foyer,
+je veux que les avances dont je me suis remboursé depuis le compte joint sortent du décompte,
+afin que notre solde ne gonfle pas d'une dette qui n'existe plus.
+
+**Acceptance Criteria:**
+
+**Given** une dépense commune de 80 € avancée depuis mon compte personnel
+**When** je me rembourse 80 € depuis le compte joint et que je rattache ce virement à l'avance
+**Then** la créance de 40 € **disparaît du décompte** — le compte joint étant alimenté à parts
+égales, j'ai pris 40 € de mon argent et 40 € du sien, la dette est éteinte (FR63)
+
+**Given** cette même dépense
+**When** je consulte mon analyse
+**Then** elle continue d'y peser selon la coupe de la story 21.1, **inchangée** — le décompte du
+foyer ne modifie en rien ce mécanisme
+
+**Given** une dépense commune dont je ne me suis **pas** remboursé
+**When** je consulte le décompte
+**Then** la créance de 40 € y figure toujours
+
+**Given** une dépense en espèces marquée commune
+**When** je consulte le décompte
+**Then** elle y figure — aucun virement du joint ne peut l'avoir soldée
+
+**Note d'implémentation.** C'est la jonction entre deux mondes qui existaient séparément : le
+regroupement de transactions (epic 19) et le décompte du foyer. Un même groupe éteint la créance et
+neutralise l'avance. **La story 21.1 n'est pas retouchée** : elle traite la moitié à charge dans
+l'analyse, ce qui reste vrai indépendamment du décompte.
+
+## Epic 26 — L'agent conversationnel
+
+> **Demandé le 2026-09-12.** « J'aimerais pouvoir avoir une interaction avec un agent pour lui poser
+> des questions sur les évolutions de ma trésorerie », puis, après cadrage : « avoir un agent qui
+> m'aide déjà avec le passé et qui peut me faire une analyse de mon comportement avec mes données,
+> c'est très bien ».
+
+⚠️ **Numéroté après le foyer, construit avant lui.** Premier chantier de la séquence.
+
+L'utilisateur pose une question en français et obtient une réponse, avec le moyen de la vérifier.
+L'agent interroge le moteur d'analyse et **rapporte** ce qu'il renvoie.
+
+**FRs :** FR65 à FR71, FR37 absorbée · **AR :** AR32, AR33 · **NFR :** NFR2, NFR6, NFR15, NFR16, NFR17, NFR31 à NFR34
+
+**Trois frontières, et aucune n'est négociable.**
+
+**Il ne calcule pas.** NFR31 en donne la forme vérifiable : aucun nombre qui ne figure tel quel dans
+ce qu'il a reçu.
+
+**Il ne touche pas la base.** NFR32. C'est ce qui le rendra conforme au foyer sans retouche, le
+cloisonnement étant posé dans les endpoints par la story 22.2. Le franchir pour aller plus vite
+coûterait une réouverture complète.
+
+**Il n'agit pas.** Il ne reclasse aucune transaction, ne crée aucune règle, ne marque aucune dépense.
+Faire confiance à un modèle pour décrire un tableau et lui faire confiance pour modifier des données
+sont deux questions distinctes ; la seconde ne se pose pas tant que la première n'a pas de réponse à
+l'usage.
+
+### Story 26.1: Comprendre la question avant d'y répondre
+
+En tant qu'utilisateur,
+je veux que l'application me montre ce qu'elle a compris de ma question,
+afin de savoir si elle regarde la bonne période avant de me donner un chiffre.
+
+**Acceptance Criteria:**
+
+**Given** la question « comment ont évolué mes dépenses de restaurant entre 2025 et 2026 »
+**When** elle est interprétée
+**Then** l'application affiche la **requête retenue** — période, granularité, cible — avant ou avec
+la réponse
+
+**Given** une requête produite par le modèle
+**When** l'application la reçoit
+**Then** elle la **valide** : bornes de dates réelles, granularité connue, poste ou rubrique existant
+dans le référentiel. Une requête invalide est **rejetée par le code**, jamais exécutée (AR32)
+
+**Given** une question dont la cible n'existe pas au référentiel
+**When** elle est interprétée
+**Then** l'application le dit, plutôt que d'exécuter une requête sur une catégorie inventée
+
+**Given** le module de l'agent
+**When** on inspecte ses imports
+**Then** il n'importe **pas** le client de base de données : il n'obtient ses données que par les
+endpoints d'analyse (NFR32)
+
+**Given** l'identifiant du modèle et ses paramètres
+**When** on les cherche dans le code
+**Then** ils viennent de la configuration d'environnement, avec une **valeur distincte** de celle de
+la catégorisation (NFR34)
+
+**Note d'implémentation — cette story est un jalon.** Elle isole le risque technique de l'epic avant
+de construire quoi que ce soit par-dessus, sur le modèle de l'epic 14. D20 a établi que les sorties
+structurées du fournisseur sont injectées dans le prompt et **non contraintes au décodage** : si le
+schéma n'est qu'une instruction, le choix de la période l'est aussi. **Mesure à faire sur une série
+de questions réelles : à quelle fréquence la requête retenue est-elle celle attendue ?** Si le taux
+est mauvais, on ajuste le prompt ou l'on restreint la grammaire des questions **avant** d'écrire
+l'écran de conversation. Un agent qui se trompe de période est plus dangereux qu'un agent absent.
+
+### Story 26.2: Obtenir une réponse, et pouvoir la vérifier
+
+En tant qu'utilisateur,
+je veux une réponse en français accompagnée de son chemin de vérification,
+afin de ne pas avoir à croire l'agent sur parole.
+
+**Acceptance Criteria:**
+
+**Given** une requête validée
+**When** l'agent répond
+**Then** la réponse est en français, lisible, et repose sur les agrégats renvoyés par le moteur (FR66)
+
+**Given** une réponse contenant des montants
+**When** on compare chacun aux données reçues du moteur
+**Then** **chaque nombre y figure tel quel.** Aucune moyenne, aucun écart, aucun pourcentage qui
+n'ait été calculé par le moteur (NFR31)
+
+**Given** une réponse portant un montant
+**When** je la lis
+**Then** elle affiche la période et le filtre dont il provient, et me permet d'**ouvrir l'écran
+d'analyse correspondant** (FR68, NFR33)
+
+**Given** vingt-quatre totaux mensuels reçus
+**When** l'agent décrit un cycle
+**Then** il peut dire « tes dépenses gonflent en décembre et en juillet » — une forme — mais **pas**
+« ta moyenne de décembre est de 1 186 € », qui serait un nombre fabriqué
+
+**Note d'implémentation.** La règle du nombre cité est **testable** : comparer l'ensemble des nombres
+d'une réponse à l'ensemble des nombres reçus. C'est ce qui distingue NFR31 de NFR15, qui énonce la
+même intention sans qu'aucun test ne puisse la constater. Décrire une forme est le métier de
+l'agent ; produire un nombre est le métier du moteur.
+
+### Story 26.3: Quand il ne sait pas, il le dit
+
+En tant qu'utilisateur,
+je veux que l'agent refuse plutôt qu'il n'approxime,
+afin de pouvoir faire confiance à ses réponses quand il en donne une.
+
+**Acceptance Criteria:**
+
+**Given** la question « compare 2024 et 2026 »
+**When** elle est interprétée
+**Then** l'agent répond qu'il ne sait pas comparer deux périodes non consécutives, **sans produire de
+chiffre** — le moteur ne compare qu'à la période immédiatement précédente (FR69, FR39 en Phase 2)
+
+**Given** une question sans rapport avec les données — un conseil, une prévision, une opinion
+**When** elle est posée
+**Then** l'agent dit qu'elle sort de son périmètre
+
+**Given** une demande d'action — reclasser, créer une règle, marquer une dépense
+**When** elle est formulée
+**Then** l'agent indique qu'il ne modifie aucune donnée et renvoie vers l'écran concerné
+
+**Given** le fournisseur LLM indisponible
+**When** une question est posée
+**Then** l'échec est explicite, et **toutes les autres capacités de l'application restent intactes** —
+analyse, évolution, transactions (NFR17)
+
+**Note d'implémentation.** Le refus est une fonctionnalité, pas un aveu. Un agent qui bricole une
+réponse plausible hors de portée du moteur rend **toutes** ses réponses suspectes, y compris les
+justes. C'est le cas qui décide si l'agent sera utilisé ou abandonné au bout de trois semaines.
+
+### Story 26.4: Enchaîner sans tout réexpliquer
+
+En tant qu'utilisateur,
+je veux poser une question de suite sans redonner le contexte,
+afin de creuser un sujet comme dans une conversation normale.
+
+**Acceptance Criteria:**
+
+**Given** une première question sur les restaurants en 2026
+**When** j'écris ensuite « et y a-t-il un cycle là-dedans ? »
+**Then** l'agent comprend qu'il s'agit du même poste et de la même période (FR67)
+
+**Given** une question de suite qui change explicitement de sujet
+**When** elle est posée
+**Then** le nouveau contexte remplace l'ancien, et la requête retenue le montre (FR68)
+
+**Given** une suite de questions
+**When** chacune obtient sa réponse
+**Then** chaque réponse porte **sa propre** période et son propre filtre — le contexte hérité ne
+dispense jamais de les afficher
+
+### Story 26.5: Retrouver, reprendre et supprimer une conversation
+
+En tant qu'utilisateur,
+je veux rouvrir demain la discussion d'aujourd'hui,
+afin de ne pas reconstituer un raisonnement que j'ai déjà mené.
+
+**Acceptance Criteria:**
+
+**Given** des conversations passées
+**When** j'ouvre l'agent
+**Then** je les retrouve et peux en reprendre une **avec son contexte** (FR70)
+
+**Given** une conversation reprise
+**When** je pose une question de suite
+**Then** elle est comprise comme si la discussion n'avait pas été interrompue
+
+**Given** une conversation dont je ne veux plus
+**When** je la supprime
+**Then** elle disparaît définitivement (FR71)
+
+**Note d'implémentation.** Les conversations sont un objet **durable qu'aucun relevé ne reconstruit**.
+Elles relèvent donc de la sauvegarde obligatoire (NFR12) au même titre que les saisies manuelles et le
+solde d'ouverture du foyer. Le PRD signale, sans l'exiger à ce stade, qu'elles s'accumulent sans borne
+et que la sauvegarde quotidienne les emporte : ni rétention ni purge ne sont définies. Sans effet
+aujourd'hui, à reconsidérer si le volume devient visible.

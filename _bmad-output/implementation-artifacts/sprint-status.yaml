@@ -65,7 +65,7 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 generated: 2026-04-30
-last_updated: 2026-09-06
+last_updated: 2026-09-12
 project: personnalFinance
 project_key: NOKEY
 tracking_system: file-system
@@ -476,3 +476,104 @@ development_status:
   # compter de l'argent qu'on n'a pas depense.
   epic-21: in-progress
   21-1-part-du-compte-joint: review
+
+  # =========================================================================
+  # CHANTIERS CADRES LE 2026-09-12 — ORDRE DE LIVRAISON, PAS ORDRE DE NUMERO
+  # =========================================================================
+  # Les epics ci-dessous sont listes dans l'ordre ou ils seront CONSTRUITS :
+  #   26 (agent)  ->  22 -> 23 -> 24 -> 25 (foyer)  ->  forecast (non cadre)
+  # Les numeros disent l'ordre d'ECRITURE. Le foyer a ete decoupe en premier
+  # (epics 22-25), puis l'utilisateur a arbitre que l'agent passait devant :
+  # il coute moins cher, sert des le premier jour, et ne depend de rien.
+  # Renumeroter ferait diverger ce fichier du PRD et de epics.md.
+  #
+  # Aucun fichier de story n'existe encore : tout est en backlog.
+
+  # --- Epic 26 — L'agent conversationnel. PREMIER CHANTIER. ----------------
+  # L'utilisateur pose une question en francais, obtient une reponse, et peut
+  # la verifier. L'agent interroge le moteur et RAPPORTE.
+  # Trois frontieres non negociables :
+  #   - il ne calcule pas (NFR31 : aucun nombre qui ne figure tel quel dans
+  #     ce qu'il a recu ; forme verifiable de NFR15)
+  #   - il ne touche pas la base (NFR32 : endpoints d'analyse uniquement)
+  #   - il n'agit pas (aucun reclassement, aucune regle, aucun marquage)
+  # FR72 (cloisonnement) est satisfaite PAR CONSTRUCTION : le cloisonnement
+  # sera pose dans les endpoints par la story 22.2, donc l'agent y sera
+  # conforme sans etre retouche. C'est le retour sur investissement de NFR32.
+  epic-26: backlog
+  # /!\ 26-1 est un JALON DE DECISION, pas une livraison ordinaire.
+  # D20 a etabli que les sorties structurees du fournisseur sont INJECTEES
+  # DANS LE PROMPT et non contraintes au decodage : si le schema n'est qu'une
+  # instruction, le choix de la periode l'est aussi. Mesure a faire sur une
+  # serie de questions reelles : a quelle frequence la requete retenue est-elle
+  # celle attendue ? Si le taux est mauvais, ajuster le prompt ou restreindre
+  # la grammaire des questions AVANT d'ecrire l'ecran de conversation.
+  # Un agent qui se trompe de periode est plus dangereux qu'un agent absent.
+  26-1-comprendre-la-question-avant-d-y-repondre: backlog
+  26-2-obtenir-une-reponse-verifiable: backlog
+  26-3-quand-il-ne-sait-pas-il-le-dit: backlog
+  26-4-enchainer-sans-tout-reexpliquer: backlog
+  26-5-retrouver-reprendre-supprimer-une-conversation: backlog
+  epic-26-retrospective: optional
+
+  # --- Epic 22 — Le foyer et son second membre. DEUXIEME CHANTIER. ---------
+  # Deux personnes, deux espaces, aucune ne voit les donnees de l'autre.
+  # /!\ AR5 NE S'APPLIQUE PLUS : la migration par vidage et re-ingestion etait
+  # sure tant que NFR12 garantissait la reconstruction depuis les PDF. NFR12
+  # est INVERSEE depuis le 2026-09-12 : la migration de propriete PRESERVE les
+  # donnees. C'est la contrainte la plus structurante du chantier.
+  epic-22: backlog
+  22-1-se-connecter-avec-un-compte-existant: backlog
+  22-2-chaque-donnee-a-un-proprietaire: backlog
+  22-3-inviter-quelqu-un-a-rejoindre-le-foyer: backlog
+  22-4-voir-les-membres-et-en-retirer-un: backlog
+  epic-22-retrospective: optional
+
+  # --- Epic 23 — Joignable depuis l'exterieur, et sauvegardee. -------------
+  # /!\ PORTE D'EXPOSITION. Ne s'ouvre qu'une fois le cloisonnement de
+  # l'epic 22 verifie PAR TEST. Le serveur est chez l'utilisateur, mais
+  # l'application est ouverte sur Internet et sera trouvee par des balayages
+  # automatiques en quelques heures : aucune page ne repond sans identification.
+  # Sauvegarde quotidienne, retention 30 jours, sur une machine du reseau
+  # local DISTINCTE de l'hote, restauration eprouvee et non supposee.
+  epic-23: backlog
+  23-1-la-base-est-sauvegardee-et-restaurable: backlog
+  23-2-rien-ne-repond-sans-etre-identifie: backlog
+  epic-23-retrospective: optional
+
+  # --- Epic 24 — Les depenses communes. ------------------------------------
+  # FLUX contre STOCK, doctrine arbitree le 2026-09-12 : une depense commune
+  # de 80 EUR pese 80 EUR dans l'analyse du payeur (ce qui est sorti du compte)
+  # et 40 EUR au decompte du foyer (ce qui est du). Les deux sont justes.
+  # Ce n'est PAS l'arbitrage de la story 21.1 : la il y avait un vrai double
+  # comptage, ici il y a une depense d'un cote et une creance de l'autre.
+  # /!\ Marquer une depense comme commune, c'est LA MONTRER (FR64) : seule
+  # exception au cloisonnement, enumeree et close. L'interface doit le dire
+  # au moment du geste.
+  # La story 21.1 n'est PAS retouchee.
+  epic-24: backlog
+  24-1-marquer-une-depense-comme-commune: backlog
+  24-2-defaire-un-marquage-pose-par-erreur: backlog
+  24-3-saisir-une-depense-reglee-en-especes: backlog
+  24-4-reconnaitre-d-ou-vient-une-ligne: backlog
+  24-5-corriger-ou-supprimer-une-saisie: backlog
+  epic-24-retrospective: optional
+
+  # --- Epic 25 — Qui doit combien a qui. -----------------------------------
+  # /!\ COLLISION DE NOM : /api/settlements existe DEJA et designe les groupes
+  # de transactions qui se compensent (epic 19). Le reglement entre membres du
+  # foyer est une autre notion et doit porter un autre nom.
+  # 25-5 ne se reporte pas : sans rattachement du reglement a sa ligne
+  # bancaire, chaque remboursement gonfle les recettes et le solde ne retombe
+  # jamais a zero. Un decompte qui ne se solde pas ne remplace pas l'outil
+  # tiers, il s'y ajoute.
+  # 25-5 et 25-6 REUTILISENT le mecanisme de groupes de l'epic 19 : un groupe,
+  # un geste, deux effets coherents. Deux mecanismes paralleles divergeraient.
+  epic-25: backlog
+  25-1-reprendre-le-decompte-tenu-jusqu-ici: backlog
+  25-2-voir-qui-doit-combien-a-qui: backlog
+  25-3-descendre-du-solde-jusqu-aux-depenses: backlog
+  25-4-enregistrer-un-reglement-entre-nous: backlog
+  25-5-rattacher-le-reglement-au-virement: backlog
+  25-6-ce-que-le-joint-a-rembourse-ne-reste-pas-du: backlog
+  epic-25-retrospective: optional
