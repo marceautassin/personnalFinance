@@ -590,11 +590,12 @@ Le second profil dépose ses relevés Crédit Mutuel : seul le compte courant es
 ### Dépendances des epics 27 et 28
 
 ```
-27.1 (migration, colonne bank)  →  27.2  →  27.3
-          └────────────────────→  28.1  →  28.2  →  28.3
+27.1 (migration, colonne bank)  →  27.2  →  27.3  →  28.1  →  28.2  →  28.3
 ```
 
-28 ne dépend que de 27.1. Les deux branches peuvent avancer en parallèle après la migration.
+*Corrigé le 2026-09-22 à la rédaction des stories.* 28.1 préremplit la banque depuis le profil
+courant : elle a besoin de `requireProfile` (27.2) et de `useProfiles` (27.3), pas seulement de la
+colonne posée en 27.1. La chaîne est donc linéaire. Le gain de parallélisme était illusoire.
 
 ### Ordre de livraison — révisé le 2026-09-22
 
