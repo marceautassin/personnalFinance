@@ -1,7 +1,7 @@
 import { defineEventHandler, getRouterParam } from 'h3'
 import { asc, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { classificationRules, transactions } from '~~/server/db/schema'
+import { classificationRules, transactions, categoryItems } from '~~/server/db/schema'
 import { applyRules, patternCovers } from '~~/server/services/rule-matcher'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
@@ -60,19 +60,21 @@ export default defineEventHandler(async (event): Promise<RuleApplyResult> => {
   const allRules = await db
     .select({
       pattern: classificationRules.pattern,
-      categoryItemCode: classificationRules.categoryItemCode,
+      categoryItemCode: categoryItems.code,
     })
     .from(classificationRules)
+    .innerJoin(categoryItems, eq(categoryItems.id, classificationRules.categoryItemId))
     .orderBy(asc(classificationRules.id))
 
   const rows = await db
     .select({
       id: transactions.id,
       label: transactions.label,
-      categoryItemCode: transactions.categoryItemCode,
+      categoryItemCode: categoryItems.code,
       isManual: transactions.isManual,
     })
     .from(transactions)
+    .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
 
   const covered = rows.filter(t => patternCovers(t.label, rule.pattern))
   const codeBefore = new Map(covered.map(t => [t.id, t.categoryItemCode]))
@@ -86,10 +88,29 @@ export default defineEventHandler(async (event): Promise<RuleApplyResult> => {
   const changed = movedBy(candidates)
 
   if (changed.length > 0) {
+    // `applyRules` (moteur, travaille sur des codes — Dev Notes) rend un code ; l'écriture, elle,
+    // passe par l'id (D37). Résolution une seule fois, sur le référentiel complet.
+    const itemIdByCode = new Map(
+      (await db.select({ id: categoryItems.id, code: categoryItems.code }).from(categoryItems))
+        .map(i => [i.code, i.id]),
+    )
     db.transaction((tx) => {
       for (const row of changed) {
+        const categoryItemId = itemIdByCode.get(row.categoryItemCode)
+        // Un code rendu par `applyRules` mais absent du référentiel chargé juste avant est une
+        // incohérence interne (poste supprimé entre-temps, référentiel corrompu…), pas une
+        // erreur de saisie de l'utilisateur : elle ne doit JAMAIS être avalée en silence — une
+        // ligne « oubliée » ici est indiscernable d'une ligne correctement laissée en place
+        // (revue de la story 27.1).
+        if (categoryItemId === undefined) {
+          throw domainError(
+            ApiErrorCode.ValidationFailed,
+            { reason: 'unknown categoryItemCode produced by rule matching', value: row.categoryItemCode },
+            500,
+          )
+        }
         tx.update(transactions)
-          .set({ categoryItemCode: row.categoryItemCode })
+          .set({ categoryItemId })
           .where(eq(transactions.id, row.id))
           .run()
       }

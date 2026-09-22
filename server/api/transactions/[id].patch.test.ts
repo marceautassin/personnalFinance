@@ -32,6 +32,11 @@ beforeAll(async () => {
   handler = (await import('./[id].patch')).default as Handler
 })
 
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
+
 afterAll(() => {
   sqlite?.close?.()
   if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL
@@ -49,6 +54,8 @@ const HASH_A = 'a'.repeat(64)
 function seedStatement(hash = HASH_A) {
   dbMod.db.insert(schema.bankStatements).values({
     hashSha256: hash,
+    profileId: 1,
+    bank: 'boursorama',
     periodStart: '2026-04-01',
     periodEnd: '2026-04-30',
     openingBalanceCents: 100_000,
@@ -63,7 +70,7 @@ function seedTransaction(): number {
     transactionDate: '2026-04-15',
     label: 'Carrefour',
     amountCents: -2500,
-    categoryItemCode: 'alimentation-courses',
+    categoryItemId: itemId('alimentation-courses'),
   }).run()
   return Number(result.lastInsertRowid)
 }
@@ -138,7 +145,7 @@ describe('PATCH /api/transactions/[id]', () => {
 
     const rows = dbMod.db.select().from(schema.transactions).all()
     const row = rows.find(r => r.id === id)!
-    expect(row.categoryItemCode).toBe('alimentation-courses')
+    expect(row.categoryItemId).toBe(itemId('alimentation-courses'))
     expect(row.isManual).toBe(false)
   })
 
@@ -178,7 +185,7 @@ describe('PATCH /api/transactions/[id] — proposition de règle', () => {
       transactionDate: '2026-04-05',
       label,
       amountCents: -1000,
-      categoryItemCode: 'divers-non-categorise',
+      categoryItemId: itemId('divers-non-categorise'),
     }).run()
     return dbMod.db.select().from(schema.transactions).all().at(-1)!.id
   }
@@ -213,8 +220,9 @@ describe('PATCH /api/transactions/[id] — proposition de règle', () => {
    */
   it('ne propose rien quand une règle couvre déjà le libellé', async () => {
     dbMod.db.insert(schema.classificationRules).values({
+      profileId: 1,
       pattern: 'cdiscount',
-      categoryItemCode: 'alimentation-courses',
+      categoryItemId: itemId('alimentation-courses'),
     }).run()
     const id = seedTx('CARTE 12/03/26 CDISCOUNT A CB*0000')
     const out = (await handler(makeEvent(String(id), { categoryItemCode: 'alimentation-restaurant' }))) as {

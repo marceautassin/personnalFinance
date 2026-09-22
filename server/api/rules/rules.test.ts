@@ -73,24 +73,32 @@ interface Rule {
 const create = (pattern: string, code = 'alimentation-courses') =>
   postHandler(makeEvent({ method: 'POST', body: { pattern, categoryItemCode: code } })) as Promise<Rule>
 
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
+
 function seedTransaction(
   label: string,
   opts: { code?: string, isManual?: boolean } = {},
 ) {
   dbMod.db.insert(schema.bankStatements).values({
-    hashSha256: 'h', periodStart: '2026-01-01', periodEnd: '2026-01-31',
+    hashSha256: 'h', profileId: 1, bank: 'boursorama', periodStart: '2026-01-01', periodEnd: '2026-01-31',
     openingBalanceCents: 0, closingBalanceCents: 0,
   }).onConflictDoNothing().run()
   dbMod.db.insert(schema.transactions).values({
     statementHash: 'h', transactionDate: '2026-01-05', label,
     amountCents: -100,
-    categoryItemCode: opts.code ?? 'divers-non-categorise',
+    categoryItemId: itemId(opts.code ?? 'divers-non-categorise'),
     isManual: opts.isManual ?? false,
   }).run()
 }
 
 const codesByLabel = () => Object.fromEntries(
-  dbMod.db.select().from(schema.transactions).all().map(t => [t.label, t.categoryItemCode]),
+  (sqlite.prepare(`
+    SELECT t.label AS label, ci.code AS code
+    FROM transactions t JOIN category_items ci ON ci.id = t.category_item_id
+  `).all() as { label: string, code: string }[]).map(r => [r.label, r.code]),
 )
 
 describe('POST /api/rules', () => {
@@ -289,8 +297,7 @@ describe('DELETE /api/rules/[id]', () => {
     seedTransaction('CARTE 01/03 CARREFOUR MARKET')
     const rule = await create('carrefour')
     await deleteHandler(makeEvent({ method: 'DELETE', id: String(rule.id) }))
-    const rows = dbMod.db.select().from(schema.transactions).all()
-    expect(rows[0]!.categoryItemCode).toBe('divers-non-categorise')
+    expect(codesByLabel()['CARTE 01/03 CARREFOUR MARKET']).toBe('divers-non-categorise')
   })
 })
 

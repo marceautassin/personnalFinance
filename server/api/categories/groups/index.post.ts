@@ -1,9 +1,10 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { categoryGroups } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { assertGroupLabelAvailable } from '~~/server/utils/category-labels'
+import { requireProfile } from '~~/server/utils/current-profile'
 import {
   NewCategoryGroupInputSchema,
   slugifyCategoryLabel,
@@ -11,11 +12,11 @@ import {
   type CategoryGroupWithItems,
 } from '~~/shared/schemas/category.schema'
 
-function groupCodeExists(code: string): boolean {
+function groupCodeExists(profileId: number, code: string): boolean {
   return db
     .select({ code: categoryGroups.code })
     .from(categoryGroups)
-    .where(eq(categoryGroups.code, code))
+    .where(and(eq(categoryGroups.profileId, profileId), eq(categoryGroups.code, code)))
     .limit(1)
     .get() !== undefined
 }
@@ -28,31 +29,34 @@ function groupCodeExists(code: string): boolean {
  * (revue du 2026-09-05). Elle est re-tronquée pour laisser la place au suffixe de collision —
  * tronquer PUIS concaténer produisait un code hors borne (revue 2026-08-04).
  */
-function resolveUniqueGroupCode(label: string): string {
+function resolveUniqueGroupCode(profileId: number, label: string): string {
   const base = slugifyCategoryLabel(label, GROUP_CODE_MAX_LENGTH)
-  if (!groupCodeExists(base)) return base
+  if (!groupCodeExists(profileId, base)) return base
   for (let i = 2; ; i++) {
     const suffix = `-${i}`
     const truncated = slugifyCategoryLabel(label, GROUP_CODE_MAX_LENGTH - suffix.length)
     const candidate = `${truncated}${suffix}`
-    if (!groupCodeExists(candidate)) return candidate
+    if (!groupCodeExists(profileId, candidate)) return candidate
   }
 }
 
 /** Crée une rubrique (FR16). Elle naît vide, en dernière position. */
 export default defineEventHandler(async (event): Promise<CategoryGroupWithItems> => {
   const body = await validateBody(event, NewCategoryGroupInputSchema)
-  assertGroupLabelAvailable(body.label)
+  const profileId = requireProfile(event)
+  assertGroupLabelAvailable(profileId, body.label)
 
   const maxPosition = db
     .select({ max: sql<number | null>`max(${categoryGroups.position})` })
     .from(categoryGroups)
+    .where(eq(categoryGroups.profileId, profileId))
     .get()
 
   const inserted = db
     .insert(categoryGroups)
     .values({
-      code: resolveUniqueGroupCode(body.label),
+      profileId,
+      code: resolveUniqueGroupCode(profileId, body.label),
       label: body.label,
       position: Number(maxPosition?.max ?? -1) + 1,
     })

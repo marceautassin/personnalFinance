@@ -88,11 +88,11 @@ describe('assertSchemaUpToDate — refus d\'un schéma périmé', () => {
     expect(() => mod.assertSchemaUpToDate()).not.toThrow()
   })
 
-  it('refuse une table transactions restée sur `category_code`', async () => {
+  it('refuse une table transactions restée sur `category_item_code` (story 27.1)', async () => {
     const mod = await import('./0.bootstrap')
-    sqlite.exec('ALTER TABLE transactions RENAME COLUMN category_item_code TO category_code')
-    expect(() => mod.assertSchemaUpToDate()).toThrow(/category_item_code/)
-    sqlite.exec('ALTER TABLE transactions RENAME COLUMN category_code TO category_item_code')
+    sqlite.exec('ALTER TABLE transactions RENAME COLUMN category_item_id TO category_item_code')
+    expect(() => mod.assertSchemaUpToDate()).toThrow(/category_item_id/)
+    sqlite.exec('ALTER TABLE transactions RENAME COLUMN category_item_code TO category_item_id')
     expect(() => mod.assertSchemaUpToDate()).not.toThrow()
   })
 })

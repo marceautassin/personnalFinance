@@ -1,9 +1,10 @@
 import { defineEventHandler, getRouterParam } from 'h3'
 import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions, classificationRules } from '~~/server/db/schema'
+import { transactions, classificationRules, categoryItems } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
-import { assertCategoryItemExists } from '~~/server/utils/category-fk'
+import { resolveItemId } from '~~/server/utils/category-fk'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { TransactionPatchSchema } from '~~/shared/schemas/transaction.schema'
@@ -17,6 +18,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const patch = await validateBody(event, TransactionPatchSchema)
+  const profileId = requireProfile(event)
 
   const existing = await db
     .select()
@@ -27,13 +29,12 @@ export default defineEventHandler(async (event) => {
     throw notFound(ApiErrorCode.NotFound, { resource: 'transaction', id })
   }
 
-  if (patch.categoryItemCode !== undefined) await assertCategoryItemExists(patch.categoryItemCode)
   const update: Partial<typeof transactions.$inferInsert> = {}
   // `isManual` signifie « catégorie saisie ou CORRIGÉE à la main ». Rattacher une transaction à
   // une dette n'est pas une correction de catégorisation : le flag n'est plus posé que lorsque
   // le patch touche effectivement la catégorie (story 6.8, revue du 2026-09-04).
   if (patch.categoryItemCode !== undefined) {
-    update.categoryItemCode = patch.categoryItemCode
+    update.categoryItemId = await resolveItemId(profileId, patch.categoryItemCode)
     update.isManual = true
   }
 
@@ -46,10 +47,11 @@ export default defineEventHandler(async (event) => {
       transactionDate: transactions.transactionDate,
       label: transactions.label,
       amountCents: transactions.amountCents,
-      categoryItemCode: transactions.categoryItemCode,
+      categoryItemCode: categoryItems.code,
       isManual: transactions.isManual,
     })
     .from(transactions)
+    .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
     .where(eq(transactions.id, id))
 
   return { ...updated, ruleSuggestion: suggestRule(updated, patch.categoryItemCode !== undefined) }
@@ -83,8 +85,9 @@ function suggestRule(
   // Proposer d'en ajouter une seconde créerait deux règles concurrentes sur la même ligne,
   // et la plus longue gagnerait sans que personne comprenne pourquoi.
   const rules = db
-    .select({ pattern: classificationRules.pattern, categoryItemCode: classificationRules.categoryItemCode })
+    .select({ pattern: classificationRules.pattern, categoryItemCode: categoryItems.code })
     .from(classificationRules)
+    .innerJoin(categoryItems, eq(categoryItems.id, classificationRules.categoryItemId))
     .all()
   if (resolveRule(updated.label, rules)) return null
 

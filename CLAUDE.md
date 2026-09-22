@@ -210,6 +210,7 @@ G1 (disclaimer) et G5 (snapshots forecast) **disparaissent avec le pivot du 2026
 yarn dev                  # Dev avec hot reload
 yarn db:generate          # Génère un fichier de migration (D21 — migrations versionnées)
 yarn apply-migration      # Applique les migrations pending
+yarn db:migrate-safe      # Migration sûre : sauvegarde vérifiée, photo avant/après, échoue si perte (story 27.1)
 yarn db:backup            # Sauvegarde la base + export JSON des corrections (story 17.10)
 yarn db:studio            # Drizzle Studio
 yarn test                 # Vitest watch

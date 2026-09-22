@@ -61,18 +61,21 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
       groupLabel: categoryGroups.label,
     })
     .from(categoryItems)
-    .innerJoin(categoryGroups, eq(categoryItems.groupCode, categoryGroups.code))
+    .innerJoin(categoryGroups, eq(categoryItems.groupId, categoryGroups.id))
     .orderBy(asc(categoryGroups.position), asc(categoryItems.position))
 
   const rowsIn = (start: string, end: string) => db
     .select({
       transactionDate: transactions.transactionDate,
       amountCents: transactions.amountCents,
-      categoryItemCode: transactions.categoryItemCode,
+      // Le moteur travaille sur des CODES (Dev Notes de la story 27.1) : jointure vers le
+      // poste pour re-exposer son code, `category_item_id` n'étant qu'une clé technique.
+      categoryItemCode: categoryItems.code,
       // Le moteur en a besoin pour écarter les avances remboursées (epic 19).
       settlementGroupId: transactions.settlementGroupId,
     })
     .from(transactions)
+    .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
     .where(and(gte(transactions.transactionDate, start), lte(transactions.transactionDate, end)))
     // Ordre EXPLICITE. `neutralizeSettlements` trie les avances par date, et son tri est
     // stable : deux avances du même jour sont donc départagées par l'ordre d'ARRIVÉE. Le

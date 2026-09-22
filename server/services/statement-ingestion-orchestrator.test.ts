@@ -2,9 +2,16 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import { mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { H3Event } from 'h3'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { sha256 } from '~~/server/utils/hash'
 import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
+
+/**
+ * `event` est obligatoire dans `IngestStatementArgs` (revue de la story 27.1) : `requireProfile`
+ * ne le lit pas encore, mais un mock minimal suffit — aucun test ici n'exerce son contenu.
+ */
+const FAKE_EVENT = { path: '/api/statements', method: 'POST' } as unknown as H3Event
 
 // Setup tmpdirs AVANT tout import du singleton db/client (qui ouvre la DB à l'import).
 const tmpRoot = mkdtempSync(join(tmpdir(), 'pf-ingest-'))
@@ -134,7 +141,7 @@ describe('ingestStatement (orchestrator)', () => {
     ])
 
     const buf = pdf('happy-path-pdf')
-    const result = await orch.ingestStatement({ pdfBuffer: buf, confirmReplace: false })
+    const result = await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: buf, confirmReplace: false })
 
     expect(result.transactionCount).toBe(2)
     expect(result.isBalanced).toBe(true)
@@ -158,7 +165,7 @@ describe('ingestStatement (orchestrator)', () => {
       { transactionDate: '2026-04-05', label: 'Op', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
     ])
 
-    await orch.ingestStatement({ pdfBuffer: pdf('cats-from-db'), confirmReplace: false })
+    await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('cats-from-db'), confirmReplace: false })
 
     const passed = vi.mocked(llmMod.categorizeStatement).mock.calls[0]![1] as ReadonlyArray<{ code: string }>
     // Exactement les postes seedés en base — un sous-ensemble strict de DEFAULT_REFERENTIAL
@@ -182,10 +189,10 @@ describe('ingestStatement (orchestrator)', () => {
     ])
 
     const buf = pdf('dedup-same-pdf')
-    await orch.ingestStatement({ pdfBuffer: buf, confirmReplace: false })
+    await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: buf, confirmReplace: false })
 
     await expect(
-      orch.ingestStatement({ pdfBuffer: buf, confirmReplace: false }),
+      orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: buf, confirmReplace: false }),
     ).rejects.toMatchObject({
       statusCode: 400,
       statusMessage: ApiErrorCode.PdfAlreadyIngested,
@@ -197,7 +204,7 @@ describe('ingestStatement (orchestrator)', () => {
     mockCategorize([
       { transactionDate: '2026-04-10', label: 'A', amountCents: -50_000, categoryItemCode: 'alimentation-courses' },
     ])
-    await orch.ingestStatement({ pdfBuffer: pdf('first-april'), confirmReplace: false })
+    await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('first-april'), confirmReplace: false })
 
     mockExtract({ periodStart: '2026-04-15', periodEnd: '2026-05-15' })
     mockCategorize([
@@ -205,7 +212,7 @@ describe('ingestStatement (orchestrator)', () => {
     ])
 
     await expect(
-      orch.ingestStatement({ pdfBuffer: pdf('second-overlapping'), confirmReplace: false }),
+      orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('second-overlapping'), confirmReplace: false }),
     ).rejects.toMatchObject({
       statusCode: 409,
       statusMessage: ApiErrorCode.PeriodOverlap,
@@ -220,14 +227,14 @@ describe('ingestStatement (orchestrator)', () => {
       { transactionDate: '2026-04-10', label: 'Old', amountCents: -50_000, categoryItemCode: 'alimentation-courses' },
     ])
     const firstBuf = pdf('first-april-replace')
-    const first = await orch.ingestStatement({ pdfBuffer: firstBuf, confirmReplace: false })
+    const first = await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: firstBuf, confirmReplace: false })
 
     mockExtract({ periodStart: '2026-04-01', periodEnd: '2026-04-30' })
     mockCategorize([
       { transactionDate: '2026-04-12', label: 'New', amountCents: -40_000, categoryItemCode: 'alimentation-courses' },
     ])
     const secondBuf = pdf('second-april-replace')
-    const second = await orch.ingestStatement({ pdfBuffer: secondBuf, confirmReplace: true })
+    const second = await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: secondBuf, confirmReplace: true })
 
     expect(second.hash).not.toBe(first.hash)
     const stmts = dbMod.db.select().from(schema.bankStatements).all()
@@ -251,7 +258,7 @@ describe('ingestStatement (orchestrator)', () => {
 
     const buf = pdf('llm-down-case')
     await expect(
-      orch.ingestStatement({ pdfBuffer: buf, confirmReplace: false }),
+      orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: buf, confirmReplace: false }),
     ).rejects.toMatchObject({
       statusCode: 503,
       statusMessage: ApiErrorCode.LlmUnavailable,
@@ -268,7 +275,7 @@ describe('ingestStatement (orchestrator)', () => {
       new llmMod.LlmExtractionError('Schema validation failed'),
     )
     await expect(
-      orch.ingestStatement({ pdfBuffer: pdf('llm-extract-fail'), confirmReplace: false }),
+      orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('llm-extract-fail'), confirmReplace: false }),
     ).rejects.toMatchObject({
       statusCode: 502,
       statusMessage: ApiErrorCode.LlmExtractionFailed,
@@ -278,7 +285,7 @@ describe('ingestStatement (orchestrator)', () => {
   it('PDF parse failure → pdf_parse_failed (400)', async () => {
     vi.mocked(pdfMod.extractStatement).mockRejectedValue(new Error('PDF extraction failed: malformed'))
     await expect(
-      orch.ingestStatement({ pdfBuffer: pdf('bad-pdf'), confirmReplace: false }),
+      orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('bad-pdf'), confirmReplace: false }),
     ).rejects.toMatchObject({
       statusCode: 400,
       statusMessage: ApiErrorCode.PdfParseFailed,
@@ -293,7 +300,7 @@ describe('ingestStatement (orchestrator)', () => {
       { transactionDate: '2026-03-25', label: 'B', amountCents: -40_000, categoryItemCode: 'alimentation-courses' },
     ])
 
-    const result = await orch.ingestStatement({ pdfBuffer: pdf('no-period'), confirmReplace: false })
+    const result = await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('no-period'), confirmReplace: false })
     expect(result.periodStart).toBe('2026-03-05')
     expect(result.periodEnd).toBe('2026-03-25')
   })
@@ -302,7 +309,7 @@ describe('ingestStatement (orchestrator)', () => {
     mockExtract({ openingBalanceCents: null })
     mockCategorize([])
     await expect(
-      orch.ingestStatement({ pdfBuffer: pdf('no-balance'), confirmReplace: false }),
+      orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('no-balance'), confirmReplace: false }),
     ).rejects.toMatchObject({
       statusCode: 400,
       statusMessage: ApiErrorCode.PdfParseFailed,
@@ -314,7 +321,7 @@ describe('ingestStatement (orchestrator)', () => {
     mockCategorize([
       { transactionDate: '2026-04-10', label: 'X', amountCents: -40_000, categoryItemCode: 'alimentation-courses' },
     ])
-    const result = await orch.ingestStatement({ pdfBuffer: pdf('imbalanced'), confirmReplace: false })
+    const result = await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('imbalanced'), confirmReplace: false })
     expect(result.isBalanced).toBe(false)
     // expected = 50_000 - 100_000 = -50_000 ; found = -40_000 ; gap = -50_000 - (-40_000) = -10_000
     expect(result.gapCents).toBe(-10_000)
@@ -328,7 +335,7 @@ describe('ingestStatement (orchestrator)', () => {
 
     const buf = pdf('fs-rollback-case')
     await expect(
-      orch.ingestStatement({ pdfBuffer: buf, confirmReplace: false }),
+      orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: buf, confirmReplace: false }),
     ).rejects.toThrow()
 
     expect(existsSync(pdfPathFor(buf))).toBe(false)
@@ -351,7 +358,7 @@ describe('ingestStatement (orchestrator)', () => {
       ])
 
       await expect(
-        orch.ingestStatement({ pdfBuffer: pdf('out-of-period-before'), confirmReplace: false }),
+        orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('out-of-period-before'), confirmReplace: false }),
       ).rejects.toMatchObject({
         statusCode: 502,
         statusMessage: ApiErrorCode.LlmExtractionFailed,
@@ -366,7 +373,7 @@ describe('ingestStatement (orchestrator)', () => {
       ])
 
       await expect(
-        orch.ingestStatement({ pdfBuffer: pdf('out-of-period-after'), confirmReplace: false }),
+        orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('out-of-period-after'), confirmReplace: false }),
       ).rejects.toMatchObject({ statusCode: 502 })
     })
 
@@ -377,7 +384,7 @@ describe('ingestStatement (orchestrator)', () => {
         { transactionDate: '2026-04-30', label: 'Dernier jour', amountCents: -25_000, categoryItemCode: 'alimentation-courses' },
       ])
 
-      const result = await orch.ingestStatement({ pdfBuffer: pdf('bounds-inclusive'), confirmReplace: false })
+      const result = await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('bounds-inclusive'), confirmReplace: false })
       expect(result.transactionCount).toBe(2)
     })
 
@@ -389,7 +396,7 @@ describe('ingestStatement (orchestrator)', () => {
         { transactionDate: '2026-04-30', label: 'Récente', amountCents: -25_000, categoryItemCode: 'alimentation-courses' },
       ])
 
-      const result = await orch.ingestStatement({ pdfBuffer: pdf('fallback-period'), confirmReplace: false })
+      const result = await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('fallback-period'), confirmReplace: false })
       expect(result.periodStart).toBe('2025-03-05')
       expect(result.periodEnd).toBe('2026-04-30')
     })
@@ -410,7 +417,7 @@ describe('ingestStatement (orchestrator)', () => {
       mockCategorize([])
 
       await expect(
-        orch.ingestStatement({ pdfBuffer: pdf(`no-balance-${_name}`), confirmReplace: false }),
+        orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf(`no-balance-${_name}`), confirmReplace: false }),
       ).rejects.toMatchObject({
         statusCode: 400,
         statusMessage: ApiErrorCode.PdfParseFailed,
@@ -432,7 +439,7 @@ describe('ingestStatement (orchestrator)', () => {
     )
 
     await expect(
-      orch.ingestStatement({ pdfBuffer: pdf('llm-config'), confirmReplace: false }),
+      orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('llm-config'), confirmReplace: false }),
     ).rejects.toMatchObject({
       statusCode: 503,
       statusMessage: ApiErrorCode.LlmConfigError,

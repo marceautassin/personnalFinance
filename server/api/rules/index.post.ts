@@ -1,10 +1,11 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { countCoveredTransactions } from '~~/server/utils/rule-coverage'
 import { classificationRules, categoryItems, categoryGroups } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
-import { assertCategoryItemExists } from '~~/server/utils/category-fk'
+import { resolveItemId } from '~~/server/utils/category-fk'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { normalizeForMatch } from '~~/server/services/rule-matcher'
@@ -23,7 +24,8 @@ import {
  */
 export default defineEventHandler(async (event): Promise<ClassificationRuleWithLabels> => {
   const body = await validateBody(event, NewClassificationRuleInputSchema)
-  await assertCategoryItemExists(body.categoryItemCode)
+  const profileId = requireProfile(event)
+  const categoryItemId = await resolveItemId(profileId, body.categoryItemCode)
 
   const pattern = normalizeForMatch(body.pattern)
   if (pattern.length < 2) {
@@ -37,7 +39,7 @@ export default defineEventHandler(async (event): Promise<ClassificationRuleWithL
   const existing = db
     .select({ id: classificationRules.id })
     .from(classificationRules)
-    .where(eq(classificationRules.pattern, pattern))
+    .where(and(eq(classificationRules.profileId, profileId), eq(classificationRules.pattern, pattern)))
     .get()
   if (existing) {
     throw domainError(ApiErrorCode.RuleAlreadyExists, { pattern, existingId: existing.id }, 409)
@@ -45,15 +47,15 @@ export default defineEventHandler(async (event): Promise<ClassificationRuleWithL
 
   const inserted = db
     .insert(classificationRules)
-    .values({ pattern, categoryItemCode: body.categoryItemCode })
-    .returning()
+    .values({ profileId, pattern, categoryItemId })
+    .returning({ id: classificationRules.id, pattern: classificationRules.pattern, createdAt: classificationRules.createdAt })
     .get()
 
   const item = db
     .select({ itemLabel: categoryItems.label, groupLabel: categoryGroups.label })
     .from(categoryItems)
-    .innerJoin(categoryGroups, eq(categoryGroups.code, categoryItems.groupCode))
-    .where(eq(categoryItems.code, body.categoryItemCode))
+    .innerJoin(categoryGroups, eq(categoryGroups.id, categoryItems.groupId))
+    .where(eq(categoryItems.id, categoryItemId))
     .get()
 
   // Le VRAI nombre de lignes couvertes, jamais zéro en dur : c'est le seul garde-fou contre
@@ -63,6 +65,7 @@ export default defineEventHandler(async (event): Promise<ClassificationRuleWithL
   setResponseStatus(event, 201)
   return {
     ...inserted,
+    categoryItemCode: body.categoryItemCode,
     itemLabel: item?.itemLabel ?? body.categoryItemCode,
     groupLabel: item?.groupLabel ?? '',
     matchCount: countCoveredTransactions(pattern),

@@ -55,6 +55,9 @@ beforeEach(() => {
   dbMod.db.delete(schema.bankStatements).run()
   dbMod.db.delete(schema.categoryItems).run()
   dbMod.db.delete(schema.categoryGroups).run()
+  // `TEST_REFERENTIAL_DDL` sème aussi le profil `marceau` (id 1, story 27.1) : le retirer
+  // avant de le rejouer, sinon la seconde exécution viole l'unicité de son id.
+  dbMod.db.delete(schema.profiles).run()
   sqlite.exec(TEST_REFERENTIAL_DDL)
 })
 
@@ -74,14 +77,19 @@ function makeEvent(opts: { method: string, body?: unknown, code?: string }): H3E
 interface Item { code: string, groupCode: string, label: string, nature: string, transactionCount: number }
 interface Group { code: string, label: string, position: number, items: Item[] }
 
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
+
 function seedTransaction(itemCode: string) {
   dbMod.db.insert(schema.bankStatements).values({
-    hashSha256: 'h', periodStart: '2026-01-01', periodEnd: '2026-01-31',
+    hashSha256: 'h', profileId: 1, bank: 'boursorama', periodStart: '2026-01-01', periodEnd: '2026-01-31',
     openingBalanceCents: 0, closingBalanceCents: -100,
   }).onConflictDoNothing().run()
   dbMod.db.insert(schema.transactions).values({
     statementHash: 'h', transactionDate: '2026-01-01', label: 'x',
-    amountCents: -100, categoryItemCode: itemCode,
+    amountCents: -100, categoryItemId: itemId(itemCode),
   }).run()
 }
 

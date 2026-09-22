@@ -71,6 +71,13 @@
       "when": 1788848519897,
       "tag": "0009_joint_account_share",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790000000000,
+      "tag": "0010_profiles_and_category_ids",
+      "breakpoints": true
     }
   ]
 }

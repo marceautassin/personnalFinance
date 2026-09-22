@@ -8,7 +8,7 @@
 import { defineEventHandler, getRouterParam } from 'h3'
 import { eq, asc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { bankStatements, transactions } from '~~/server/db/schema'
+import { bankStatements, transactions, categoryItems } from '~~/server/db/schema'
 import { reconcile } from '~~/server/services/reconciler'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
@@ -39,10 +39,11 @@ export default defineEventHandler(async (event) => {
       transactionDate: transactions.transactionDate,
       label: transactions.label,
       amountCents: transactions.amountCents,
-      categoryItemCode: transactions.categoryItemCode,
+      categoryItemCode: categoryItems.code,
       isManual: transactions.isManual,
     })
     .from(transactions)
+    .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
     .where(eq(transactions.statementHash, hash))
     .orderBy(asc(transactions.transactionDate), asc(transactions.id))
 
