@@ -22,12 +22,14 @@ user_name: 'Marceau'
 date: '2026-04-30'
 status: 'amended — NOT READY (structure et contexte à décrire après suppression)'
 completedAt: '2026-04-30'
-amendedAt: '2026-09-04'
+amendedAt: '2026-09-22'
 amendmentNote: >-
   Amendement lourd suite à la réécriture du PRD. D11-D16 retirées, D4 remplacée,
   D5/D8/D9 amendées, D17 à D27 ajoutées. Statut de préparation NOT READY : les
   sections Contexte et Structure décrivent encore l'ancien produit et seront
   reprises après la suppression du périmètre mort.
+  Amendement du 2026-09-12 : D30 à D36 (foyer, agent). Amendement du 2026-09-22 :
+  D37 à D43 (profils et banques) ; D30 amendée par D37, D31 corrigée par D38.
 ---
 
 # Architecture Decision Document — personnalFinance
@@ -1427,3 +1429,290 @@ du PM tenait ; ce qu'il sous-estimait est le coût de D30.
 s'agit en réalité de reconstruire cinq tables en préservant deux ans de données, sur une base dont la
 perte n'est plus acceptable. C'est la story la plus risquée des vingt-deux, et elle est numérotée
 22.2.
+
+---
+
+## Décisions d'architecture — amendement du 2026-09-22 : profils et banques
+
+Traduit le chantier de rang 1 du PRD amendé le 2026-09-22 (FR73 à FR81, NFR35, NFR36, Journey 9).
+Décisions **D37 à D43**. Comme pour D30-D36, les constats viennent de la lecture du code et, pour
+le Crédit Mutuel, d'un relevé réel lu avec ses identifiants masqués.
+
+**Ce qui change de nature.** D30 posait la propriété des données sur un **membre**, c'est-à-dire
+une identité. Le PRD la pose désormais sur un **profil**, qui existe sans identité : un membre est
+un profil auquel une identité vérifiée sera rattachée (FR44). Tout ce que D30 disait des clés reste
+vrai ; seul le propriétaire change de nom, et arrive avant l'authentification.
+
+### D37 — Le profil est le propriétaire ; D30 transposée, et assouplie sur un point
+
+**Amende D30.**
+
+Nouvelle table `profiles` : `id` entier, `name` texte unique, `default_bank` (D40), `created_at`.
+
+Portent une colonne `profile_id NOT NULL` vers `profiles.id` : `category_groups`, `category_items`,
+`bank_statements`, `classification_rules`, `settlement_groups`.
+
+**`transactions` n'en porte pas.** Une transaction appartient au profil de son relevé, via
+`statement_hash`. Dupliquer le propriétaire sur la ligne créerait un second chemin capable de
+diverger du premier — une transaction du profil A dans un relevé du profil B — pour épargner une
+jointure. Les points de lecture joignent `bank_statements`, ce qu'ils font déjà pour la fiabilité.
+
+**Clés — D30 appliquée au référentiel.** `category_groups` et `category_items` passent à une clé de
+substitution entière ; le couple `(profile_id, code)` devient unique. `transactions` et
+`classification_rules` référencent le poste par son **identifiant**. `classification_rules.pattern`
+devient unique par `(profile_id, pattern)`.
+
+**Le contrat d'API ne bouge pas.** Les endpoints continuent d'exposer et de recevoir des **codes**
+(`/api/categories/items/[code]`, `categoryItemCode` dans les réponses). La résolution code →
+identifiant se fait côté serveur, **dans le profil courant**. Les constantes codées en dur
+(`JOINT_TRANSFER_ITEM_CODE`, `JOINT_REIMBURSEMENT_ITEM_CODE`, les catégories protégées) restent
+valables : un code est unique à l'intérieur d'un profil, et le référentiel initial les porte (D39).
+
+**Assouplissement de D30 : la clé du relevé reste le hash, globalement.** D30 prévoyait une
+déduplication par propriétaire. Arbitrage du 2026-09-22 : `bank_statements.hash_sha256` reste la
+clé primaire, unique dans toute la base. Le seul cas perdu est un même PDF déposé dans deux profils,
+qui est une erreur de dépôt et non un usage. Le gain : ni rebuild de la clé du relevé, ni migration
+des URL `/api/statements/[hash]` et `/api/reconciliation/[hash]`. Conséquence assumée : le refus
+« déjà ingéré » révèle qu'un autre profil détient ce fichier précis — il faut détenir le fichier
+pour l'apprendre. FR81 reste tenue : la détection de **chevauchement de période** (FR6), elle,
+est bien restreinte au profil.
+
+**`settlement_groups`** : un groupe ne réunit que des lignes de son profil. Vérifié à l'écriture
+par `POST /api/settlements`, refusé sinon.
+
+**Migration `0010` — unique, versionnée, préservante.**
+
+1. Crée `profiles` et y insère `marceau` (`id = 1`, `default_bank = 'boursorama'`).
+2. Reconstruit les cinq tables (création, copie avec `profile_id = 1`, bascule) plus
+   `transactions` pour sa clé étrangère vers le poste — SQLite ne porte pas une clé étrangère
+   `NOT NULL` par `ALTER TABLE ADD COLUMN`.
+3. Renseigne `bank_statements.bank = 'boursorama'` pour tout l'historique (D40).
+
+**Garde-fous — ils remplacent la dépendance à la story 23.1 que D30 exigeait.** L'ordre des
+chantiers a changé : cette migration passe avant la sauvegarde quotidienne. Elle embarque donc sa
+propre sauvegarde, sans attendre 23.1 :
+
+- `yarn db:backup` (story 17.10) **avant** exécution, puis **vérification de restaurabilité** :
+  ouverture de la copie, `PRAGMA integrity_check` à `ok`, comptage de chaque table égal à la source.
+  Une sauvegarde non vérifiée fait échouer la story, pas seulement l'avertir.
+- Comptage avant / après sur chaque table **et** somme de `amount_cents` par relevé ; tout écart
+  fait échouer la migration (FR75).
+- Migration commitée (D21), jamais de `drizzle push` — la base de développement dérive déjà, et
+  `push` veut reconstruire `transactions`.
+
+### D38 — Le profil courant voyage dans un cookie, et chaque endpoint le vérifie
+
+**Amende et corrige D31.**
+
+**Transport.** Choisir un profil (`PUT /api/profiles/current`) pose un cookie `pf_profile`,
+`httpOnly`, `SameSite=Strict`. Un utilitaire unique, `server/utils/current-profile.ts`, expose
+`requireProfile(event): ProfileId` : il lit le cookie, vérifie que le profil existe, et lève
+`400 profile_required` sinon. **Aucun endpoint ne lit le cookie lui-même.**
+
+C'est la décision qui rend FR44 bon marché : le jour où l'authentification arrive, seule
+l'implémentation de `requireProfile` change — session → identité → profil. Sa signature et ses
+vingt-trois appelants restent intacts.
+
+Rejeté : un en-tête `X-Profile-Id`. Explicite, mais il faut le porter dans chaque composable et
+dans l'envoi multipart ; un oubli ne produit pas d'erreur, il produit une requête sans profil.
+
+**D31 a sous-compté.** Elle annonçait « quatre fichiers » : `analysis.get`, `evolution.get`,
+`transactions/index.get`, `settlement-status`. Ce sont les **lectures d'analyse**. Or les écritures
+adressent des ressources par identifiant, code ou hash : `PATCH /api/transactions/[id]`, les
+`PATCH` et `DELETE` du référentiel, `rules/[id]`, `settlements/[id]`, `reconciliation/[hash]`.
+Sans restriction, un profil modifie la ligne d'un autre en devinant un entier. **Les 23 endpoints
+de `server/api/` sont concernés**, hors `profiles/`.
+
+**Règles :**
+
+- Toute requête de données filtre par le profil courant **dans la requête SQL**, jamais après coup.
+- Une ressource d'un autre profil répond **404**, jamais 403 : la réponse ne confirme pas son
+  existence.
+- Un **test d'architecture** énumère les fichiers de `server/api/` et échoue si l'un d'eux, hors
+  `profiles/`, n'appelle pas `requireProfile`. C'est la forme vérifiable de NFR24 : un nouvel
+  endpoint sans cloisonnement casse la CI au lieu de passer en revue.
+- Le moteur d'analyse reste ignorant du profil (D19, D31 inchangée sur ce point).
+
+**Front.** Changer de profil **recharge l'application entière**. Aucun état d'un profil ne survit
+en mémoire sous un autre — c'est plus simple qu'une invalidation, et une donnée périmée affichée ici
+serait une fuite. Le nom du profil courant est affiché dans l'en-tête (FR74), lu par un composable
+`useProfiles`, conformément à la règle « pas de `$fetch` dans un composant ».
+
+**Agent (epic 26).** Il consomme les endpoints (NFR32). Appelé depuis le serveur, il doit
+**propager le profil** de la requête qui l'a déclenché, pas en choisir un.
+
+**NFR35 — la porte.** Rien dans le code ne distingue le réseau local d'Internet : la porte est une
+**règle d'exploitation**. Tant que FR44 n'est pas livrée, aucun reverse proxy, redirection de port
+ou tunnel ne publie l'application. Elle se vérifie par la tentative de connexion extérieure décrite
+au PRD, pas par un test unitaire.
+
+### D39 — Le référentiel initial est semé par profil
+
+Le seed actuel ne tourne qu'une fois, sur une base dont `category_groups` est vide. Il devient
+`seedReferential(tx, profileId)`, alimenté par `DEFAULT_REFERENTIAL` :
+
+- appelé par `POST /api/profiles`, **dans la même transaction** que la création du profil : un
+  profil sans référentiel ne doit exister à aucun instant (FR73) ;
+- appelé par le bootstrap pour tout profil sans rubrique — ce qui couvre la base neuve des tests
+  E2E, où la migration crée `marceau` vide.
+
+La sonde de schéma sur les postes du compte joint (migration 0009) devient **par profil**. Un
+nouveau profil reçoit donc les postes du compte joint ; sans usage chez lui, ils sont inertes.
+
+### D40 — La banque est portée par le relevé
+
+`shared/types/bank.ts` énumère `BANKS = ['boursorama', 'credit_mutuel']` — identifiants en
+anglais sans accent, libellés d'affichage français à côté.
+
+- `bank_statements.bank`, `NOT NULL`, valeur de l'énumération.
+- `profiles.default_bank`, même énumération.
+- `POST /api/statements` reçoit un champ multipart `bank`, optionnel : absent, il vaut la banque
+  par défaut du profil courant. L'interface le préremplit ainsi (FR77).
+
+### D41 — Un format par banque, derrière l'extracteur
+
+**Arbitrage du 2026-09-22.** Deux banques ne justifient pas un système d'extensions (Rule of
+Three) ; elles justifient de ne pas doubler un fichier de 400 lignes par des `if`.
+
+```
+server/services/pdf-extractor.ts          ← seul import de unpdf (NFR21), inchangé sur ce point
+server/services/bank-formats/index.ts     ← BANK_FORMATS: Record<Bank, BankFormat>
+server/services/bank-formats/boursorama.ts
+server/services/bank-formats/credit-mutuel.ts
+```
+
+`BankFormat` expose quatre capacités, sur des données déjà extraites (pages de `PositionedItem`,
+texte plat) — **aucun format n'importe `unpdf`** :
+
+- `recognizes(flatText)` — le relevé est-il de cette banque ;
+- `operationsText(pages)` — le texte transmis au modèle, identité coupée ;
+- `balancesAndPeriod(...)` — soldes et période ;
+- `cardDebits(...)` — débits différés de carte et leur détail (vide pour Boursorama).
+
+`extractStatement(buffer, bank)` appelle `recognizes` **avant tout appel au fournisseur** : un
+relevé déposé sous la mauvaise banque est refusé en `400 bank_mismatch`, sans token dépensé ni
+ligne écrite (FR78).
+
+**Boursorama : déplacement sans changement de comportement.** La coupe géométrique, les ancres de
+soldes et de période actuelles migrent telles quelles dans `boursorama.ts`. `redactIdentity`
+reste commune et s'applique en dernier à toute banque, comme filet.
+
+**Prompt.** Un seul prompt d'extraction ; `llm-categorizer` reçoit la banque, et
+`bank-statement-llm-prompt.ts` y ajoute un paragraphe propre à la banque (disposition des colonnes,
+format des libellés). Le prompt actuel, écrit « relevés Boursorama », perd cette mention de sa
+partie commune.
+
+### D42 — Crédit Mutuel : trois pièges du format, trois réponses déterministes
+
+Constats sur le relevé d'exemple. Un PDF « Relevé et informations bancaires » contient **plusieurs
+comptes**, chacun ouvert par une ligne de titre commençant par `€` (`€ C/C EUROCOMPTE …`,
+`€ LIVRET BLEU …`, `€ PLAN D'EPARGNE LOGEMENT …`), puis un détail carte et des tableaux de
+situation. Les soldes s'écrivent `SOLDE CREDITEUR AU jj/mm/aaaa`.
+
+**1. Un seul compte lu (FR79).** Le texte est découpé en sections sur les lignes de titre. **Une
+section qui continue d'une page à l'autre reste une seule section** : le titre du compte courant
+est réimprimé en tête de la page 2. Est retenue la section dont le titre désigne un compte courant
+(`C/C`, `COMPTE COURANT`, `COMPTE CHEQUES`) ; **zéro ou plusieurs correspondances → refus** en
+`400 statement_format_unrecognized`, plutôt qu'un choix arbitraire. Les titres des autres sections,
+**numéros retirés**, sont rendus dans la réponse d'ingestion (`ignoredSections`) pour être
+affichés ; ils ne sont pas persistés.
+
+**2. Soldes et période.** Premier et dernier `SOLDE (CREDITEUR|DEBITEUR) AU` **de la section
+retenue** — les livrets en portent aussi, d'où la lecture après découpage. `DEBITEUR` rend un solde
+négatif. **La période commence le lendemain du solde d'ouverture** : le relevé s'ouvre à la date
+où le précédent s'est clos, et prendre cette date telle quelle ferait déclencher FR6 à chaque relevé
+Crédit Mutuel. Boursorama n'a pas ce décalage.
+
+**3. Débit différé carte (FR80).** Le compte courant porte `RELEVE CARTE <total>` ; plus bas, un
+bloc `RELEVE DE VOTRE CARTE … TOTAL PRELEVE SUR VOTRE COMPTE … : <total> euros` en donne le détail.
+
+- Le **total** est lu par le code, jamais par le modèle.
+- Les **lignes du détail** sont extraites et catégorisées par un **appel distinct** au fournisseur,
+  sur le seul bloc de détail. Séparer les appels rend l'origine de chaque ligne certaine sans
+  ajouter de champ au schéma de sortie.
+- Le **remplacement** est déterministe, dans l'orchestrateur, **avant** la réconciliation : pour
+  chaque bloc de total T, la ligne du compte courant dont le libellé contient `RELEVE CARTE` et dont
+  le montant vaut −T est retirée, et les lignes du détail — datées du **jour d'achat** — la
+  remplacent.
+- **Un détail qui ne tombe pas juste n'a besoin d'aucun code** : la réconciliation du relevé, qui
+  compare les soldes à la somme des lignes, fait apparaître l'écart par le mécanisme existant. La
+  réponse d'ingestion précise seulement que l'écart vient du détail carte.
+- **Un agrégat sans détail** est conservé, et `bank_statements.card_detail_missing` passe à vrai.
+  C'est un **fait du PDF**, pas un état dérivable des lignes — d'où le stockage, qui ne contredit
+  pas « seule la décision est persistée ». `deriveReliability` reçoit ce fait et rend un nouvel
+  état dégradé, `card_detail_missing`. Il n'est **pas** couvert par `gap_accepted` : le PRD n'en
+  prévoit pas l'acceptation.
+- **Un détail sans agrégat correspondant** n'est pas importé, et la réponse d'ingestion le dit.
+  Point ouvert ci-dessous.
+
+**Identité (NFR6, NFR36).** La coupe géométrique au-dessus du premier en-tête ne suffit pas : le
+titulaire et des numéros de compte réapparaissent **sous** cet en-tête. Défense en trois couches :
+
+1. **Par construction** — seules la section du compte courant et les lignes des blocs de détail
+   sont transmises. Les tableaux de situation, les livrets, l'en-tête du bloc carte (numéro de
+   carte, titulaire) et la ligne de total n'entrent jamais dans le texte.
+2. **Par correspondance exacte** — les numéros lus dans les titres de section et les tableaux de
+   situation du même PDF sont collectés, puis remplacés partout où ils réapparaissent, libellés
+   compris (`VIR PEL <numéro>`).
+3. **Par motif** — toute suite d'au moins dix chiffres restante est masquée. Les numéros de
+   chèque (sept chiffres) sont préservés : ils servent au rapprochement et n'identifient pas le
+   compte.
+
+### D43 — Une fixture par banque, versionnée, sans identifiant réel
+
+**Constat : la dette existe déjà côté Boursorama.** Les tests de `pdf-extractor.test.ts` lisent
+des PDF réels que `.gitignore` exclut. Ils sont donc **sautés partout où ces fichiers manquent**, CI
+comprise. NFR36 s'applique aux deux banques.
+
+**Décision.** La fixture n'est pas un PDF — anonymiser un PDF est fragile — mais les **pages de
+`PositionedItem`** extraites d'un relevé réel, sérialisées en JSON sous `tests/fixtures/statements/`.
+La capture passe par `pdf-extractor` (NFR21 tenue) et **substitue chaque identifiant par un faux de
+même forme** : numéro de compte de même longueur, nom et adresse fictifs, numéro de carte fictif.
+
+Le test pose alors une question que le PDF réel ne permettait pas : **aucun des faux identifiants
+plantés ne figure dans `operationsText`**. Il vérifie aussi soldes, période, section retenue,
+sections ignorées et total carte. La partie confiée au modèle n'y est pas testée : c'est la
+réconciliation qui la contrôle (NFR10).
+
+### Points ouverts — à trancher sur des relevés supplémentaires
+
+Un seul relevé Crédit Mutuel a été lu. Avant d'écrire le format, il en faut **trois à cinq de plus**,
+couvrant au moins :
+
+- un **solde débiteur** (signe) ;
+- un **remboursement carte** dans le détail (signe d'une ligne en `Montant euros`, colonne unique) ;
+- **deux cartes** sur le même compte ;
+- un bloc de détail dont le **prélèvement tombe hors de la période**, qui dira si « détail sans
+  agrégat » est un cas réel ou théorique.
+
+### Séquence de mise en œuvre
+
+```
+1. Migration 0010 — profil marceau, clés, banque        (D37, D40)   ← sauvegarde vérifiée avant
+2. requireProfile + 23 endpoints + test d'architecture   (D38)
+3. Création / choix de profil, seed, en-tête             (D38, D39)
+4. Formats par banque : Boursorama déplacé à l'identique,
+   fixture Boursorama                                     (D41, D43)
+5. Crédit Mutuel : sections, soldes, période, identité,
+   fixture                                                (D42, D43)
+6. Crédit Mutuel : détail carte et card_detail_missing    (D42)
+```
+
+Les étapes 4 à 6 dépendent de 1 (la banque est une colonne), pas de 2 et 3 : elles peuvent avancer
+en parallèle une fois la migration passée.
+
+### Synthèse
+
+| Décision | Statut | Effet |
+|---|---|---|
+| D37 | **amende D30** | propriétaire = profil ; transactions possédées via leur relevé ; hash du relevé gardé comme clé globale |
+| D38 | **corrige D31** | cookie + `requireProfile` ; 23 endpoints, pas 4 ; test d'architecture |
+| D39 | nouvelle | seed par profil, dans la transaction de création |
+| D40 | nouvelle | banque sur le relevé, défaut sur le profil |
+| D41 | nouvelle | `BankFormat` ×2, rejet avant appel au modèle |
+| D42 | nouvelle | Crédit Mutuel : section unique, période décalée d'un jour, détail carte déterministe, identité en trois couches |
+| D43 | nouvelle | fixtures JSON anonymisées, dette Boursorama incluse |
+
+**Le point de coût reste celui de D30** — cinq tables reconstruites sur des données dont la perte
+n'est pas acceptable. Il ne grossit pas : ne pas porter le profil sur `transactions` et garder le
+hash comme clé en retirent chacun une part.
