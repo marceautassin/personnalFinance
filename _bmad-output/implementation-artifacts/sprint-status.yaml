@@ -504,7 +504,7 @@ development_status:
   # plus transactions, sur des donnees que les PDF ne reconstruisent pas.
   # Sauvegarde VERIFIEE RESTAURABLE avant, comptages et sommes avant/apres.
   epic-27: in-progress
-  27-1-tout-mon-historique-m-appartient: ready-for-dev
+  27-1-tout-mon-historique-m-appartient: done
   27-2-chaque-requete-se-limite-au-profil-courant: ready-for-dev
   27-3-creer-un-profil-et-basculer: ready-for-dev
   epic-27-retrospective: optional
