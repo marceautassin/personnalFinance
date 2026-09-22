@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { categoryGroups, categoryItems } from '~~/server/db/schema'
 import { domainError } from '~~/server/utils/errors'
@@ -15,16 +15,20 @@ import { normalizeCategoryLabel } from '~~/shared/schemas/category.schema'
  * ⚠️ Invariant applicatif uniquement : il n'existe pas d'index UNIQUE sur une forme
  * normalisée du libellé. Seules les écritures postérieures à cette règle sont garanties.
  *
+ * Story 27.1 (D37) : l'unicité est DANS LE PROFIL, pas sur tout le référentiel — sinon un
+ * second profil ne pourrait jamais créer sa propre rubrique « Alimentation ».
+ *
  * `excludeCode` permet au rename de s'ignorer lui-même (renommer vers son propre libellé,
  * ou n'en changer que la casse, reste idempotent).
  */
 
-/** Unicité d'un libellé de rubrique, sur tout le référentiel. */
-export function assertGroupLabelAvailable(label: string, excludeCode?: string): void {
+/** Unicité d'un libellé de rubrique, DANS LE PROFIL. */
+export function assertGroupLabelAvailable(profileId: number, label: string, excludeCode?: string): void {
   const normalized = normalizeCategoryLabel(label)
   const clash = db
     .select({ code: categoryGroups.code, label: categoryGroups.label })
     .from(categoryGroups)
+    .where(eq(categoryGroups.profileId, profileId))
     .all()
     .find(r => r.code !== excludeCode && normalizeCategoryLabel(r.label) === normalized)
   if (clash) {
@@ -33,18 +37,19 @@ export function assertGroupLabelAvailable(label: string, excludeCode?: string): 
 }
 
 /**
- * Unicité d'un libellé de poste, **à l'intérieur de sa rubrique seulement**.
+ * Unicité d'un libellé de poste, **à l'intérieur de sa rubrique seulement**, DANS LE PROFIL.
  *
  * C'est la contrepartie directe de FR19 : « Restaurant » doit pouvoir exister sous
  * Alimentation ET sous Voyages. Une unicité globale, comme celle du référentiel plat,
  * interdirait précisément le cas qui justifie la hiérarchie.
  */
-export function assertItemLabelAvailable(groupCode: string, label: string, excludeCode?: string): void {
+export function assertItemLabelAvailable(profileId: number, groupCode: string, label: string, excludeCode?: string): void {
   const normalized = normalizeCategoryLabel(label)
   const clash = db
     .select({ code: categoryItems.code, label: categoryItems.label })
     .from(categoryItems)
-    .where(eq(categoryItems.groupCode, groupCode))
+    .innerJoin(categoryGroups, eq(categoryGroups.id, categoryItems.groupId))
+    .where(and(eq(categoryItems.profileId, profileId), eq(categoryGroups.code, groupCode)))
     .all()
     .find(r => r.code !== excludeCode && normalizeCategoryLabel(r.label) === normalized)
   if (clash) {

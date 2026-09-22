@@ -39,10 +39,10 @@ export default defineEventHandler(async (): Promise<CategoryGroupWithItems[]> =>
       label: g.label,
       position: g.position,
       items: items
-        .filter(i => i.groupCode === g.code)
+        .filter(i => i.groupId === g.id)
         .map(i => ({
           code: i.code,
-          groupCode: i.groupCode,
+          groupCode: g.code,
           label: i.label,
           nature: i.nature,
           position: i.position,

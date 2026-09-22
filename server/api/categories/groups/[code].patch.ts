@@ -4,6 +4,7 @@ import { db } from '~~/server/db/client'
 import { categoryGroups } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { assertGroupLabelAvailable } from '~~/server/utils/category-labels'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { CategoryGroupPatchSchema, type CategoryGroup } from '~~/shared/schemas/category.schema'
@@ -16,6 +17,7 @@ import { CategoryGroupPatchSchema, type CategoryGroup } from '~~/shared/schemas/
 export default defineEventHandler(async (event): Promise<CategoryGroup> => {
   const code = getRouterParam(event, 'code') ?? ''
   const body = await validateBody(event, CategoryGroupPatchSchema)
+  const profileId = requireProfile(event)
 
   const existing = db
     .select({ code: categoryGroups.code })
@@ -24,7 +26,7 @@ export default defineEventHandler(async (event): Promise<CategoryGroup> => {
     .get()
   if (!existing) throw domainError(ApiErrorCode.GroupNotFound, { code }, 404)
 
-  assertGroupLabelAvailable(body.label, code)
+  assertGroupLabelAvailable(profileId, body.label, code)
 
   return db
     .update(categoryGroups)

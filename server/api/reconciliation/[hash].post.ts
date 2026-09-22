@@ -14,13 +14,15 @@
  *   gap = (closing - opening) - sum(transactions.amountCents)
  *   La transaction d'écart accepté a `amountCents = gapCents` (sans inversion de signe).
  */
-import { defineEventHandler, getRouterParam } from 'h3'
+import { defineEventHandler, getRouterParam, isError } from 'h3'
 import { eq, asc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { bankStatements, transactions, categoryItems } from '~~/server/db/schema'
+import { bankStatements, transactions } from '~~/server/db/schema'
 import { ACCEPT_GAP_ITEM_CODE } from '~~/shared/constants/default-referential'
 import { reconcile } from '~~/server/services/reconciler'
 import { validateBody } from '~~/server/utils/validation'
+import { resolveItemId } from '~~/server/utils/category-fk'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { ReconciliationActionSchema } from '~~/shared/schemas/reconciliation.schema'
@@ -47,6 +49,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const action = await validateBody(event, ReconciliationActionSchema)
+  const profileId = requireProfile(event)
 
   const [statement] = await db
     .select()
@@ -75,19 +78,8 @@ export default defineEventHandler(async (event) => {
       )
     }
 
-    // FK pre-check sur categoryItemCode (cf. pattern transactions/[id].patch.ts:28-41)
-    const cat = await db
-      .select({ code: categoryItems.code })
-      .from(categoryItems)
-      .where(eq(categoryItems.code, tx.categoryItemCode))
-      .limit(1)
-    if (cat.length === 0) {
-      throw domainError(
-        ApiErrorCode.ValidationFailed,
-        { reason: 'unknown categoryItemCode', value: tx.categoryItemCode },
-        422,
-      )
-    }
+    // FK pre-check + résolution code → id, toujours dans le profil (D37).
+    const categoryItemId = await resolveItemId(profileId, tx.categoryItemCode)
 
     // Atomicité : insertion + recompute dans la même transaction → pas de TOCTOU
     // si un autre handler insère entre l'insert et le recompute.
@@ -97,7 +89,7 @@ export default defineEventHandler(async (event) => {
         transactionDate: tx.transactionDate,
         label: tx.label,
         amountCents: tx.amountCents,
-        categoryItemCode: tx.categoryItemCode,
+        categoryItemId,
         isManual: true,
       }).run()
       return recomputeReconciliation(trx, statement.openingBalanceCents, statement.closingBalanceCents, hash)
@@ -123,17 +115,23 @@ export default defineEventHandler(async (event) => {
   // Le poste d'écart accepté doit exister (seedé au bootstrap, posé par la migration 0005 sur
   // les bases antérieures). Défense en profondeur : sans ce contrôle, son absence sortirait en
   // violation de clé étrangère, c'est-à-dire un 500 opaque au lieu d'un motif lisible.
-  const cat = await db
-    .select({ code: categoryItems.code })
-    .from(categoryItems)
-    .where(eq(categoryItems.code, ACCEPT_GAP_CATEGORY))
-    .limit(1)
-  if (cat.length === 0) {
-    throw domainError(
-      ApiErrorCode.ReconciliationFailed,
-      { reason: 'missing_default_category', value: ACCEPT_GAP_CATEGORY },
-      500,
-    )
+  let acceptGapItemId: number
+  try {
+    acceptGapItemId = await resolveItemId(profileId, ACCEPT_GAP_CATEGORY)
+  }
+  catch (err) {
+    // Seule l'erreur DOMAINE que `resolveItemId` rend explicitement (poste inconnu, 422
+    // `validation_failed`) est reconvertie ici. Tout le reste — panne DB, bug imprévu — doit
+    // remonter tel quel plutôt que d'être avalé sous un même message trompeur (revue de la
+    // story 27.1, cf. règle d'or CLAUDE.md « pas de try/catch qui mange une erreur »).
+    if (isError(err) && err.statusCode === 422 && err.statusMessage === ApiErrorCode.ValidationFailed) {
+      throw domainError(
+        ApiErrorCode.ReconciliationFailed,
+        { reason: 'missing_default_category', value: ACCEPT_GAP_CATEGORY },
+        500,
+      )
+    }
+    throw err
   }
 
   // Atomicité : recompute + insertion + update reliability dans la même transaction
@@ -148,7 +146,7 @@ export default defineEventHandler(async (event) => {
       transactionDate: statement.periodEnd,
       label: ACCEPT_GAP_LABEL,
       amountCents: current.gapCents,
-      categoryItemCode: ACCEPT_GAP_CATEGORY,
+      categoryItemId: acceptGapItemId,
       isManual: true,
     }).run()
     trx.update(bankStatements)

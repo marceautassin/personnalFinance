@@ -64,6 +64,11 @@ function query(qs: string): H3Event {
   return { path: `/api/analysis?${qs}`, method: 'GET', node: { req: { url: `/api/analysis?${qs}` } } } as unknown as H3Event
 }
 
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
+
 function seedStatement(opts: {
   hash: string
   periodStart: string
@@ -73,6 +78,8 @@ function seedStatement(opts: {
 }) {
   dbMod.db.insert(schema.bankStatements).values({
     hashSha256: opts.hash,
+    profileId: 1,
+    bank: 'boursorama',
     periodStart: opts.periodStart,
     periodEnd: opts.periodEnd,
     openingBalanceCents: opts.opening ?? 0,
@@ -82,7 +89,7 @@ function seedStatement(opts: {
 
 function seedTx(hash: string, date: string, amountCents: number, code: string) {
   dbMod.db.insert(schema.transactions).values({
-    statementHash: hash, transactionDate: date, label: 'op', amountCents, categoryItemCode: code,
+    statementHash: hash, transactionDate: date, label: 'op', amountCents, categoryItemId: itemId(code),
   }).run()
 }
 

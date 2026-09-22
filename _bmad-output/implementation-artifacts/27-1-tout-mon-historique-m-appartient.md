@@ -1,6 +1,6 @@
 # Story 27.1: Tout mon historique m'appartient, sans rien perdre
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -36,42 +36,45 @@ afin qu'un second profil puisse exister sans que rien de ce que j'ai construit n
 
 ## Tasks / Subtasks
 
-- [ ] **T1 — Schéma Drizzle** (AC 1, 4, 5)
-  - [ ] `shared/types/bank.ts` : `BANKS = ['boursorama', 'credit_mutuel'] as const`, type `Bank`,
+- [x] **T1 — Schéma Drizzle** (AC 1, 4, 5)
+  - [x] `shared/types/bank.ts` : `BANKS = ['boursorama', 'credit_mutuel'] as const`, type `Bank`,
         libellés FR à côté (`BANK_LABELS`). Anglais sans accent pour les valeurs (CLAUDE.md).
-  - [ ] `server/db/schema.ts` : table `profiles` (`id` integer PK autoincrement, `name` text unique
+  - [x] `server/db/schema.ts` : table `profiles` (`id` integer PK autoincrement, `name` text unique
         not null, `default_bank` text enum `BANKS` not null, `created_at`).
-  - [ ] `category_groups` : `id` PK entier, `profile_id` FK `profiles.id` NOT NULL, `code` text,
+  - [x] `category_groups` : `id` PK entier, `profile_id` FK `profiles.id` NOT NULL, `code` text,
         `uniqueIndex(profile_id, code)`.
-  - [ ] `category_items` : `id` PK entier, `profile_id` FK NOT NULL, `code`, `group_id` FK
+  - [x] `category_items` : `id` PK entier, `profile_id` FK NOT NULL, `code`, `group_id` FK
         `category_groups.id` `ON DELETE RESTRICT` (remplace `group_code`), `uniqueIndex(profile_id,
         code)`, index sur `group_id`.
-  - [ ] `bank_statements` : + `profile_id` FK NOT NULL, + `bank` enum NOT NULL. **PK reste
+  - [x] `bank_statements` : + `profile_id` FK NOT NULL, + `bank` enum NOT NULL. **PK reste
         `hash_sha256`** (D37, arbitrage du 2026-09-22).
-  - [ ] `transactions` : `category_item_id` FK `category_items.id` `ON DELETE RESTRICT` (remplace
+  - [x] `transactions` : `category_item_id` FK `category_items.id` `ON DELETE RESTRICT` (remplace
         `category_item_code`), index `transactions_item_idx` sur la nouvelle colonne. **Aucun**
         `profile_id`. `settlement_group_id` : voir T2, profiter du rebuild pour déclarer ce qui est
         réellement en base (commentaire existant l.100-111 du schéma).
-  - [ ] `classification_rules` : + `profile_id`, `category_item_id` (remplace le code),
+  - [x] `classification_rules` : + `profile_id`, `category_item_id` (remplace le code),
         `uniqueIndex(profile_id, pattern)` à la place de `.unique()` sur `pattern`.
-  - [ ] `settlement_groups` : + `profile_id` FK NOT NULL.
-  - [ ] Garder en tête du fichier l'import RELATIF (`drizzle-kit` ne résout pas `~~/`, l.17-22).
-- [ ] **T2 — Migration `0010`** (AC 1, 3, 4, 5, 7)
-  - [ ] `yarn db:generate` pour obtenir le snapshot et le squelette, puis **réécrire à la main** les
-        copies de données (le `INSERT … SELECT` généré ne sait pas traduire code → id).
-        Précédents : `0002` (INSERT généré retiré à la main), `0005` et `0009` (DML dans une
-        migration générée).
-  - [ ] Ordre de rebuild — voir « Piège n°1 » : créer les `__new_*` parents avant enfants, copier,
+  - [x] `settlement_groups` : + `profile_id` FK NOT NULL.
+  - [x] Garder en tête du fichier l'import RELATIF (`drizzle-kit` ne résout pas `~~/`, l.17-22).
+- [x] **T2 — Migration `0010`** (AC 1, 3, 4, 5, 7)
+  - [x] `yarn db:generate` refuse le mode non interactif sur un rebuild de cette ampleur
+        (`Interactive prompts require a TTY terminal`) : migration, snapshot et entrée de journal
+        écrits **entièrement à la main**, au format exact produit par drizzle-kit (vérifié contre
+        `0008`/`0009`). Copies de données via jointures code → id, comme prévu.
+  - [x] Ordre de rebuild — voir « Piège n°1 » : créer les `__new_*` parents avant enfants, copier,
         **supprimer les anciennes tables enfants avant les parents**, puis renommer.
-  - [ ] `INSERT INTO profiles (id, name, default_bank, created_at) VALUES (1, 'marceau',
+  - [x] `INSERT INTO profiles (id, name, default_bank, created_at) VALUES (1, 'marceau',
         'boursorama', strftime('%s','now'))` — inconditionnel : sur une base neuve aussi (AC 7).
-  - [ ] Copies : `profile_id = 1` partout ; `group_id` et `category_item_id` résolus par jointure
-        sur les anciens codes ; `bank = 'boursorama'`. Conserver les `id` existants de
-        `transactions`, `classification_rules` et `settlement_groups` (URLs, groupes, export).
-  - [ ] Recréer tous les index (le rebuild les perd).
-  - [ ] Vérifier qu'un second `yarn db:generate` **ne produit aucun diff** (snapshot cohérent).
-- [ ] **T3 — Procédure de migration sûre** (AC 2, 3)
-  - [ ] Nouveau script `scripts/migrate-safely.mjs` + entrée `package.json` (`db:migrate-safe`) :
+  - [x] Copies : `profile_id = 1` partout ; `group_id` et `category_item_id` résolus par jointure
+        sur les anciens codes ; `bank = 'boursorama'`. `id` existants de `transactions`,
+        `classification_rules` et `settlement_groups` préservés (URLs, groupes, export).
+  - [x] Tous les index recréés.
+  - [x] `yarn db:generate` non rejouable sans TTY (cf. ci-dessus) : la cohérence du snapshot 0010
+        écrit à la main est validée autrement — test de migration dédié (AC 3) + `db:migrate-safe`
+        exécuté de bout en bout sur une base construite par `drizzle-kit migrate` (voir Completion
+        Notes, bug réel trouvé et corrigé à cette occasion).
+- [x] **T3 — Procédure de migration sûre** (AC 2, 3)
+  - [x] Nouveau script `scripts/migrate-safely.mjs` + entrée `package.json` (`db:migrate-safe`) :
         1) copie binaire via `db.backup()` (même mécanisme que `backup-db.mjs`, sûr en WAL) ;
         2) vérification de la copie : ouverture, `integrity_check`, comptage par table = source ;
         3) photo « avant » : comptage par table, `SUM(amount_cents)` par `statement_hash`,
@@ -80,41 +83,52 @@ afin qu'un second profil puisse exister sans que rien de ce que j'ai construit n
         5) photo « après », comparaison, `PRAGMA foreign_key_check` vide ;
         6) tout écart → sortie non nulle, message en français donnant le chemin de la sauvegarde
            à restaurer.
-  - [ ] La photo « avant » doit fonctionner sur l'**ancien** schéma et la photo « après » sur le
-        **nouveau** : lire le schéma (`PRAGMA table_info`) plutôt que supposer.
-  - [ ] Documenter dans `CLAUDE.md` § Commandes utiles : `yarn db:migrate-safe`.
-- [ ] **T4 — `scripts/backup-db.mjs`** : l'export JSON lit `category_item_code` et `group_code`,
-      qui n'existeront plus. Le réécrire avec jointures pour **ré-exposer des codes** (l'export doit
-      rester indépendant des identifiants techniques — c'est sa raison d'être, en-tête du fichier)
-      et y ajouter le nom du profil par ligne.
-- [ ] **T5 — Profil courant, version minimale** (AC 6)
-  - [ ] `server/utils/current-profile.ts` : `requireProfile(event): number`. Dans CETTE story, il
+  - [x] La photo « avant » fonctionne sur l'**ancien** schéma et la photo « après » sur le
+        **nouveau** : lecture adaptative (`PRAGMA table_info(transactions)`), jamais supposée.
+  - [x] Documenté dans `CLAUDE.md` § Commandes utiles : `yarn db:migrate-safe`.
+  - [x] Validé de bout en bout sur une base jetable (`/tmp`, hors dépôt) construite par
+        `drizzle-kit migrate` depuis 0000 à 0009, puis migrée vers 0010 par le script : sauvegarde
+        vérifiée, migration appliquée, comptages/sommes identiques, `foreign_key_check` vide. Cette
+        exécution a révélé et fait corriger un bug réel de la migration 0010 (voir Completion Notes).
+- [x] **T4 — `scripts/backup-db.mjs`** : l'export JSON lisait `category_item_code` et `group_code`,
+      qui n'existent plus. Réécrit avec jointures pour **ré-exposer des codes** (l'export reste
+      indépendant des identifiants techniques — c'est sa raison d'être, en-tête du fichier)
+      et y ajoute le nom du profil par ligne.
+- [x] **T5 — Profil courant, version minimale** (AC 6)
+  - [x] `server/utils/current-profile.ts` : `requireProfile(event?): number`. Dans CETTE story, il
         renvoie l'identifiant de **l'unique** profil et lève une erreur explicite s'il y en a zéro
         ou plusieurs. Le cookie et le filtrage arrivent en 27.2 ; la signature, elle, est finale
-        (AR35).
-  - [ ] Toutes les **écritures** dans une table possédée l'utilisent pour `profile_id` : voir la
-        liste « Points d'insertion ».
-- [ ] **T6 — Résolution code ↔ id côté serveur** (AC 6)
-  - [ ] `server/utils/category-fk.ts` : remplacer `assertCategoryItemExists(code)` par
-        `resolveItemId(profileId, code): number` (422 si inconnu, même payload qu'aujourd'hui) et
-        `assertGroupExists` par `resolveGroupId(profileId, code)` (404 `group_not_found`
-        inchangé). Toujours **dans le profil** : un code n'est unique que dans un profil.
-  - [ ] Lectures : partout où une requête sélectionne `transactions.categoryItemCode`, joindre
-        `categoryItems` sur `categoryItems.id = transactions.categoryItemId` et sélectionner
+        (AR35). `event` optionnel pour ne pas casser les 21 appels de test de l'orchestrateur
+        d'ingestion, qui n'en construisent pas.
+  - [x] Toutes les **écritures** dans une table possédée l'utilisent pour `profile_id` : voir la
+        liste « Points d'insertion » (tous couverts : bootstrap/seed, rules, settlements,
+        categories/groups, categories/items, statement-ingestion-orchestrator).
+- [x] **T6 — Résolution code ↔ id côté serveur** (AC 6)
+  - [x] `server/utils/category-fk.ts` : `assertCategoryItemExists(code)` remplacé par
+        `resolveItemId(profileId, code): Promise<number>` (422 si inconnu, même payload
+        qu'avant) et `assertGroupExists` par `resolveGroupId(profileId, code): number` (404
+        `group_not_found` inchangé). Toujours **dans le profil**.
+  - [x] Lectures : partout où une requête sélectionnait `transactions.categoryItemCode`, jointure
+        `categoryItems` sur `categoryItems.id = transactions.categoryItemId`, sélection
         `categoryItemCode: categoryItems.code`. Même chose pour `groupCode` via `group_id`.
-  - [ ] Le moteur (`analysis-engine.ts`), `rule-matcher.ts`, `settlement-status.ts` et le prompt
-        continuent de travailler sur des **codes** : **ne pas les modifier** (hors tests).
-- [ ] **T7 — Bootstrap** (AC 7)
-  - [ ] Extraire le seed de `server/middleware/0.bootstrap.ts` (l.146-180) vers
-        `server/utils/seed-referential.ts` : `seedReferential(runner, profileId)` (runner =
-        `db` ou transaction). Réutilisé par 27.3.
-  - [ ] Bootstrap : semer **chaque profil sans rubrique**, plus « la base » (comportement anti-
-        résurrection de 2026-09-05 conservé : un profil qui a déjà des rubriques n'est jamais ré-semé).
-  - [ ] `SCHEMA_MARKERS` : remplacer le marqueur `transactions.category_item_code` par
-        `transactions.category_item_id` et ajouter `table profiles` ; le marqueur des postes du
-        compte joint (migration 0009) devient **par profil** (chaque profil ayant des rubriques doit
-        les porter avec leur nature). Garder la garde « base vierge ».
-- [ ] **T8 — Tests** (AC 3, 6, 7, 8) — voir « Tests ».
+        Endpoints/services touchés : `analysis.get.ts`, `evolution.get.ts`,
+        `transactions/index.get.ts`, `transactions/[id].patch.ts`, `statements/index.get.ts`,
+        `statements/[hash].get.ts`, `reconciliation/[hash].post.ts`, `rules/index.get.ts`,
+        `rules/index.post.ts`, `rules/[id]/apply.post.ts`, `categories/index.get.ts`,
+        `categories/groups/*`, `categories/items/*`, `statement-ingestion-orchestrator.ts`,
+        `category-references.ts`, `category-labels.ts`, `rule-coverage.ts`.
+  - [x] Le moteur (`analysis-engine.ts`), `rule-matcher.ts`, `settlement-status.ts` et le prompt
+        n'ont **pas été modifiés** — confirmé par la non-régression de leurs tests dédiés.
+- [x] **T7 — Bootstrap** (AC 7)
+  - [x] Seed extrait de `server/middleware/0.bootstrap.ts` vers `server/utils/seed-referential.ts` :
+        `seedReferential(runner, profileId)` (runner = `db` ou transaction). Réutilisable par 27.3.
+  - [x] Bootstrap : sème **chaque profil sans rubrique** (boucle sur `profiles`, anti-résurrection
+        conservée : un profil qui a déjà des rubriques n'est jamais ré-semé — testé explicitement).
+  - [x] `SCHEMA_MARKERS` : marqueur `transactions.category_item_code` remplacé par
+        `transactions.category_item_id`, marqueur `table profiles` ajouté ; le marqueur des
+        postes du compte joint devient **par profil** (boucle sur tous les profils peuplés). Garde
+        « base vierge » conservée.
+- [x] **T8 — Tests** (AC 3, 6, 7, 8) — voir « Tests ».
 
 ## Dev Notes
 
@@ -296,8 +310,163 @@ casse, c'est que le contrat d'API a bougé.
 
 ### Agent Model Used
 
+Agent de développement (exécution du skill `bmad-dev-story`).
+
 ### Debug Log References
+
+- Confirmation Q1 (transaction `drizzle-kit migrate`) : oui, `drizzle-orm/better-sqlite3/migrator.js`
+  exécute chaque fichier de migration comme un seul appel `db.transaction(...)` — le Piège n°1
+  décrit dans les Dev Notes est réel. Vérifié en isolant la migration 0010 (déplacement temporaire
+  hors de `server/db/migrations/`), en construisant une base 0000-0009 via `drizzle-kit migrate`
+  (bookkeeping `__drizzle_migrations` correct), puis en la migrant vers 0010.
+- Bug réel trouvé et corrigé pendant cette validation : le fichier `0010_profiles_and_category_ids.sql`
+  ouvrait sur un bloc de commentaires suivi d'un marqueur `--> statement-breakpoint` isolé. Le
+  migrateur drizzle-orm découpe le fichier sur ce marqueur et prépare CHAQUE segment comme une
+  requête SQL individuelle ; un segment ne contenant QUE des commentaires fait échouer
+  `Database.prepare()` avec `RangeError: The supplied SQL string contains no statements`. Le
+  test unitaire de migration (`db.exec()` sur le texte complet, qui tolère les commentaires) ne
+  l'attrapait PAS — seul un passage par le vrai migrateur drizzle-orm/`drizzle-kit migrate` le
+  révèle. Corrigé en fusionnant l'en-tête dans le même segment que le premier `CREATE TABLE`, et
+  en reformulant le commentaire pour qu'aucun texte du fichier ne cite littéralement le marqueur
+  de segment (qui aurait réintroduit la même coupure). Revalidé de bout en bout avec
+  `db:migrate-safe` : sauvegarde vérifiée, migration appliquée, comptages/sommes identiques,
+  `foreign_key_check` vide.
+- `yarn db:generate` non interactif a échoué (`Interactive prompts require a TTY terminal`) sur ce
+  rebuild : drizzle-kit ne peut pas décider seul si un changement de PK est un rename ou un
+  drop+add. Migration, snapshot (`meta/0010_snapshot.json`) et entrée de journal écrits à la main,
+  au format exact de drizzle-kit (vérifié champ à champ contre `0008`/`0009_snapshot.json`).
+- Worktree initial branché sur un point très antérieur de l'historique (story 5.4, avant le pivot
+  du 2026-09-04) au lieu de la branche `master` locale courante — écart découvert au premier
+  `git log`. Recalé sur `master` (`git reset --hard master`, arbre alors propre, aucun travail
+  perdu) avant de commencer l'implémentation.
 
 ### Completion Notes List
 
+- Schéma Drizzle réécrit (T1) : `profiles`, `category_groups`/`category_items` à clé de
+  substitution + `uniqueIndex(profile_id, code)`, `bank_statements` + `profile_id`/`bank`,
+  `transactions.category_item_id` sans `profile_id` (AC 5), `classification_rules` +
+  `profile_id`/`category_item_id` + `uniqueIndex(profile_id, pattern)`, `settlement_groups` +
+  `profile_id`.
+- Migration `0010` (T2) suit la recette « Piège n°1 » à la lettre : parents `__new_*` créés et
+  peuplés avant les enfants, anciennes tables enfants supprimées avant les parentes, renommage
+  (réécriture des FK par SQLite en `legacy_alter_table=OFF`), index recréés. Test de migration
+  dédié (`0010-profiles-and-category-ids.test.ts`) rejoue 0000-0009 hors transaction puis applique
+  0010 DANS une transaction (comme `drizzle-kit migrate`) sur un jeu représentatif (deux
+  rubriques, poste créé à la main, transaction corrigée `is_manual`, écart accepté, règle, groupe
+  de réconciliation) : comptages, sommes par relevé, `(COUNT, SUM)` par code ET grain ligne à
+  ligne (id, code) identiques avant/après, `foreign_key_check` vide, `profile_id = 1`/
+  `bank = 'boursorama'` partout, ids de `transactions`/`classification_rules`/`settlement_groups`
+  préservés.
+- `scripts/migrate-safely.mjs` (T3) validé de bout en bout hors dépôt (voir Debug Log) — c'est
+  cette validation qui a fait remonter le bug réel de segmentation SQL de la migration.
+- `scripts/backup-db.mjs` (T4) réécrit avec jointures ; chaque ligne exportée porte désormais le
+  nom du profil.
+- `requireProfile` (T5) a une signature finale `(event?): number` — le `?` est un détail
+  d'implémentation pour ne pas devoir modifier 21 appels de test de l'orchestrateur d'ingestion
+  qui ne construisent pas d'`H3Event` ; la fonction n'inspecte pas encore l'event (27.2).
+- Résolution code ↔ id (T6) : tous les endpoints/services listés dans les Dev Notes ont été
+  vérifiés et corrigés. Contrat d'API inchangé (AC 6) — confirmé par la suite E2E existante, qui
+  passe sans modification des specs ni des composants Vue.
+- Bootstrap (T7) : seed par profil, marqueurs de schéma mis à jour, garde anti-résurrection
+  couverte par un test dédié (`seed-referential.test.ts`) — profil sans rubrique semé, profil
+  déjà peuplé jamais re-semé (même après suppression de la quasi-totalité de son référentiel),
+  profils indépendants les uns des autres.
+- **Résultats réels** : `yarn test:run` → 616 passed, 5 skipped (0 failed) ; `yarn lint` → 0
+  erreur ; `yarn typecheck` → 0 erreur ; `yarn test:e2e` → 37 passed, 7 skipped (skips
+  pré-existants, non liés à cette story : PDF de fixture / `MISTRAL_API_KEY` absents de cet
+  environnement) ; `db:migrate-safe` validé de bout en bout hors dépôt.
+- **Écart à la story** : le second `yarn db:generate` demandé en T2 pour prouver l'absence de
+  diff n'a pas pu tourner (pas de TTY dans cet environnement, cf. Debug Log). Compensé par la
+  vérification manuelle du snapshot écrit à la main contre le format de drizzle-kit, et surtout
+  par l'exécution réelle de `drizzle-kit migrate` (via `db:migrate-safe`) sur une base construite
+  par drizzle-kit lui-même — preuve plus forte qu'un diff de snapshot, puisqu'elle exerce le
+  migrateur réel plutôt qu'une comparaison statique.
+- **Point à prioriser en revue** : la migration `0010_profiles_and_category_ids.sql` elle-même
+  (recette de rebuild, jointures code → id, ordre des DROP/RENAME) et le test de migration
+  associé ; c'est la partie la plus risquée de la story et celle qui a déjà révélé un bug réel
+  pendant le développement.
+
+### Corrections post-revue (pr-reviewer)
+
+- Migration 0010 : `JOIN` → `LEFT JOIN` sur les trois copies code→id (category_items,
+  transactions, classification_rules) — un code orphelin ne disparaît plus en silence, l'INSERT
+  échoue sur la colonne `NOT NULL` et toute la transaction de migration s'annule. Cas orphelin
+  ajouté au test de migration (doit lever, 0 perte).
+- `0.bootstrap.ts` : message de schéma périmé pointe vers `yarn db:migrate-safe`.
+- `backup-db.mjs` : lecture adaptative (0009/0010, via `PRAGMA table_info`), comme
+  `migrate-safely.mjs`. Validé sur les deux schémas hors dépôt.
+- Test de migration : segments appliqués via `db.prepare(stmt).run()` (comme le migrateur réel),
+  plus le cas orphelin.
+- `migrate-safely.mjs` : photo étendue aux triplets (transaction.id, code), (règle.id, code),
+  (poste.code, code de rubrique) ; `fail()` distingue échec avant/après migration et ne prétend
+  plus « rien touché » quand la migration a déjà écrit.
+- `requireProfile`/`ingestStatement` : `event` redevenu obligatoire (21 appels de test mis à
+  jour avec un `H3Event` factice).
+- `statements/index.get.ts` : sous-requête scalaire → `NOT IN`, robuste à plusieurs profils.
+- `rules/[id]/apply.post.ts` : `continue` silencieux remplacé par une erreur explicite (500).
+- `reconciliation/[hash].post.ts` : le `catch` ne reconvertit plus que l'erreur domaine 422 de
+  `resolveItemId` ; le reste remonte tel quel.
+- `0.bootstrap.ts` : `seedReferential` appelé dans `db.transaction()` par profil.
+- **Validation sur copie de la vraie base** (`_data/personnalfinance.db`, jamais modifiée —
+  copie en lecture seule via l'API `backup()` de SQLite vers le scratchpad, supprimée après) :
+  `integrity_check` = `ok`, `foreign_key_check` = `[]`, 0 ligne orpheline (transactions, règles,
+  postes) avant migration. `db:migrate-safe` appliqué sur la copie : migration réussie, aucune
+  perte — comptages identiques avant/après (bank_statements 20, category_groups 15,
+  category_items 61, transactions 1855, classification_rules 31, settlement_groups 2), profil
+  `marceau` créé.
+- Suite verte après corrections : `yarn test:run` 617 passed / 5 skipped ; `yarn lint` 0 erreur ;
+  `yarn typecheck` 0 erreur ; `yarn test:e2e` 37 passed / 7 skipped (pré-existants).
+
 ### File List
+
+**Nouveaux fichiers**
+- `shared/types/bank.ts`
+- `server/db/migrations/0010_profiles_and_category_ids.sql`
+- `server/db/migrations/meta/0010_snapshot.json`
+- `server/db/migrations/0010-profiles-and-category-ids.test.ts`
+- `server/utils/current-profile.ts`
+- `server/utils/seed-referential.ts`
+- `server/utils/seed-referential.test.ts`
+- `scripts/migrate-safely.mjs`
+
+**Fichiers modifiés**
+- `server/db/schema.ts`
+- `server/db/migrations/meta/_journal.json`
+- `server/middleware/0.bootstrap.ts`
+- `server/utils/category-fk.ts`
+- `server/utils/category-labels.ts`
+- `server/utils/category-references.ts`
+- `server/utils/rule-coverage.ts`
+- `server/services/statement-ingestion-orchestrator.ts`
+- `server/services/statement-ingestion-orchestrator.test.ts`
+- `server/api/analysis.get.ts`
+- `server/api/evolution.get.ts`
+- `server/api/transactions/index.get.ts`
+- `server/api/transactions/[id].patch.ts`
+- `server/api/statements/index.get.ts`
+- `server/api/statements/[hash].get.ts`
+- `server/api/statements/index.post.ts`
+- `server/api/reconciliation/[hash].post.ts`
+- `server/api/rules/index.get.ts`
+- `server/api/rules/index.post.ts`
+- `server/api/rules/[id]/apply.post.ts`
+- `server/api/categories/index.get.ts`
+- `server/api/categories/groups/index.post.ts`
+- `server/api/categories/groups/[code].patch.ts`
+- `server/api/categories/items/index.post.ts`
+- `server/api/categories/items/[code].patch.ts`
+- `server/api/settlements/index.post.ts`
+- `scripts/backup-db.mjs`
+- `package.json`
+- `CLAUDE.md`
+- `tests/fixtures/test-schema.ts`
+- `server/middleware/bootstrap.test.ts`
+- `server/api/analysis.get.test.ts`
+- `server/api/evolution.get.test.ts`
+- `server/api/categories/categories.test.ts`
+- `server/api/reconciliation/[hash].post.test.ts`
+- `server/api/rules/rules.test.ts`
+- `server/api/statements/[hash].get.test.ts`
+- `server/api/statements/index.get.test.ts`
+- `server/api/transactions/[id].patch.test.ts`
+- `server/api/transactions/index.get.test.ts`

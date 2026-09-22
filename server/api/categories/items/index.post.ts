@@ -1,10 +1,11 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { categoryItems } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { assertItemLabelAvailable } from '~~/server/utils/category-labels'
-import { assertGroupExists } from '~~/server/utils/category-fk'
+import { resolveGroupId } from '~~/server/utils/category-fk'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import {
@@ -14,11 +15,11 @@ import {
   type CategoryItemWithCount,
 } from '~~/shared/schemas/category.schema'
 
-function itemCodeExists(code: string): boolean {
+function itemCodeExists(profileId: number, code: string): boolean {
   return db
     .select({ code: categoryItems.code })
     .from(categoryItems)
-    .where(eq(categoryItems.code, code))
+    .where(and(eq(categoryItems.profileId, profileId), eq(categoryItems.code, code)))
     .limit(1)
     .get() !== undefined
 }
@@ -30,7 +31,7 @@ function itemCodeExists(code: string): boolean {
  * place au suffixe de collision — tronquer puis concaténer produisait un code hors borne
  * (revue 2026-08-04, même défaut sur le référentiel plat).
  */
-function resolveUniqueItemCode(groupCode: string, label: string): string {
+function resolveUniqueItemCode(profileId: number, groupCode: string, label: string): string {
   const budget = itemSlugBudget(groupCode)
   const base = slugifyCategoryLabel(label, budget)
   if (base.length === 0) {
@@ -41,7 +42,7 @@ function resolveUniqueItemCode(groupCode: string, label: string): string {
     )
   }
   const full = `${groupCode}-${base}`
-  if (!itemCodeExists(full)) return full
+  if (!itemCodeExists(profileId, full)) return full
   for (let i = 2; ; i++) {
     const suffix = `-${i}`
     const truncated = slugifyCategoryLabel(label, budget - suffix.length)
@@ -55,7 +56,7 @@ function resolveUniqueItemCode(groupCode: string, label: string): string {
       )
     }
     const candidate = `${groupCode}-${truncated}${suffix}`
-    if (!itemCodeExists(candidate)) return candidate
+    if (!itemCodeExists(profileId, candidate)) return candidate
   }
 }
 
@@ -68,28 +69,29 @@ function resolveUniqueItemCode(groupCode: string, label: string): string {
  */
 export default defineEventHandler(async (event): Promise<CategoryItemWithCount> => {
   const body = await validateBody(event, NewCategoryItemInputSchema)
+  const profileId = requireProfile(event)
 
-  assertGroupExists(body.groupCode)
-  assertItemLabelAvailable(body.groupCode, body.label)
+  const groupId = resolveGroupId(profileId, body.groupCode)
+  assertItemLabelAvailable(profileId, body.groupCode, body.label)
 
   const maxPosition = db
     .select({ max: sql<number | null>`max(${categoryItems.position})` })
     .from(categoryItems)
-    .where(eq(categoryItems.groupCode, body.groupCode))
+    .where(eq(categoryItems.groupId, groupId))
     .get()
 
   const inserted = db
     .insert(categoryItems)
     .values({
-      code: resolveUniqueItemCode(body.groupCode, body.label),
-      groupCode: body.groupCode,
+      profileId,
+      code: resolveUniqueItemCode(profileId, body.groupCode, body.label),
+      groupId,
       label: body.label,
       nature: body.nature,
       position: Number(maxPosition?.max ?? -1) + 1,
     })
     .returning({
       code: categoryItems.code,
-      groupCode: categoryItems.groupCode,
       label: categoryItems.label,
       nature: categoryItems.nature,
       position: categoryItems.position,
@@ -97,5 +99,5 @@ export default defineEventHandler(async (event): Promise<CategoryItemWithCount> 
     .get()
 
   setResponseStatus(event, 201)
-  return { ...inserted, transactionCount: 0 }
+  return { ...inserted, groupCode: body.groupCode, transactionCount: 0 }
 })

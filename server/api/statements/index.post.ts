@@ -54,5 +54,5 @@ export default defineEventHandler(async (event) => {
   const confirmReplaceHeader = (getHeader(event, 'x-confirm-replace') ?? '').trim().toLowerCase()
   const confirmReplace = confirmReplaceHeader === 'true' || confirmReplaceHeader === '1'
 
-  return ingestStatement({ pdfBuffer, confirmReplace })
+  return ingestStatement({ event, pdfBuffer, confirmReplace })
 })

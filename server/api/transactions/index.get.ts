@@ -1,7 +1,7 @@
 import { defineEventHandler } from 'h3'
 import { asc, and, or, eq, gt, gte, lte, inArray } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions, categoryItems } from '~~/server/db/schema'
+import { transactions, categoryItems, categoryGroups } from '~~/server/db/schema'
 import { type StatementReliability, worstReliability } from '~~/shared/types/statement-reliability'
 import { reliabilityOverlapping } from '~~/server/utils/statement-reliability'
 import { validateQuery } from '~~/server/utils/validation'
@@ -52,22 +52,34 @@ export default defineEventHandler(async (event) => {
    * que la portée désigne déjà : le poste est calculé, mais rien n'interdit qu'il porte aussi de
    * vraies lignes, ni que sa rubrique en contienne d'autres (revue du 2026-09-08).
    */
+  // `category_item_id` est la clé technique de la table (D37) ; le filtre reste exprimé en
+  // CODE, celui de l'API, résolu ici par sous-requête plutôt que par une traduction préalable
+  // — une sous-requête vide (code inconnu) ne sélectionne rien, exactement le comportement
+  // d'avant sur un code qui ne matchait aucune ligne.
   const requestedScope = itemFilter
-    ? eq(transactions.categoryItemCode, itemFilter)
+    ? inArray(
+        transactions.categoryItemId,
+        db.select({ id: categoryItems.id }).from(categoryItems).where(eq(categoryItems.code, itemFilter)),
+      )
     : groupFilter
       ? inArray(
-          transactions.categoryItemCode,
-          db.select({ code: categoryItems.code })
+          transactions.categoryItemId,
+          db.select({ id: categoryItems.id })
             .from(categoryItems)
-            .where(eq(categoryItems.groupCode, groupFilter)),
+            .innerJoin(categoryGroups, eq(categoryGroups.id, categoryItems.groupId))
+            .where(eq(categoryGroups.code, groupFilter)),
         )
       : undefined
+  const jointTransferIdSubquery = db
+    .select({ id: categoryItems.id })
+    .from(categoryItems)
+    .where(eq(categoryItems.code, JOINT_TRANSFER_ITEM_CODE))
   const scopeFilter = drillsIntoJointShare
     ? or(
         requestedScope,
         // Seules les ENTRÉES nourrissent la part remboursée : une sortie vers le joint est une
         // contribution, que la coupe laisse entière et interne.
-        and(eq(transactions.categoryItemCode, JOINT_TRANSFER_ITEM_CODE), gt(transactions.amountCents, 0)),
+        and(inArray(transactions.categoryItemId, jointTransferIdSubquery), gt(transactions.amountCents, 0)),
       )
     : requestedScope
 
@@ -85,11 +97,12 @@ export default defineEventHandler(async (event) => {
       transactionDate: transactions.transactionDate,
       label: transactions.label,
       amountCents: transactions.amountCents,
-      categoryItemCode: transactions.categoryItemCode,
+      categoryItemCode: categoryItems.code,
       isManual: transactions.isManual,
       settlementGroupId: transactions.settlementGroupId,
     })
     .from(transactions)
+    .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
     .where(and(
       gte(transactions.transactionDate, from),
       lte(transactions.transactionDate, to),
@@ -123,10 +136,11 @@ export default defineEventHandler(async (event) => {
           id: transactions.id,
           transactionDate: transactions.transactionDate,
           amountCents: transactions.amountCents,
-          categoryItemCode: transactions.categoryItemCode,
+          categoryItemCode: categoryItems.code,
           settlementGroupId: transactions.settlementGroupId,
         })
         .from(transactions)
+        .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
         .where(and(
           gte(transactions.transactionDate, settlementFrom),
           lte(transactions.transactionDate, settlementTo),

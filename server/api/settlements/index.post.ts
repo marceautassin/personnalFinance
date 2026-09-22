@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '~~/server/db/client'
 import { settlementGroups, transactions } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 
@@ -22,6 +23,7 @@ const NewSettlementSchema = z.object({
  */
 export default defineEventHandler(async (event) => {
   const body = await validateBody(event, NewSettlementSchema)
+  const profileId = requireProfile(event)
   const ids = [...new Set(body.transactionIds)]
 
   const rows = db
@@ -47,7 +49,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const group = db.transaction((tx) => {
-    const created = tx.insert(settlementGroups).values({ label: body.label }).returning().get()
+    const created = tx.insert(settlementGroups).values({ profileId, label: body.label }).returning().get()
     tx.update(transactions)
       .set({ settlementGroupId: created.id })
       .where(inArray(transactions.id, ids))

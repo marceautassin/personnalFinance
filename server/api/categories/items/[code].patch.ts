@@ -1,10 +1,11 @@
 import { defineEventHandler, getRouterParam } from 'h3'
 import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { categoryItems } from '~~/server/db/schema'
+import { categoryItems, categoryGroups } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { assertItemLabelAvailable } from '~~/server/utils/category-labels'
 import { itemTransactionCount } from '~~/server/utils/category-references'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { CategoryItemPatchSchema, type CategoryItemWithCount } from '~~/shared/schemas/category.schema'
@@ -38,16 +39,18 @@ const NATURE_LOCKED_ITEMS = new Set([
 export default defineEventHandler(async (event): Promise<CategoryItemWithCount> => {
   const code = getRouterParam(event, 'code') ?? ''
   const body = await validateBody(event, CategoryItemPatchSchema)
+  const profileId = requireProfile(event)
 
   const existing = db
-    .select({ code: categoryItems.code, groupCode: categoryItems.groupCode })
+    .select({ code: categoryItems.code, groupCode: categoryGroups.code })
     .from(categoryItems)
+    .innerJoin(categoryGroups, eq(categoryGroups.id, categoryItems.groupId))
     .where(eq(categoryItems.code, code))
     .get()
   if (!existing) throw domainError(ApiErrorCode.NotFound, { code }, 404)
 
   if (body.label !== undefined) {
-    assertItemLabelAvailable(existing.groupCode, body.label, code)
+    assertItemLabelAvailable(profileId, existing.groupCode, body.label, code)
   }
 
   // La nature du poste d'écart accepté n'est pas modifiable (story 17.3). La basculer en
@@ -66,12 +69,11 @@ export default defineEventHandler(async (event): Promise<CategoryItemWithCount> 
     .where(eq(categoryItems.code, code))
     .returning({
       code: categoryItems.code,
-      groupCode: categoryItems.groupCode,
       label: categoryItems.label,
       nature: categoryItems.nature,
       position: categoryItems.position,
     })
     .get()
 
-  return { ...updated, transactionCount: itemTransactionCount(code) }
+  return { ...updated, groupCode: existing.groupCode, transactionCount: itemTransactionCount(code) }
 })

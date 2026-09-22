@@ -75,7 +75,7 @@ function loadReferential(): Promise<AnalysisItemRef[]> {
       groupLabel: categoryGroups.label,
     })
     .from(categoryItems)
-    .innerJoin(categoryGroups, eq(categoryItems.groupCode, categoryGroups.code))
+    .innerJoin(categoryGroups, eq(categoryItems.groupId, categoryGroups.id))
     .orderBy(asc(categoryGroups.position), asc(categoryItems.position))
 }
 
@@ -139,11 +139,12 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
     .select({
       transactionDate: transactions.transactionDate,
       amountCents: transactions.amountCents,
-      categoryItemCode: transactions.categoryItemCode,
+      categoryItemCode: categoryItems.code,
       // Le moteur en a besoin pour écarter les avances remboursées (epic 19).
       settlementGroupId: transactions.settlementGroupId,
     })
     .from(transactions)
+    .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
     .where(and(gte(transactions.transactionDate, from), lte(transactions.transactionDate, toDate)))
 
   /**
@@ -160,10 +161,11 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
     .select({
       transactionDate: transactions.transactionDate,
       amountCents: transactions.amountCents,
-      categoryItemCode: transactions.categoryItemCode,
+      categoryItemCode: categoryItems.code,
       settlementGroupId: transactions.settlementGroupId,
     })
     .from(transactions)
+    .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
     .where(lt(transactions.transactionDate, from))
     .orderBy(asc(transactions.transactionDate), asc(transactions.id))
   // Par le MOTEUR, et non par une somme SQL : la coupe du compte joint et la neutralisation des

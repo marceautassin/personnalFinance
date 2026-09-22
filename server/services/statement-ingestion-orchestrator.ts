@@ -41,14 +41,24 @@ import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { cents } from '~~/shared/types/money'
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
+import type { H3Event } from 'h3'
+import { requireProfile } from '~~/server/utils/current-profile'
 
 export interface IngestStatementArgs {
+  /**
+   * Obligatoire (revue de la story 27.1) : `requireProfile` ne le lit pas encore, mais un
+   * paramètre optionnel qu'on ignore aujourd'hui inviterait un appelant futur à l'omettre, avec
+   * un retour silencieux au profil par défaut au lieu d'une erreur quand 27.2 branchera le
+   * cookie sur ce même paramètre. Les tests construisent un `H3Event` minimal.
+   */
+  event: H3Event
   pdfBuffer: Buffer
   confirmReplace: boolean
 }
 
 export async function ingestStatement(args: IngestStatementArgs): Promise<IngestionResult> {
-  const { pdfBuffer, confirmReplace } = args
+  const { event, pdfBuffer, confirmReplace } = args
+  const profileId = requireProfile(event)
   const t0 = Date.now()
   const step = (name: string, payload: Record<string, unknown> = {}) => {
     console.warn(`[ingest] ${name}`, { elapsedMs: Date.now() - t0, ...payload })
@@ -120,6 +130,7 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
   // en base — sans quoi la catégorisation n'était pas reproductible (revue 2026-08-04).
   const availableCategories = (await db
     .select({
+      id: categoryItems.id,
       code: categoryItems.code,
       label: categoryItems.label,
       nature: categoryItems.nature,
@@ -127,12 +138,12 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
       groupLabel: categoryGroups.label,
     })
     .from(categoryItems)
-    .innerJoin(categoryGroups, eq(categoryItems.groupCode, categoryGroups.code))
+    .innerJoin(categoryGroups, eq(categoryItems.groupId, categoryGroups.id))
     // Le poste « Part remboursée » du compte joint est CALCULÉ : il n'est alimenté que par la
     // coupe du moteur, jamais par une ligne de relevé. Le proposer au modèle l'inviterait à y
     // ranger de vraies transactions, qui compteraient alors en plus de la moitié coupée
     // (story 21.1, revue du 2026-09-08).
-    .where(ne(categoryItems.code, JOINT_REIMBURSEMENT_ITEM_CODE))
+    .where(and(eq(categoryItems.profileId, profileId), ne(categoryItems.code, JOINT_REIMBURSEMENT_ITEM_CODE)))
     .orderBy(categoryItems.code))
     // Les libellés sont du texte libre saisi par l'utilisateur et sont concaténés dans le
     // message envoyé au LLM : on neutralise sauts de ligne et caractères de contrôle, qui
@@ -270,8 +281,10 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
   // Tri par `id` : à motifs de longueur égale, c'est la règle la plus ancienne qui l'emporte,
   // et ce départage doit être stable d'une ingestion à l'autre.
   const rules = await db
-    .select({ pattern: classificationRules.pattern, categoryItemCode: classificationRules.categoryItemCode })
+    .select({ pattern: classificationRules.pattern, categoryItemCode: categoryItems.code })
     .from(classificationRules)
+    .innerJoin(categoryItems, eq(categoryItems.id, classificationRules.categoryItemId))
+    .where(eq(classificationRules.profileId, profileId))
     .orderBy(asc(classificationRules.id))
   const ruled = applyRules(extracted, rules)
   extracted = ruled.transactions
@@ -288,6 +301,19 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
     gapCents: reconciliation.gapCents,
   })
 
+  // Résolution code → id, TOUJOURS dans le profil (D37) : `transactions.category_item_id` est
+  // une clé technique, mais le modèle et les règles (`applyRules`, story-scope inchangé)
+  // continuent de travailler sur des CODES. La table complète — et non `availableCategories`,
+  // qui exclut délibérément le poste calculé du compte joint (l.140) — car une règle peut
+  // rediriger une ligne vers n'importe quel poste du référentiel.
+  const itemIdByCode = new Map(
+    (await db
+      .select({ id: categoryItems.id, code: categoryItems.code })
+      .from(categoryItems)
+      .where(eq(categoryItems.profileId, profileId)))
+      .map(i => [i.code, i.id]),
+  )
+
   // 10. Persistance atomique. better-sqlite3 = transactions SYNCHRONES : ne pas rendre
   // le callback async (sinon le COMMIT se ferait avant la résolution des promesses).
   const replacedHashes = overlapping.map(o => o.hash)
@@ -298,6 +324,10 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
       }
       tx.insert(bankStatements).values({
         hashSha256: hash,
+        profileId,
+        // Banque en dur — hors périmètre de cette story (28.1 y branchera le champ `bank` au
+        // dépôt, une fois l'extracteur Crédit Mutuel écrit).
+        bank: 'boursorama',
         periodStart,
         periodEnd,
         openingBalanceCents: raw.openingBalanceCents!,
@@ -309,13 +339,23 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
         gapAccepted: false,
       }).run()
       if (extracted.length > 0) {
-        tx.insert(transactions).values(extracted.map(t => ({
-          statementHash: hash,
-          transactionDate: t.transactionDate,
-          label: t.label,
-          amountCents: t.amountCents,
-          categoryItemCode: t.categoryItemCode,
-        }))).run()
+        tx.insert(transactions).values(extracted.map((t) => {
+          const categoryItemId = itemIdByCode.get(t.categoryItemCode)
+          if (categoryItemId === undefined) {
+            throw domainError(
+              ApiErrorCode.LlmExtractionFailed,
+              { reason: 'unknown categoryItemCode', value: t.categoryItemCode },
+              502,
+            )
+          }
+          return {
+            statementHash: hash,
+            transactionDate: t.transactionDate,
+            label: t.label,
+            amountCents: t.amountCents,
+            categoryItemId,
+          }
+        })).run()
       }
     })
   }

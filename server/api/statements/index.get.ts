@@ -47,7 +47,15 @@ export default defineEventHandler(async (): Promise<{ statements: StatementListI
   // L'exclusion ne touche PAS `transactionCount` : ce compteur dit ce que la base contient
   // pour ce relevé, et le faire diverger de `/transactions/<mois>` créerait une incohérence
   // visible d'un écran à l'autre (revue du 2026-09-06).
-  const notAcceptGap = sql`AND ${transactions.categoryItemCode} <> ${ACCEPT_GAP_ITEM_CODE}`
+  //
+  // `transactions.category_item_id` est une clé technique (D37) : la comparaison au code
+  // protégé passe par une sous-requête plutôt qu'une jointure, pour rester dans la même
+  // requête corrélée que `countFor`. `NOT IN` et non `<> (sous-requête scalaire)` (revue de la
+  // story 27.1) : un code de poste n'est unique QUE dans son profil (`uniqueIndex(profile_id,
+  // code)`) — dès qu'un second profil existe, la sous-requête peut rendre PLUSIEURS lignes, et
+  // `<>` contre une sous-requête multi-lignes est une erreur SQL, pas un filtre silencieusement
+  // restreint.
+  const notAcceptGap = sql`AND ${transactions.categoryItemId} NOT IN (SELECT id FROM category_items WHERE code = ${ACCEPT_GAP_ITEM_CODE})`
 
   const rows = await db
     .select({

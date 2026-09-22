@@ -47,7 +47,7 @@ beforeEach(() => {
   dbMod.db.delete(schema.transactions).run()
   dbMod.db.delete(schema.bankStatements).run()
   dbMod.db.insert(schema.bankStatements).values({
-    hashSha256: 'h', periodStart: '2025-01-01', periodEnd: '2026-12-31',
+    hashSha256: 'h', profileId: 1, bank: 'boursorama', periodStart: '2025-01-01', periodEnd: '2026-12-31',
     openingBalanceCents: 0, closingBalanceCents: 0,
   }).run()
 })
@@ -56,9 +56,14 @@ function query(qs: string): H3Event {
   return { path: `/api/evolution?${qs}`, method: 'GET', node: { req: { url: `/api/evolution?${qs}` } } } as unknown as H3Event
 }
 
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
+
 function seedTx(date: string, amountCents: number, code: string) {
   dbMod.db.insert(schema.transactions).values({
-    statementHash: 'h', transactionDate: date, label: 'op', amountCents, categoryItemCode: code,
+    statementHash: 'h', transactionDate: date, label: 'op', amountCents, categoryItemId: itemId(code),
   }).run()
 }
 
@@ -208,8 +213,12 @@ describe('GET /api/evolution — nature de la cible', () => {
 
   /** Une rubrique qui mêle plusieurs natures n'a pas d'orientation défendable. */
   it('rend null sur une rubrique aux natures mêlées', async () => {
+    const alimentationGroupId = (sqlite.prepare(
+      'SELECT id FROM category_groups WHERE code = ? AND profile_id = 1',
+    ).get('alimentation') as { id: number }).id
     dbMod.db.insert(schema.categoryItems).values({
-      code: 'alimentation-remboursement', groupCode: 'alimentation',
+      profileId: 1,
+      code: 'alimentation-remboursement', groupId: alimentationGroupId,
       label: 'Remboursement', nature: 'income', position: 9,
     }).run()
     const r = await handler(query(`${YEAR_2026}&target=group:alimentation`)) as unknown as { targetNature: string | null }

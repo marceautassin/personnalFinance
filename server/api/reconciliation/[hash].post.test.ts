@@ -47,6 +47,11 @@ beforeEach(() => {
 
 const HASH_A = 'a'.repeat(64)
 
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
+
 function seedStatementWithGap(opts: {
   opening: number
   closing: number
@@ -55,6 +60,8 @@ function seedStatementWithGap(opts: {
 }) {
   dbMod.db.insert(schema.bankStatements).values({
     hashSha256: HASH_A,
+    profileId: 1,
+    bank: 'boursorama',
     periodStart: '2026-04-01',
     periodEnd: '2026-04-30',
     openingBalanceCents: opts.opening,
@@ -68,7 +75,7 @@ function seedStatementWithGap(opts: {
         transactionDate: `2026-04-${String(10 + i).padStart(2, '0')}`,
         label: `Tx${i}`,
         amountCents: a,
-        categoryItemCode: 'alimentation-courses',
+        categoryItemId: itemId('alimentation-courses'),
       })),
     ).run()
   }
@@ -214,14 +221,14 @@ describe('POST /api/reconciliation/[hash]', () => {
       const accepted = rows.find(r => r.label === 'Écart accepté (réconciliation)')!
       expect(accepted.amountCents).toBe(-10)
       // Story 17.3 : poste dédié de nature `internal_transfer`, pas le repli en dépense.
-      expect(accepted.categoryItemCode).toBe('internes-ecart-accepte')
+      expect(accepted.categoryItemId).toBe(itemId('internes-ecart-accepte'))
       expect(accepted.isManual).toBe(true)
       expect(accepted.transactionDate).toBe('2026-04-30')
 
       // La nature du poste décide de tout : un écart en `expense` viendrait, s'il est positif,
       // DIMINUER les dépenses de la période. En mouvement interne, il sort du résultat.
       const item = dbMod.db.select().from(schema.categoryItems)
-        .where(eq(schema.categoryItems.code, accepted.categoryItemCode)).get()!
+        .where(eq(schema.categoryItems.id, accepted.categoryItemId)).get()!
       expect(item.nature).toBe('internal_transfer')
 
       const stmt = dbMod.db.select().from(schema.bankStatements).all()

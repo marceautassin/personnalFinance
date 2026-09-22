@@ -32,6 +32,11 @@ beforeAll(async () => {
   handler = (await import('./[hash].get')).default as Handler
 })
 
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
+
 afterAll(() => {
   sqlite?.close?.()
   if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL
@@ -58,6 +63,8 @@ describe('GET /api/statements/[hash]', () => {
   it('returns full statement detail with balanced reconciliation', async () => {
     dbMod.db.insert(schema.bankStatements).values({
       hashSha256: HASH_A,
+      profileId: 1,
+      bank: 'boursorama',
       periodStart: '2026-04-01',
       periodEnd: '2026-04-30',
       openingBalanceCents: 100_000,
@@ -65,7 +72,7 @@ describe('GET /api/statements/[hash]', () => {
       gapAccepted: false,
     }).run()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Carrefour', amountCents: -20_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Carrefour', amountCents: -20_000, categoryItemId: itemId('alimentation-courses') },
     ]).run()
 
     const result = (await handler(makeEvent(HASH_A))) as {
@@ -94,6 +101,8 @@ describe('GET /api/statements/[hash]', () => {
   it('returns gap detail when statement is not balanced', async () => {
     dbMod.db.insert(schema.bankStatements).values({
       hashSha256: HASH_A,
+      profileId: 1,
+      bank: 'boursorama',
       periodStart: '2026-04-01',
       periodEnd: '2026-04-30',
       openingBalanceCents: 100_000,
@@ -102,7 +111,7 @@ describe('GET /api/statements/[hash]', () => {
     }).run()
     // closing-opening = -20000, sum = -19990 → gap = -20000 - (-19990) = -10
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Carrefour', amountCents: -19_990, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'Carrefour', amountCents: -19_990, categoryItemId: itemId('alimentation-courses') },
     ]).run()
 
     const result = (await handler(makeEvent(HASH_A))) as {
@@ -130,6 +139,8 @@ describe('GET /api/statements/[hash]', () => {
   it('orders transactions by date asc then id asc', async () => {
     dbMod.db.insert(schema.bankStatements).values({
       hashSha256: HASH_A,
+      profileId: 1,
+      bank: 'boursorama',
       periodStart: '2026-04-01',
       periodEnd: '2026-04-30',
       openingBalanceCents: 100_000,
@@ -137,9 +148,9 @@ describe('GET /api/statements/[hash]', () => {
       gapAccepted: false,
     }).run()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'B', amountCents: 0, categoryItemCode: 'alimentation-courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: 0, categoryItemCode: 'alimentation-courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-25', label: 'C', amountCents: 0, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'B', amountCents: 0, categoryItemId: itemId('alimentation-courses') },
+      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: 0, categoryItemId: itemId('alimentation-courses') },
+      { statementHash: HASH_A, transactionDate: '2026-04-25', label: 'C', amountCents: 0, categoryItemId: itemId('alimentation-courses') },
     ]).run()
 
     const result = (await handler(makeEvent(HASH_A))) as {

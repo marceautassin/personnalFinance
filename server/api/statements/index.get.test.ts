@@ -31,6 +31,11 @@ beforeAll(async () => {
   handler = (await import('./index.get')).default as Handler
 })
 
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
+
 afterAll(() => {
   sqlite?.close?.()
   if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL
@@ -59,6 +64,8 @@ describe('GET /api/statements', () => {
   it('returns one statement with its transaction count and reliability', async () => {
     dbMod.db.insert(schema.bankStatements).values({
       hashSha256: HASH_A,
+      profileId: 1,
+      bank: 'boursorama',
       periodStart: '2026-04-01',
       periodEnd: '2026-04-30',
       openingBalanceCents: 100_000,
@@ -66,8 +73,8 @@ describe('GET /api/statements', () => {
       gapAccepted: false,
     }).run()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'A', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'B', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'A', amountCents: -10_000, categoryItemId: itemId('alimentation-courses') },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'B', amountCents: -10_000, categoryItemId: itemId('alimentation-courses') },
     ]).run()
 
     const result = (await handler(makeEvent())) as {
@@ -83,6 +90,8 @@ describe('GET /api/statements', () => {
     dbMod.db.insert(schema.bankStatements).values([
       {
         hashSha256: HASH_A,
+        profileId: 1,
+        bank: 'boursorama',
         periodStart: '2026-03-01',
         periodEnd: '2026-03-31',
         openingBalanceCents: 0,
@@ -91,6 +100,8 @@ describe('GET /api/statements', () => {
       },
       {
         hashSha256: HASH_B,
+        profileId: 1,
+        bank: 'boursorama',
         periodStart: '2026-04-01',
         periodEnd: '2026-04-30',
         openingBalanceCents: 0,
@@ -116,6 +127,8 @@ describe('GET /api/statements — taux de correction manuelle (FR24)', () => {
   function seedStatement(hash: string, periodStart: string) {
     dbMod.db.insert(schema.bankStatements).values({
       hashSha256: hash,
+      profileId: 1,
+      bank: 'boursorama',
       periodStart,
       periodEnd: periodStart.slice(0, 8) + '28',
       openingBalanceCents: 0,
@@ -130,7 +143,7 @@ describe('GET /api/statements — taux de correction manuelle (FR24)', () => {
         transactionDate: '2026-04-05',
         label: `op-${i}`,
         amountCents: -1000,
-        categoryItemCode: 'alimentation-courses',
+        categoryItemId: itemId('alimentation-courses'),
         isManual: i < manual,
       }).run()
     }

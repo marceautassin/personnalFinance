@@ -1,5 +1,6 @@
+import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions } from '~~/server/db/schema'
+import { transactions, categoryItems } from '~~/server/db/schema'
 import { normalizeForMatch, patternCovers } from '~~/server/services/rule-matcher'
 
 /**
@@ -45,10 +46,11 @@ export function coverageByRule(
   const rows = db
     .select({
       label: transactions.label,
-      categoryItemCode: transactions.categoryItemCode,
+      categoryItemCode: categoryItems.code,
       isManual: transactions.isManual,
     })
     .from(transactions)
+    .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
     .all()
 
   const needles = rules.map(r => normalizeForMatch(r.pattern))

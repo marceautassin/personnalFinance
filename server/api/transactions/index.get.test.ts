@@ -35,6 +35,11 @@ beforeAll(async () => {
   handler = (await import('./index.get')).default as Handler
 })
 
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
+
 afterAll(() => {
   sqlite?.close?.()
   if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL
@@ -57,6 +62,8 @@ const HASH_A = 'a'.repeat(64)
 function seedStatement(hash = HASH_A) {
   dbMod.db.insert(schema.bankStatements).values({
     hashSha256: hash,
+    profileId: 1,
+    bank: 'boursorama',
     periodStart: '2026-04-01',
     periodEnd: '2026-04-30',
     openingBalanceCents: 100_000,
@@ -84,10 +91,10 @@ describe('GET /api/transactions', () => {
   it('returns transactions of the requested month sorted by date asc', async () => {
     seedStatement()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'B', amountCents: -2000, categoryItemCode: 'alimentation-courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: -1000, categoryItemCode: 'alimentation-courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-25', label: 'C', amountCents: -3000, categoryItemCode: 'alimentation-courses' },
-      { statementHash: HASH_A, transactionDate: '2026-05-01', label: 'OUT', amountCents: -500, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'B', amountCents: -2000, categoryItemId: itemId('alimentation-courses') },
+      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: -1000, categoryItemId: itemId('alimentation-courses') },
+      { statementHash: HASH_A, transactionDate: '2026-04-25', label: 'C', amountCents: -3000, categoryItemId: itemId('alimentation-courses') },
+      { statementHash: HASH_A, transactionDate: '2026-05-01', label: 'OUT', amountCents: -500, categoryItemId: itemId('alimentation-courses') },
     ]).run()
 
     const result = (await handler(eventWithQuery('month=2026-04'))) as Resp
@@ -112,7 +119,7 @@ describe('GET /api/transactions', () => {
     seedStatement()
     dbMod.db.update(schema.bankStatements).set({ gapAccepted: true }).run()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-10', label: 'X', amountCents: -1000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-10', label: 'X', amountCents: -1000, categoryItemId: itemId('alimentation-courses') },
     ]).run()
 
     const result = (await handler(eventWithQuery('month=2026-04'))) as Resp
@@ -122,6 +129,8 @@ describe('GET /api/transactions', () => {
   it('returns reliability=unreliable when the period is covered by an unreliable statement with zero transactions', async () => {
     dbMod.db.insert(schema.bankStatements).values({
       hashSha256: HASH_A,
+      profileId: 1,
+      bank: 'boursorama',
       periodStart: '2026-04-01',
       periodEnd: '2026-04-30',
       openingBalanceCents: 100_000,
@@ -172,10 +181,10 @@ describe('GET /api/transactions — descente par bornes et par poste', () => {
   beforeEach(() => {
     seedStatement()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: -1000, categoryItemCode: 'alimentation-courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'B', amountCents: -2000, categoryItemCode: 'alimentation-courses' },
-      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'C', amountCents: -3000, categoryItemCode: 'alimentation-restaurant' },
-      { statementHash: HASH_A, transactionDate: '2026-05-02', label: 'HORS', amountCents: -4000, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-05', label: 'A', amountCents: -1000, categoryItemId: itemId('alimentation-courses') },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'B', amountCents: -2000, categoryItemId: itemId('alimentation-courses') },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'C', amountCents: -3000, categoryItemId: itemId('alimentation-restaurant') },
+      { statementHash: HASH_A, transactionDate: '2026-05-02', label: 'HORS', amountCents: -4000, categoryItemId: itemId('alimentation-courses') },
     ]).run()
   })
 
@@ -223,7 +232,7 @@ describe('GET /api/transactions — descente par bornes et par poste', () => {
     // une ligne de mai. On y ajoute une recette, pour vérifier qu'une AUTRE rubrique est exclue.
     const seedSalaire = () => {
       dbMod.db.insert(schema.transactions).values([
-        { statementHash: HASH_A, transactionDate: '2026-04-07', label: 'SALAIRE', amountCents: 300_000, categoryItemCode: 'revenus-salaire' },
+        { statementHash: HASH_A, transactionDate: '2026-04-07', label: 'SALAIRE', amountCents: 300_000, categoryItemId: itemId('revenus-salaire') },
       ]).run()
     }
 
@@ -270,7 +279,7 @@ describe('GET /api/transactions — descente par bornes et par poste', () => {
  */
 describe('GET /api/transactions — état et poids réel des lignes réconciliées', () => {
   const linkGroup = (label: string) => {
-    dbMod.db.insert(schema.settlementGroups).values({ label }).run()
+    dbMod.db.insert(schema.settlementGroups).values({ profileId: 1, label }).run()
     return dbMod.db.select({ id: schema.settlementGroups.id }).from(schema.settlementGroups).all().at(-1)!.id
   }
 
@@ -282,8 +291,8 @@ describe('GET /api/transactions — état et poids réel des lignes réconcilié
     const groupId = linkGroup('courses parents')
     dbMod.db.insert(schema.transactions).values([
       // L'avance est en « courses », le virement qui la rembourse en « remboursements ».
-      { statementHash: HASH_A, transactionDate: '2026-04-12', label: 'AVANCE', amountCents: -36_750, categoryItemCode: 'alimentation-courses', settlementGroupId: groupId },
-      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 36_750, categoryItemCode: 'revenus-salaire', settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-12', label: 'AVANCE', amountCents: -36_750, categoryItemId: itemId('alimentation-courses'), settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 36_750, categoryItemId: itemId('revenus-salaire'), settlementGroupId: groupId },
     ]).run()
 
     const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=alimentation-courses'))) as Resp
@@ -300,9 +309,9 @@ describe('GET /api/transactions — état et poids réel des lignes réconcilié
   it('la somme des montants effectifs retombe sur le total du poste', async () => {
     const groupId = linkGroup('courses parents')
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-12', label: 'AVANCE', amountCents: -36_750, categoryItemCode: 'alimentation-courses', settlementGroupId: groupId },
-      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 36_750, categoryItemCode: 'revenus-salaire', settlementGroupId: groupId },
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'LIBRE', amountCents: -4_210, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-12', label: 'AVANCE', amountCents: -36_750, categoryItemId: itemId('alimentation-courses'), settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 36_750, categoryItemId: itemId('revenus-salaire'), settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'LIBRE', amountCents: -4_210, categoryItemId: itemId('alimentation-courses') },
     ]).run()
 
     const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=alimentation-courses'))) as Resp
@@ -314,6 +323,8 @@ describe('GET /api/transactions — état et poids réel des lignes réconcilié
     const groupId = linkGroup('avance de janvier')
     dbMod.db.insert(schema.bankStatements).values({
       hashSha256: 'b'.repeat(64),
+      profileId: 1,
+      bank: 'boursorama',
       periodStart: '2026-01-01',
       periodEnd: '2026-01-31',
       openingBalanceCents: 0,
@@ -321,8 +332,8 @@ describe('GET /api/transactions — état et poids réel des lignes réconcilié
       gapAccepted: true,
     }).run()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: 'b'.repeat(64), transactionDate: '2026-01-12', label: 'AVANCE', amountCents: -20_000, categoryItemCode: 'alimentation-courses', settlementGroupId: groupId },
-      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 20_000, categoryItemCode: 'revenus-salaire', settlementGroupId: groupId },
+      { statementHash: 'b'.repeat(64), transactionDate: '2026-01-12', label: 'AVANCE', amountCents: -20_000, categoryItemId: itemId('alimentation-courses'), settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 20_000, categoryItemId: itemId('revenus-salaire'), settlementGroupId: groupId },
     ]).run()
 
     const janvier = (await handler(eventWithQuery('from=2026-01-01&to=2026-01-31'))) as Resp
@@ -342,6 +353,8 @@ describe('GET /api/transactions — état et poids réel des lignes réconcilié
     const groupId = linkGroup('avance de janvier')
     dbMod.db.insert(schema.bankStatements).values({
       hashSha256: 'b'.repeat(64),
+      profileId: 1,
+      bank: 'boursorama',
       periodStart: '2026-01-01',
       periodEnd: '2026-01-31',
       openingBalanceCents: 0,
@@ -349,8 +362,8 @@ describe('GET /api/transactions — état et poids réel des lignes réconcilié
       gapAccepted: true,
     }).run()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: 'b'.repeat(64), transactionDate: '2026-01-12', label: 'AVANCE', amountCents: -20_000, categoryItemCode: 'alimentation-courses', settlementGroupId: groupId },
-      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 20_000, categoryItemCode: 'revenus-salaire', settlementGroupId: groupId },
+      { statementHash: 'b'.repeat(64), transactionDate: '2026-01-12', label: 'AVANCE', amountCents: -20_000, categoryItemId: itemId('alimentation-courses'), settlementGroupId: groupId },
+      { statementHash: HASH_A, transactionDate: '2026-04-20', label: 'VIREMENT', amountCents: 20_000, categoryItemId: itemId('revenus-salaire'), settlementGroupId: groupId },
     ]).run()
 
     const q = 'from=2026-01-01&to=2026-01-31&settlementFrom=2026-01-01&settlementTo=2026-12-31'
@@ -372,7 +385,7 @@ describe('GET /api/transactions — état et poids réel des lignes réconcilié
 
   it('une ligne hors groupe pèse son propre montant, sans état', async () => {
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'LIBRE', amountCents: -4_210, categoryItemCode: 'alimentation-courses' },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'LIBRE', amountCents: -4_210, categoryItemId: itemId('alimentation-courses') },
     ]).run()
 
     const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30'))) as Resp
@@ -388,9 +401,9 @@ describe('GET /api/transactions — descente sur la part remboursée du compte j
   beforeEach(() => {
     seedStatement()
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-10', label: 'VIR JOINT', amountCents: 78_000, categoryItemCode: 'internes-virement-joint' },
-      { statementHash: HASH_A, transactionDate: '2026-04-12', label: 'VIR JOINT IMPAIR', amountCents: 78_101, categoryItemCode: 'internes-virement-joint' },
-      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'CHARGES VERS JOINT', amountCents: -32_450, categoryItemCode: 'internes-virement-joint' },
+      { statementHash: HASH_A, transactionDate: '2026-04-10', label: 'VIR JOINT', amountCents: 78_000, categoryItemId: itemId('internes-virement-joint') },
+      { statementHash: HASH_A, transactionDate: '2026-04-12', label: 'VIR JOINT IMPAIR', amountCents: 78_101, categoryItemId: itemId('internes-virement-joint') },
+      { statementHash: HASH_A, transactionDate: '2026-04-15', label: 'CHARGES VERS JOINT', amountCents: -32_450, categoryItemId: itemId('internes-virement-joint') },
     ]).run()
   })
 
@@ -416,7 +429,7 @@ describe('GET /api/transactions — descente sur la part remboursée du compte j
    */
   it('une VRAIE ligne rangée sur le poste calculé reste atteignable', async () => {
     dbMod.db.insert(schema.transactions).values([
-      { statementHash: HASH_A, transactionDate: '2026-04-18', label: 'RANGEE A LA MAIN', amountCents: -4_500, categoryItemCode: 'compte-joint-part-remboursee' },
+      { statementHash: HASH_A, transactionDate: '2026-04-18', label: 'RANGEE A LA MAIN', amountCents: -4_500, categoryItemId: itemId('compte-joint-part-remboursee') },
     ]).run()
 
     const r = (await handler(eventWithQuery('from=2026-04-01&to=2026-04-30&item=compte-joint-part-remboursee'))) as Resp

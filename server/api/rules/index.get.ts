@@ -23,14 +23,14 @@ export default defineEventHandler(async (): Promise<ClassificationRuleWithLabels
     .select({
       id: classificationRules.id,
       pattern: classificationRules.pattern,
-      categoryItemCode: classificationRules.categoryItemCode,
+      categoryItemCode: categoryItems.code,
       createdAt: classificationRules.createdAt,
       itemLabel: categoryItems.label,
       groupLabel: categoryGroups.label,
     })
     .from(classificationRules)
-    .innerJoin(categoryItems, eq(categoryItems.code, classificationRules.categoryItemCode))
-    .innerJoin(categoryGroups, eq(categoryGroups.code, categoryItems.groupCode))
+    .innerJoin(categoryItems, eq(categoryItems.id, classificationRules.categoryItemId))
+    .innerJoin(categoryGroups, eq(categoryGroups.id, categoryItems.groupId))
     .orderBy(asc(classificationRules.id))
 
   // Couverture et retard sont CALCULÉS, jamais stockés (story 18.9) : un drapeau en base
