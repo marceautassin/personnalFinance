@@ -47,8 +47,27 @@ classification:
     La complexité passe de `medium` à `high` : l'application cesse d'être
     mono-utilisateur et mono-machine.
 date: '2026-09-04'
-lastEdited: '2026-09-12'
+lastEdited: '2026-09-22'
 editHistory:
+  - date: '2026-09-22'
+    changes: >-
+      Chantier « Profils et banques » inscrit au rang 1, devant l'agent.
+      Profils sans authentification : historique rattaché au profil marceau,
+      second profil créé localement, cloisonnement serveur par profil courant.
+      FR44 reportée ; NFR35 pose la porte d'exposition en attendant. Banque
+      portée par le relevé, préremplie depuis le profil. Extraction Crédit
+      Mutuel sortie de la Phase 3 : compte courant seul, débit différé carte
+      remplacé par son détail et contrôlé au centime. FR73 à FR81, NFR35 et
+      NFR36 ajoutées ; FR46, FR49, FR72, NFR9, NFR24 amendées ; Journey 9 ajouté.
+      Ligne de risque « perte de la base acceptée », contradictoire avec NFR12, corrigée.
+  - date: '2026-09-22'
+    changes: >-
+      Seconde passe, suite au rapport validation-report-2026-09-22.md.
+      FR80 complétée (achat daté du jour d'achat ; agrégat sans détail gardé
+      et relevé non fiable). NFR36 désambiguïsée (numéros de compte coupés
+      jusque dans les libellés). FR78 déclarée orpheline. Quatrième critère
+      de succès (la seconde personne ingère seule). Définition profil / membre
+      ajoutée au modèle de domaine.
   - date: '2026-09-12'
     changes: >-
       Ajout du périmètre foyer (identité, multi-utilisateur, dépenses communes,
@@ -111,6 +130,8 @@ Utilisateur premier : une personne qui tenait déjà cette analyse **à la main 
 
 **Depuis la révision du 2026-09-12, l'application n'est plus mono-utilisateur.** Elle héberge un **foyer** : plusieurs personnes, chacune avec ses relevés, son référentiel et son analyse, strictement cloisonnés. Ce qu'elles partagent est un **décompte de dépenses communes** — qui a avancé quoi, et qui doit combien à qui. Cette lecture remplace un outil de partage de dépenses tenu jusqu'ici en parallèle.
 
+**Depuis le 2026-09-22, le cloisonnement précède l'identité.** Les données sont rattachées à des **profils** avant que la connexion n'existe : l'historique appartient au profil de Marceau, et un second profil accueille une autre personne, cliente d'une autre banque — **Crédit Mutuel**, dont les relevés sont extraits au même niveau d'exigence que ceux de Boursorama. La connexion viendra rattacher une identité à un profil existant, sans nouvelle migration.
+
 Le problème résolu n'est donc pas « comment analyser mes dépenses » — cette question a déjà sa réponse, éprouvée par des années d'usage. Il est : **comment tenir cette analyse à jour sans y passer une soirée par mois.**
 
 L'application produit deux lectures indissociables : la **répartition** — sur une période, où part l'argent, par nature et par catégorie — et l'**évolution** — comment ces postes bougent d'une période à l'autre. Objectif opérationnel : identifier vite ce qui rend une période **déficitaire**, définie comme dépenses supérieures aux recettes, hors mouvements internes entre comptes du même utilisateur.
@@ -137,7 +158,7 @@ Deux mécanismes distincts coexistent et ne doivent pas être confondus : `llm-c
 | **Domaine** | `general` — délibérément **pas** `fintech` : aucun mouvement de fonds, aucun accès bancaire, aucun conseil réglementé, aucune exigence KYC/AML/PCI. Les contraintes réelles sont la justesse au centime et la confidentialité, traitées en NFR. |
 | **Complexité** | `high` — relevée de `medium` le 2026-09-12. La justesse numérique et la fiabilité de la couche LLM restent les exigences dures ; s'y ajoutent le **cloisonnement entre utilisateurs** et l'**exposition sur Internet**. Un graphique faux est pire qu'absent, on le croit ; une donnée visible par la mauvaise personne ne se rattrape pas. |
 | **Contexte** | `brownfield` — le socle d'ingestion, de catégorisation et de réconciliation existe, est testé et reste en place. Le PRD définit ce qui s'ajoute au-dessus et ce qui disparaît. |
-| **Hébergement** | Serveur personnel, **accessible depuis Internet** — décision du 2026-09-12. L'application n'est plus mono-machine et n'est plus en environnement de confiance implicite. |
+| **Hébergement** | Serveur personnel, **accessible depuis Internet** — décision du 2026-09-12. L'application n'est plus mono-machine et n'est plus en environnement de confiance implicite. **Nuance du 2026-09-22** : tant que l'authentification (FR44) n'est pas livrée, l'application reste confinée au réseau local (NFR35). |
 
 ## Success Criteria
 
@@ -160,6 +181,10 @@ Deux mécanismes distincts coexistent et ne doivent pas être confondus : `llm-c
 - Une question courante — l'évolution d'un poste entre deux années, les postes qui ont le plus bougé — obtient sa réponse **sans qu'un écran d'analyse soit ouvert pour la vérifier**.
 - **Zéro nombre cité par l'agent qui ne figure pas tel quel dans ce qu'il a reçu.** Mesuré par test, pas par relecture.
 - Une réponse dont la période ou le filtre sont faux est **repérable immédiatement**, parce que l'agent les affiche.
+
+**Le quatrième critère : la seconde personne se débrouille seule.** *(Ajouté le 2026-09-22.)* Le chantier « Profils et banques » n'est réussi que si ses relevés Crédit Mutuel entrent sans aide. S'il faut que Marceau reprenne un PDF, corrige une extraction ou réimporte un mois, l'application n'a pas gagné un utilisateur, elle a créé une corvée pour le premier.
+
+- La seconde personne dépose ses relevés Crédit Mutuel et consulte son analyse **sans aucune intervention de Marceau** — ni correction de PDF, ni ré-import, ni manipulation en base.
 
 ### Business Success
 
@@ -193,6 +218,10 @@ Projet personnel, foyer de deux personnes : pas de revenu, pas de croissance. Le
 | Données d'un membre visibles par un autre | **0** | vérifié par test à chaque livraison |
 | Nombres cités par l'agent absents de ses sources | **0** | vérifié par test à chaque livraison |
 | Réponses de l'agent sans période ni filtre affichés | **0** | vérifié par test à chaque livraison |
+| Interventions de Marceau sur les relevés Crédit Mutuel de la seconde personne | **0** | sur les 3 premiers mois d'usage |
+| Transactions perdues par la migration vers le profil `marceau` | **0** — nombre de lignes et totaux identiques avant et après | à la migration |
+| Identifiants bancaires présents dans le texte transmis au fournisseur | **0**, pour chaque banque supportée | vérifié par test sur relevé anonymisé à chaque livraison |
+| Relevés Crédit Mutuel réconciliés au centime ou marqués non fiables | **100 %** | à chaque ingestion |
 
 **Pas de plafond de coût LLM.** Contrainte écartée par l'utilisateur, et **réexaminée le 2026-09-12** : la décision initiale avait été prise quand le fournisseur n'était appelé qu'à l'ingestion, une fois par mois. L'agent conversationnel en fait une consultation quotidienne et multi-tours, donc un ordre de grandeur différent. La prémisse a changé, la décision est **reconduite en connaissance de cause**.
 
@@ -210,7 +239,9 @@ Aucune cible de durée d'ingestion n'est fixée à ce stade. Le PRD v1 imposait 
 >
 > Les parcours 1 à 4 couvrent **le même utilisateur dans des situations différentes** : chemin nominal, cas limite, récupération d'erreur. Les parcours 5 à 7 couvrent le foyer : la dépense commune de bout en bout, l'arrivée du second membre, et la reprise d'un décompte tenu ailleurs. Le parcours 8 couvre l'agent conversationnel.
 >
-> ⚠️ **L'ordre d'écriture n'est pas l'ordre de livraison.** Le parcours 8 est le premier chantier, avant les parcours 5 à 7. Voir « Ordre des chantiers » dans la section périmètre.
+> ⚠️ **L'ordre d'écriture n'est pas l'ordre de livraison.** Le parcours 9 est le premier chantier, puis le parcours 8, puis les parcours 5 à 7. Voir « Ordre des chantiers » dans la section périmètre.
+>
+> **Précision du 2026-09-22.** Avant l'authentification, les rôles « membre » et « fondateur » n'existent pas encore : il n'y a que des **profils**, créés et choisis localement, sans droit distinct. Les rôles naîtront avec FR44.
 
 ### Persona — l'ancien tenancier de tableur
 
@@ -316,7 +347,7 @@ Ce parcours porte l'indicateur « écart de 0 centime entre le solde du foyer et
 
 ### Journey 8 — Poser la question au lieu de chercher l'écran
 
-*Ajouté le 2026-09-12. Ce parcours est celui du **premier chantier** de la séquence, avant même le foyer.*
+*Ajouté le 2026-09-12. Ce parcours est celui du **deuxième chantier** de la séquence, avant le foyer — premier jusqu'au 2026-09-22, où « Profils et banques » est passé devant.*
 
 **Scène d'ouverture.** Une intuition, pas une requête : « j'ai l'impression qu'on mange dehors plus souvent qu'avant ». Aujourd'hui, vérifier ça demande d'ouvrir l'écran d'évolution, de choisir la bonne période, de trouver le bon poste, et de lire la courbe. Quatre gestes pour une question de dix mots.
 
@@ -330,6 +361,22 @@ Ce parcours porte l'indicateur « écart de 0 centime entre le solde du foyer et
 
 **Le cas qui définit le produit est celui où l'agent ne sait pas.** Comparer 2024 et 2026 n'est pas à sa portée : le moteur ne compare qu'à la période immédiatement précédente. Il doit le dire. Un agent qui bricole une réponse plausible dans ce cas détruit la confiance de toutes les autres, y compris les justes.
 
+### Journey 9 — Un second profil, une autre banque
+
+*Ajouté le 2026-09-22. Ce parcours est celui du **premier chantier** de la séquence, devant l'agent.*
+
+**Scène d'ouverture.** Une seconde personne veut suivre ses dépenses. Ses relevés viennent du **Crédit Mutuel**, pas de Boursorama, et l'application n'a jamais connu que le compte de Marceau — dont tout l'historique n'appartient encore à personne en particulier.
+
+**Montée.** Première ouverture après la mise à jour : rien n'a bougé. L'historique complet est là, rattaché au profil `marceau`, au centime près. Marceau crée un second profil et lui donne le Crédit Mutuel pour banque par défaut. Il bascule dessus : l'application est **vide** — ni relevé, ni règle, ni chiffre — mais le référentiel initial est prêt à recevoir des lignes.
+
+**Climax.** Il dépose un relevé Crédit Mutuel. La banque est déjà proposée. Le PDF contient trois comptes ; seul le compte courant est lu, et l'application dit lesquels elle a laissés de côté. La ligne unique `RELEVE CARTE` disparaît au profit des achats qui la composent, chacun catégorisé, et leur somme retombe **au centime** sur la ligne remplacée. Le relevé se réconcilie contre ses propres soldes.
+
+**Résolution.** Deux profils, deux banques, deux analyses qui ne se mélangent pas. Revenu sur son profil, Marceau ne voit que ses propres données.
+
+*Capacités révélées* — migration de propriété sans perte, création et choix du profil courant, référentiel initial par profil, banque préremplie et modifiable au dépôt, extraction Crédit Mutuel limitée au compte courant, remplacement du débit différé carte par son détail contrôlé au centime, cloisonnement serveur par profil.
+
+**Ce que ce parcours ne protège pas, et le dit.** Choisir un profil n'est pas s'identifier : quiconque a l'application devant lui peut basculer. C'est acceptable parce qu'elle reste confinée au réseau local tant que la connexion n'existe pas (NFR35). Le cloisonnement serveur posé ici n'en est pas moins réel : c'est lui que la connexion réutilisera tel quel.
+
 ### Journey Requirements Summary
 
 | Domaine | Capacités |
@@ -340,6 +387,7 @@ Ce parcours porte l'indicateur « écart de 0 centime entre le solde du foyer et
 | **Analyse** | Répartition par période · évolution entre périodes · mois/trimestre/année · 4 indicateurs · déficit hors mouvements internes |
 | **Traçabilité** | Descente agrégat → rubrique → poste → **transaction source** · origine d'une dépense saisie à la main identifiée partout |
 | **Agent** | Chat ouvrable à volonté · conversation reprise avec son contexte · question en langage ordinaire · réponse portant sa période et son filtre · ouverture de l'écran source depuis la réponse · refus explicite hors de portée du moteur · aucun nombre non reçu |
+| **Profils et banques** | Migration de l'historique vers le profil `marceau` sans perte · création et choix du profil courant · référentiel initial par profil · cloisonnement serveur par profil · banque portée par le relevé, préremplie depuis le profil · extraction Crédit Mutuel (compte courant seul, détail carte contrôlé au centime) |
 | **Foyer** | Authentification déléguée · invitation expirable · cloisonnement strict entre membres · marquage d'une dépense comme commune · répartition à parts égales · saisie manuelle d'une dépense en espèces · solde « qui doit combien à qui » · règlement rattaché à sa ligne bancaire · **reprise d'un décompte existant, daté et orienté, relu avant enregistrement** |
 
 La gestion du référentiel (créer, renommer, supprimer une catégorie) n'est pas traitée en parcours : la capacité existe déjà dans le socle et ne constitue pas un moment de valeur.
@@ -375,7 +423,7 @@ Trois conséquences :
 - **Le différenciateur se nuance sans s'effondrer.** Les relevés, la base et les montants restent sur la machine hôte. Ce qui sort en plus est l'identité des deux membres et leurs horaires de connexion. Aucune donnée financière ne transite par le fournisseur d'identité.
 - **Le cloisonnement devient une exigence de sécurité, pas d'affichage.** Deux personnes accèdent à la même application. Un filtrage fait côté interface serait contournable ; la séparation est appliquée à chaque requête côté serveur.
 
-*Énoncés vérifiables : NFR5 à NFR9, NFR24 à NFR26.*
+*Énoncés vérifiables : NFR5 à NFR9, NFR24 à NFR26, NFR35, NFR36.*
 
 ### Modèle de domaine
 
@@ -408,6 +456,15 @@ Deux mécanismes voisins existent désormais, et leur confusion produirait des d
 La troisième ligne décrit une règle déjà en production. Elle traite des **remboursements depuis un compte commun alimenté d'avance**, là où le périmètre foyer traite des **dépenses avancées depuis un compte personnel**. Les deux coexistent sans fusionner — mais elles **communiquent**, et c'est le point ajouté le 2026-09-12 :
 
 **Le compte joint est lui-même un mécanisme de règlement.** S'y rembourser d'une avance éteint la créance correspondante (FR63), puisque le compte est alimenté à parts égales. Le décompte du foyer ne porte donc **que ce que le compte joint ne solde pas** : les dépenses en espèces, les avances dont on ne s'est jamais remboursé, et les dépenses avancées par l'autre membre depuis son propre compte.
+
+#### Profil et membre
+
+*Ajouté le 2026-09-22.* Deux mots, un seul propriétaire :
+
+- Un **profil** est l'espace qui **possède** des données : relevés, transactions, référentiel, règles, groupes. Il existe dès le chantier de rang 1, sans identité.
+- Un **membre** est un profil auquel une **identité vérifiée** est rattachée (FR44). Il n'existe qu'avec le foyer.
+
+Le cloisonnement se pose sur le profil ; l'authentification ne fait que décider **qui** a le droit d'ouvrir quel profil. Ce n'est pas un second propriétaire, et il ne doit pas être modélisé comme tel.
 
 #### Le nombre cité — la frontière de l'agent
 
@@ -464,7 +521,7 @@ Effet collatéral : le pré-remplissage `pf_disclaimer_seen_v1` ajouté dans `pl
 
 ### Project-Type Overview
 
-SPA Nuxt 4 (`ssr: false`) avec backend Nitro intégré. Application **multi-utilisateur, authentifiée**, hébergée sur un serveur personnel joignable depuis Internet. **Usage desktop exclusivement.** Pas de temps réel : l'ingestion est un traitement par lot déclenché par un dépôt de fichiers.
+SPA Nuxt 4 (`ssr: false`) avec backend Nitro intégré. Application **multi-utilisateur, authentifiée**, hébergée sur un serveur personnel joignable depuis Internet. *(Cible. Jusqu'à la livraison de FR44 : multi-profils sans authentification, confinée au réseau local — NFR35.)* **Usage desktop exclusivement.** Pas de temps réel : l'ingestion est un traitement par lot déclenché par un dépôt de fichiers.
 
 *(La section `seo_strategy` demandée par le gabarit BMad reste sans objet. L'application est joignable depuis Internet mais chaque écran est derrière l'authentification : il n'y a aucune page publique à indexer, et l'indexation doit être refusée.)*
 
@@ -528,13 +585,18 @@ Les graphiques sont produits en **SVG inline, sans bibliothèque tierce** — pr
 
 | Rang | Chantier | Où il est décrit | État |
 |---|---|---|---|
-| **1** | **L'agent conversationnel** | Journey 8, FR65 à FR72, NFR31 à NFR33 | cadré le 2026-09-12, à découper |
-| **2** | **Le foyer** | « Phase 1 bis », Journeys 5 à 7, FR44 à FR64 | découpé en epics 22 à 25 |
-| **3** | **Le forecast** | non cadré | hors de ce document à ce jour |
+| **1** | **Profils et banques** | Journey 9, FR73 à FR81, NFR35, NFR36 | cadré le 2026-09-22, à découper |
+| **2** | **L'agent conversationnel** | Journey 8, FR65 à FR72, NFR31 à NFR33 | découpé en epic 26 |
+| **3** | **Le foyer** | « Phase 1 bis », Journeys 5 à 7, FR44 à FR64 | découpé en epics 22 à 25, story 22.2 absorbée par le rang 1 |
+| **4** | **Le forecast** | non cadré | hors de ce document à ce jour |
+
+**Pourquoi « Profils et banques » passe devant tout le reste** *(ajouté le 2026-09-22)*. Un besoin réel et immédiat : une seconde personne, cliente d'une autre banque, veut suivre ses dépenses maintenant. Ni l'agent ni le foyer ne répondent à ce besoin, et les deux en dépendent : l'agent doit apprendre le cloisonnement (NFR32), le foyer doit partir de données déjà possédées. Poser la propriété des données en premier réduit le coût de ce qui suit au lieu de l'augmenter.
+
+**Ce que ce rang ne prend pas.** L'authentification (FR44) reste au foyer. Le chantier livre le **cloisonnement** sans l'**identité** : c'est une étape, pas une protection, et NFR35 interdit d'exposer l'application tant que l'identité manque.
 
 **Pourquoi l'agent passe devant le foyer.** Il coûte moins cher, il sert dès le premier jour, et il ne dépend de rien. Le foyer a son propre moteur — le déploiement et l'arrivée d'un second membre — mais cette échéance n'est pas immédiate.
 
-**Le prix de cet ordre, et sa parade.** L'agent sera construit alors que l'application est encore mono-utilisateur, et devra apprendre le cloisonnement quand le foyer arrivera. Ce rattrapage est **gratuit à une condition** : l'agent n'accède à la base par aucun chemin, il passe exclusivement par les endpoints d'analyse, qui sont l'endroit où le cloisonnement se posera de toute façon (NFR32). S'il court-circuite cette frontière pour aller plus vite, il faudra le rouvrir entièrement.
+**Le prix de cet ordre, et sa parade.** *(Rédigé quand l'agent était au rang 1. Depuis le 2026-09-22, le cloisonnement par profil existe avant lui : l'agent le trouve en place dans les endpoints, et la parade ci-dessous devient une simple règle de conformité.)* L'agent sera construit alors que l'application est encore mono-utilisateur, et devra apprendre le cloisonnement quand le foyer arrivera. Ce rattrapage est **gratuit à une condition** : l'agent n'accède à la base par aucun chemin, il passe exclusivement par les endpoints d'analyse, qui sont l'endroit où le cloisonnement se posera de toute façon (NFR32). S'il court-circuite cette frontière pour aller plus vite, il faudra le rouvrir entièrement.
 
 **Le forecast en dernier, et sous condition.** Il revient au périmètre après avoir été supprimé le 2026-09-04 avec environ 8 830 lignes. La règle qui le rend viable cette fois : **une projection se dérive de l'historique mesuré et doit être utilisable sans aucune saisie.** Une saisie est un ajout ponctuel de scénario, jamais un prérequis. Le forecast v1 n'est pas mort parce que projeter serait une mauvaise idée, mais parce qu'il fallait déclarer ses charges à la main, c'est-à-dire le mal qui avait déjà tué le tableur. Il fera l'objet d'un amendement propre, avec un jalon de décision sur le modèle de l'epic 14.
 
@@ -595,7 +657,7 @@ L'étape 4 est un **jalon de décision**, pas une étape ordinaire. Si le taux d
 
 ### Phase 1 bis — Le foyer
 
-Ajoutée le 2026-09-12. ⚠️ **Cette étiquette est historique, pas chronologique** : le foyer est le **deuxième** chantier, l'agent conversationnel passant devant. Voir « Ordre des chantiers » en tête de cette section. *(Rédaction précédente, devenue fausse le jour même : « Elle suit la Phase 1 […] et précède les phases 2 et 3. »)*
+Ajoutée le 2026-09-12. ⚠️ **Cette étiquette est historique, pas chronologique** : le foyer est le **troisième** chantier, derrière « Profils et banques » et l'agent conversationnel. Voir « Ordre des chantiers » en tête de cette section. *(Rédaction précédente, devenue fausse le jour même : « Elle suit la Phase 1 […] et précède les phases 2 et 3. »)*
 
 **Parcours couverts :** Journey 5 (la dépense commune, du ticket au règlement), Journey 6 (rejoindre le foyer) et Journey 7 (reprendre le décompte existant).
 
@@ -616,8 +678,9 @@ Ajoutée le 2026-09-12. ⚠️ **Cette étiquette est historique, pas chronologi
 **Séquencement imposé.** L'ordre n'est pas libre, pour la même raison qu'en Phase 1 : une migration de données faite deux fois coûte plus qu'une migration faite une fois.
 
 ```
-1. Identité, foyer, propriété des données        → migration unique de l'historique
-2. Cloisonnement vérifié par test
+1. Identité, foyer                               → rattachement d'une identité
+                                                   à un profil existant
+2. Cloisonnement vérifié par test (identité forgée)
 3. Sauvegarde de la base                          → avant toute exposition réseau
    ─────────────── PORTE D'EXPOSITION ───────────────
 4. Marquage « commune » + répartition à parts égales
@@ -625,6 +688,8 @@ Ajoutée le 2026-09-12. ⚠️ **Cette étiquette est historique, pas chronologi
 6. Solde d'ouverture + « qui doit combien à qui »
 7. Règlement + rattachement à la ligne bancaire
 ```
+
+*La migration de propriété de l'historique, qui ouvrait cette séquence, est livrée par le chantier « Profils et banques » (FR75). L'étape 1 n'en refait aucune : la connexion attache une identité à un profil qui possède déjà ses données. C'est ce qui préserve la règle « une migration, une seule fois ».*
 
 L'étape 3 est une **porte, pas une étape ordinaire.** L'application n'est exposée sur Internet qu'une fois le cloisonnement testé et la sauvegarde en place. Exposer avant, c'est accepter de perdre des données qu'aucun PDF ne permet plus de reconstruire.
 
@@ -636,9 +701,11 @@ L'étape 7 ne se reporte pas. Sans elle, chaque remboursement gonfle les recette
 
 *(L'analyse narrative par LLM quitte cette phase le 2026-09-12 : absorbée par l'agent conversationnel, elle est livrée au **premier** chantier et non en croissance ultérieure.)*
 
-**Phase 3 — Vision.** **Application progressive installable sur téléphone**, qui rend la saisie d'une dépense en espèces contemporaine de la dépense — capacité principale de cette phase depuis le 2026-09-12 · second compte bancaire (Crédit Mutuel) et extraction paramétrée par banque · objectifs de dépense par catégorie · parts inégales entre membres du foyer · sauvegarde chiffrée hors site, seule protection contre le sinistre du logement · export des données d'un membre, qui conditionne le traitement du retrait d'un membre.
+**Phase 3 — Vision.** **Application progressive installable sur téléphone**, qui rend la saisie d'une dépense en espèces contemporaine de la dépense — capacité principale de cette phase depuis le 2026-09-12 · plusieurs comptes pour un même profil, dont les livrets et l'épargne présents dans un relevé Crédit Mutuel · objectifs de dépense par catégorie · parts inégales entre membres du foyer · sauvegarde chiffrée hors site, seule protection contre le sinistre du logement · export des données d'un membre, qui conditionne le traitement du retrait d'un membre.
 
 *(« Répartition des dépenses communes avec un conjoint » quitte la Phase 3 : elle est entrée en Phase 1 bis.)*
+
+*(« Extraction paramétrée par banque, Crédit Mutuel » quitte la Phase 3 le 2026-09-22 : elle est entrée au chantier de rang 1, par FR77 à FR80. Le multi-comptes y reste.)*
 
 ### Risk Mitigation Strategy
 
@@ -656,7 +723,7 @@ Table unique des risques du projet — techniques, d'usage et de ressources conf
 | **Un relevé échoue et bloque toute l'ingestion** | Moyenne | Échec isolé par fichier, la file continue (FR3, NFR13) |
 | **Référentiel trop fin pour le modèle** | Moyenne | Repli : conserver les 13 rubriques, alléger les postes. Le détail se perd, la lecture reste. |
 | **Volume d'ingestion problématique** | Faible | Repli : traiter par lots plutôt que les 24 relevés d'un coup |
-| **Perte de la base de données** | Faible | Acceptée — reconstructible depuis les relevés conservés (NFR12) |
+| **Perte de la base de données** | — | *Ligne caduque depuis l'inversion de NFR12 le 2026-09-12, corrigée le 2026-09-22 : voir « Perte de la base devenue irréparable » ci-dessous.* |
 | **Fuite de la clé d'API** | Faible | `.env` gitignored, jamais journalisée (NFR8) |
 | **Données d'un membre visibles par un autre** | Bloquante | Ajouté le 2026-09-12. Cloisonnement appliqué côté serveur à chaque requête, jamais par filtrage d'affichage (NFR24) · vérifié par test, pas par revue d'écran · porte d'exposition franchie seulement après ces tests |
 | **Règlement compté deux fois** | Critique | Ajouté le 2026-09-12. Le virement de remboursement arrive dans le relevé de celui qui l'encaisse et s'y lit comme une recette. Sans rattachement à son règlement (FR60), les recettes sont gonflées et la dette ne s'éteint jamais. Version large du défaut qui a produit la coupe du compte joint |
@@ -667,6 +734,11 @@ Table unique des risques du projet — techniques, d'usage et de ressources conf
 | **Agent fabriquant un montant** | Critique | Ajouté le 2026-09-12. NFR15 dit que le modèle ne calcule pas, ce qu'aucun test ne sait vérifier. NFR31 en donne la forme opposable : aucun nombre cité qui ne figure tel quel dans ce qui a été reçu. Vérifiable par test |
 | **Agent bricolant une réponse hors de portée du moteur** | Élevée | Ajouté le 2026-09-12. Le moteur ne compare qu'à la période immédiatement précédente ; une question sur deux périodes quelconques n'a pas de réponse (FR39, Phase 2). L'agent doit le **dire** (FR69). Un agent qui invente dans ce cas détruit la confiance dans toutes ses réponses, y compris les justes |
 | **Dépendance quotidienne au fournisseur LLM** | Moyenne | Ajouté le 2026-09-12. L'indisponibilité ne retarde plus un import mensuel, elle ferme une consultation quotidienne. Mitigation : l'agent échoue proprement, tout le reste de l'application reste intact (NFR17 étendue) |
+| **Profil courant choisi par la mauvaise personne** | Élevée | Ajouté le 2026-09-22. Sans authentification, basculer de profil ne demande rien : le cloisonnement protège d'une erreur de requête, pas d'une personne. Mitigation : application confinée au réseau local jusqu'à FR44 (NFR35) · profil courant affiché en permanence (FR74) · risque assumé explicitement, pas masqué |
+| **Débit différé carte compté deux fois** | Critique | Ajouté le 2026-09-22. Un relevé Crédit Mutuel porte la ligne agrégée `RELEVE CARTE` **et** le détail des achats qui la composent. Importer les deux double la dépense sans qu'aucune réconciliation ne le voie — le solde du compte courant n'inclut que l'agrégat. Mitigation : le détail remplace l'agrégat, et leur égalité au centime est vérifiée (FR80) |
+| **Sections d'autres comptes lues comme des opérations** | Élevée | Ajouté le 2026-09-22. Un relevé Crédit Mutuel contient plusieurs comptes, chacun avec ses soldes. Mélanger leurs lignes fausse la réconciliation et crée des mouvements fantômes. Mitigation : seule la section du compte courant est ingérée, les autres sont nommées comme ignorées (FR79) |
+| **Relevé déposé sous la mauvaise banque** | Moyenne | Ajouté le 2026-09-22. La banque est préremplie depuis le profil, donc une erreur d'inattention passe facilement. Mitigation : refus explicite sans aucune transaction enregistrée (FR78), jamais d'import partiel |
+| **Identifiants bancaires propres au Crédit Mutuel non coupés** | Critique | Ajouté le 2026-09-22. La coupe d'identité a été construite sur la mise en page Boursorama. Le Crédit Mutuel répète le titulaire et des numéros de compte **en dessous** du premier en-tête de colonnes — en tête du détail carte, des sections livret et épargne, du récapitulatif des autres comptes — et en glisse dans certains libellés d'opération (virement vers un plan d'épargne). La coupe géométrique seule ne les atteint pas. Mitigation : test par banque sur relevé réel anonymisé (NFR36) |
 | **Saisie en espèces jamais faite parce qu'elle exige un écran de bureau** | Élevée | Ajouté le 2026-09-12. Principal risque d'abandon du périmètre foyer. Aucune mitigation en Phase 1 bis : l'application progressive est portée en Phase 3 et la dégradation est assumée. À mesurer — si les dépenses en espèces ne sont pas saisies, l'outil tiers restera ouvert |
 
 ## Dépendance LLM
@@ -695,7 +767,7 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 
 ## Functional Requirements
 
-> **Contrat de capacités.** Ce qui ne figure pas ici n'existera pas dans le produit. Le PRD v1 comptait 71 FRs pour un périmètre qui s'est révélé faux ; celui-ci en compte 72 : 21 pour le foyer et 8 pour l'agent conversationnel, toutes ajoutées le 2026-09-12, plus 2 restées en Phase 2 (FR38 et FR39, FR37 ayant été absorbée par l'agent).
+> **Contrat de capacités.** Ce qui ne figure pas ici n'existera pas dans le produit. Le PRD v1 comptait 71 FRs pour un périmètre qui s'est révélé faux ; celui-ci en compte 81 : 21 pour le foyer et 8 pour l'agent conversationnel, ajoutées le 2026-09-12, 9 pour les profils et banques, ajoutées le 2026-09-22, plus 2 restées en Phase 2 (FR38 et FR39, FR37 ayant été absorbée par l'agent).
 
 ### Ingestion des relevés
 
@@ -769,16 +841,44 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 
 *FR43 propose, ne décide pas. Toutes les corrections ne se généralisent pas : déplacer un restaurant vers la rubrique Voyages vaut pour ce séjour-là, pas pour le bistrot du coin. Et le motif est éditable, parce qu'aucune extraction ne peut deviner si le suffixe d'un libellé appartient au nom de l'enseigne (`BOULANGERIE EX 2`) ou au numéro de terminal (`CDISCOUNT 4`).*
 
+### Profils et banques
+
+*Ajoutées le 2026-09-22. **Premier chantier de la séquence**, devant l'agent et le foyer.*
+
+- **FR73** — L'utilisateur peut créer un profil en lui donnant un nom et une banque par défaut. Un profil créé démarre sans relevé, sans transaction et sans règle, avec le **référentiel initial** — jamais celui d'un autre profil.
+- **FR74** — L'utilisateur peut choisir le profil courant. Le nom du profil courant est affiché sur chaque écran.
+- **FR75** — Toutes les données existantes — relevés, transactions, rubriques, postes, règles, groupes de transactions — sont rattachées au profil `marceau` par une migration unique. Le nombre de transactions et le total de chaque relevé sont identiques avant et après.
+- **FR76** — Chaque écran et chaque endpoint de données ne restitue que les données du profil courant. La restriction est appliquée côté serveur (NFR24).
+- **FR77** — À chaque dépôt, la banque du relevé est préremplie avec la banque par défaut du profil courant, et l'utilisateur peut la changer. Chaque relevé conserve sa banque.
+- **FR78** — Le système extrait les relevés **Boursorama** et **Crédit Mutuel**. Un relevé dont le contenu ne correspond pas à la banque choisie est refusé avec sa cause, sans qu'aucune transaction ne soit enregistrée.
+- **FR79** — Pour un relevé Crédit Mutuel, seule la section du **compte courant** est ingérée et réconciliée contre ses propres soldes. Les autres sections — livrets, épargne, crédits, situation des autres comptes — sont ignorées, et le système indique lesquelles.
+- **FR80** — Lorsqu'un relevé porte un débit différé de carte accompagné de son détail, la ligne agrégée est **remplacée** par les achats qui la composent, chacun catégorisé et **daté de son jour d'achat**. Si la somme du détail diffère de la ligne agrégée d'au moins un centime, le relevé est marqué « non fiable » et l'écart est exposé. Si l'agrégat se présente **sans** son détail, il est conservé tel quel et le relevé est marqué « non fiable », avec cette cause.
+- **FR81** — La déduplication (FR5), la détection de chevauchement de période (FR6) et la réconciliation (FR10, FR11) s'appliquent quelle que soit la banque, et **par profil** : deux profils peuvent ingérer chacun leur relevé du même mois.
+
+*Le chantier livre le **cloisonnement** sans l'**identité**. FR76 n'est pas une protection contre une personne — FR74 laisse quiconque basculer — mais la séparation serveur que la connexion (FR44) réutilisera sans rouvrir les endpoints. Son risque est borné par NFR35, pas par le code.*
+
+***FR75** reprend l'intention de la story 22.2 : une migration de propriété, faite une fois, qui **préserve** les données. NFR12 étant inversée, vider puis ré-ingérer n'est plus une option — les corrections, règles et regroupements n'existent dans aucun PDF.*
+
+***FR79** tient la limite « un compte par profil » posée au hors-périmètre. Ingérer le livret en plus du compte courant ferait apparaître chaque virement d'épargne des deux côtés, et ferait déclencher FR6 à chaque mois. La limite est dite à l'utilisateur au dépôt, pas découverte en analyse.*
+
+***FR80** est la condition pour que l'analyse d'un compte Crédit Mutuel ait un sens. Sans elle, les achats par carte d'un mois tiennent en une ligne `RELEVE CARTE` impossible à ranger ; avec les deux, ils seraient comptés deux fois sans que la réconciliation du compte courant — qui ne voit que l'agrégat — puisse le voir. La vérification au centime entre détail et agrégat est une **seconde réconciliation**, au même niveau d'exigence que la première.*
+
+*La **date d'achat** est retenue parce que l'analyse répond à « quand l'argent a-t-il été dépensé ». Conséquence assumée : un achat de fin de mois peut tomber dans une période antérieure à celle du relevé qui le porte, et le dernier mois reste incomplet jusqu'au relevé suivant. La réconciliation n'en est pas affectée — elle porte sur le relevé, pas sur la période d'analyse. Un agrégat sans détail est **gardé plutôt que refusé** : il laisse la réconciliation juste et ne bloque pas un relevé réel, et l'état « non fiable » dit pourquoi ses achats ne sont pas ventilés.* *(Tranché le 2026-09-22, validation.)*
+
+***FR78** n'apparaît dans aucun parcours, comme FR9 et pour la même raison : c'est une capacité de rattrapage. La banque étant préremplie, un dépôt sous la mauvaise banque arrivera ; sans FR78, il produirait un import partiel ou faux. Déclarée orpheline plutôt que masquée.*
+
+*La banque est portée par le **relevé**, pas par le profil (FR77). La banque par défaut n'est qu'un préremplissage : le jour où un profil change de banque, son historique reste lisible.*
+
 ### Identité et foyer
 
 *Ajoutées le 2026-09-12. Phase 1 bis.*
 
 - **FR44** — L'utilisateur s'authentifie auprès de l'application via un fournisseur d'identité externe. L'application ne stocke ni mot de passe ni empreinte de mot de passe.
 - **FR45** — Le fondateur du foyer peut inviter une personne en désignant son adresse. L'invitation est à usage unique et expire sous 7 jours si elle n'est pas acceptée.
-- **FR46** — Une personne invitée rejoint le foyer à sa première connexion, dans un espace vierge : aucun relevé, aucune transaction, aucun référentiel hérité d'un autre membre.
+- **FR46** — Une personne invitée rejoint le foyer à sa première connexion, dans un espace vierge : aucun relevé, aucune transaction, aucune règle, aucun référentiel hérité d'un autre membre. Son référentiel de départ est le **référentiel initial**. *(Amendée le 2026-09-22 : « vierge » laissait le modèle sans aucun poste où ranger une ligne. Le référentiel initial n'appartient à personne, il ne contredit ni FR49 ni FR52. Si la personne dispose déjà d'un profil créé par FR73, sa connexion l'y rattache au lieu d'en créer un.)*
 - **FR47** — L'utilisateur peut consulter la liste des membres de son foyer.
 - **FR48** — Le fondateur peut retirer un membre du foyer. Le retrait est refusé tant que le solde de ce membre n'est pas nul, et le système indique le montant restant.
-- **FR49** — Un membre ne peut accéder ni aux relevés, ni aux transactions, ni au référentiel, ni aux indicateurs d'un autre membre. **Seule exception : les dépenses marquées communes (FR64).**
+- **FR49** — Un membre ne peut accéder ni aux relevés, ni aux transactions, ni au référentiel, ni aux indicateurs d'un autre membre. **Seule exception : les dépenses marquées communes (FR64).** *(Précisée le 2026-09-22 : la même séparation s'applique entre profils dès FR76, avant toute authentification. FR44 n'ajoute que la vérification de l'identité qui choisit le profil.)*
 
 ### Dépenses communes
 
@@ -828,7 +928,7 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 
 ### Agent conversationnel
 
-*Ajoutées le 2026-09-12. **Premier chantier de la séquence**, avant le foyer.*
+*Ajoutées le 2026-09-12. **Deuxième chantier de la séquence**, après « Profils et banques » et avant le foyer.*
 
 - **FR65** — L'utilisateur peut ouvrir à tout moment une conversation avec un agent et lui poser une question en langage ordinaire sur ses données.
 - **FR66** — L'agent répond en français, à partir des agrégats renvoyés par le moteur d'analyse. Il ne produit aucun montant qui ne lui ait été renvoyé.
@@ -837,7 +937,7 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 - **FR69** — L'agent indique explicitement qu'il ne peut pas répondre lorsque la question sort de ce que le moteur sait calculer, au lieu de produire une réponse approchée.
 - **FR70** — L'utilisateur peut retrouver ses conversations passées et en reprendre une avec son contexte.
 - **FR71** — L'utilisateur peut supprimer une conversation.
-- **FR72** — L'agent n'interroge que les données de l'utilisateur connecté et les dépenses marquées communes (FR64). Il n'a accès à aucune autre donnée d'un autre membre.
+- **FR72** — L'agent n'interroge que les données du profil courant — de l'utilisateur connecté, une fois FR44 livrée — et les dépenses marquées communes (FR64). Il n'a accès à aucune donnée d'un autre profil. *(Amendée le 2026-09-22 : l'agent est désormais construit après le cloisonnement par profil.)*
 
 *Le périmètre est délibérément étroit : **l'agent lit, il n'agit pas.** Il ne reclasse aucune transaction, ne crée aucune règle, ne marque aucune dépense comme commune. Une capacité d'action supposerait qu'on lui fasse confiance pour modifier des données, ce qui est un tout autre sujet que lui faire confiance pour décrire un tableau.*
 
@@ -861,7 +961,7 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 
 **FR9** n'apparaît dans aucun parcours utilisateur. Elle est retenue malgré tout : sur 24 fichiers déposés d'un coup, un mauvais PDF finira par passer, et sans elle la seule issue serait de vider la base.
 
-**Hors périmètre, explicitement** : export de données, budgets, objectifs par catégorie, alertes, second compte bancaire, parts inégales entre membres du foyer, application installable sur téléphone, foyer de plus de deux membres, gestion de comptes utilisateurs interne à l'application, sort des données d'un membre retiré, sauvegarde hors site, **agent capable d'agir sur les données** (reclasser, créer une règle, marquer une dépense).
+**Hors périmètre, explicitement** : export de données, budgets, objectifs par catégorie, alertes, plusieurs comptes pour un même profil — y compris les sections livret et épargne d'un relevé Crédit Mutuel —, banques autres que Boursorama et Crédit Mutuel, détection automatique de la banque d'un relevé, suppression et renommage d'un profil, parts inégales entre membres du foyer, application installable sur téléphone, foyer de plus de deux membres, gestion de comptes utilisateurs interne à l'application, sort des données d'un membre retiré, sauvegarde hors site, **agent capable d'agir sur les données** (reclasser, créer une règle, marquer une dépense).
 
 *« Projections » quitte cette liste le 2026-09-12 sans pour autant entrer au périmètre : le forecast est le **troisième chantier** de la séquence et fera l'objet d'un amendement propre. Tant qu'il n'est pas écrit ici, il n'existe pas.*
 
@@ -895,18 +995,23 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 
   **Le résidu, connu et assumé.** Le nom du titulaire figure à l'intérieur des libellés bancaires eux-mêmes — `VIR SEPA DUPONT Jean charges` — où il est indissociable de la donnée métier. L'expurger casserait la catégorisation, qui s'appuie précisément sur ces libellés. **Arbitrage explicite de l'utilisateur, le 2026-09-12 : les libellés ne sont pas sensibles, les identifiants bancaires le sont.** Le premier point traite le second ; le résidu est accepté.
 
+  **Par banque.** *(Ajouté le 2026-09-22.)* Ces trois énoncés valent pour **chaque** banque supportée, et leur respect est démontré banque par banque (NFR36). Une coupe calée sur la mise en page d'une banque ne prouve rien pour une autre.
+
   *Portée pour l'agent conversationnel : il transmet des agrégats — libellés de rubriques et de postes, montants, périodes. Une question portant sur des transactions précises fait repartir des libellés bancaires, ce que cet arbitrage couvre. Aucune exigence supplémentaire n'est nécessaire.*
 - **NFR7** — L'inférence LLM s'exécute sur une infrastructure hébergée dans l'Union européenne.
 - **NFR8** — La clé d'API est lue depuis une variable d'environnement, jamais écrite en base, jamais journalisée, jamais retournée dans une réponse HTTP.
-- **NFR9** — *(Inversée le 2026-09-12. Rédaction précédente : « L'application ne comporte aucune authentification et suppose un environnement local de confiance, mono-machine. Toute exposition réseau rendrait l'authentification bloquante. » La condition posée par cette phrase est désormais remplie.)* Aucun écran, aucun endpoint et aucune donnée n'est accessible sans authentification préalable. L'application est joignable depuis Internet et ne suppose plus aucun environnement de confiance.
+- **NFR9** — *(Inversée le 2026-09-12. Rédaction précédente : « L'application ne comporte aucune authentification et suppose un environnement local de confiance, mono-machine. Toute exposition réseau rendrait l'authentification bloquante. » La condition posée par cette phrase est désormais remplie.)* Aucun écran, aucun endpoint et aucune donnée n'est accessible sans authentification préalable. L'application est joignable depuis Internet et ne suppose plus aucun environnement de confiance. *(Précisée le 2026-09-22 : NFR9 s'applique à partir de la livraison de FR44. D'ici là, c'est NFR35 qui gouverne.)*
 
 ### Cloisonnement et exposition
 
 *Ajoutées le 2026-09-12.*
 
-- **NFR24** — La séparation des données entre membres du foyer est appliquée côté serveur à chaque requête. Aucun filtrage effectué côté interface ne tient lieu de cloisonnement. **Une seule exception, énumérée et close : les dépenses marquées communes (FR64), dont la date, le libellé, le montant et le payeur sont visibles des deux membres.** Toute autre donnée reste cloisonnée, y compris le poste sur lequel la dépense est rangée chez son payeur.
+- **NFR24** — La séparation des données entre membres du foyer — entre profils, avant FR44 — est appliquée côté serveur à chaque requête. Aucun filtrage effectué côté interface ne tient lieu de cloisonnement. **Une seule exception, énumérée et close : les dépenses marquées communes (FR64), dont la date, le libellé, le montant et le payeur sont visibles des deux membres.** Toute autre donnée reste cloisonnée, y compris le poste sur lequel la dépense est rangée chez son payeur.
 - **NFR25** — L'application ne détient aucun secret d'authentification. L'identité est vérifiée par un fournisseur externe, et aucun mot de passe ni empreinte de mot de passe n'est stocké.
 - **NFR26** — Toute requête provenant de l'extérieur du réseau local transite par un canal chiffré. Aucune page de l'application n'est accessible sans authentification, et l'indexation par les moteurs de recherche est refusée.
+- **NFR35** — *(Ajoutée le 2026-09-22.)* **Porte d'exposition.** Tant que FR44 n'est pas livrée, l'application n'accepte aucune connexion provenant de l'extérieur du réseau local. Le choix du profil courant n'est pas une authentification et n'est présenté comme telle nulle part. Vérifié par une tentative de connexion depuis l'extérieur du réseau, refusée.
+
+  *Sans cette exigence, le chantier de rang 1 produirait une application multi-personnes où n'importe qui choisit son identité d'un clic. Elle n'est pas une mitigation parmi d'autres : c'est la condition qui rend le report de FR44 acceptable.*
 
 ### Justesse du partage
 
@@ -954,6 +1059,7 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 ### Maintenabilité
 
 - **NFR21** — L'extraction de texte PDF est confinée à un module unique. Aucun autre fichier n'importe la bibliothèque d'extraction.
+- **NFR36** — *(Ajoutée le 2026-09-22.)* Chaque banque supportée dispose d'un test d'extraction sur un **relevé réel anonymisé**, qui vérifie, dans le texte transmis au fournisseur : l'absence de tout IBAN, numéro de compte et numéro de carte, **y compris à l'intérieur des libellés d'opération** ; l'absence du nom et de l'adresse du titulaire **hors libellés** — seul résidu admis par NFR6 ; la réconciliation au centime ; et, pour le Crédit Mutuel, l'ingestion du seul compte courant (FR79) et l'égalité détail carte / agrégat (FR80). La fixture ne contient **aucun identifiant réel** — le relevé source reste dans le répertoire de données non versionné.
 - **NFR22** — Aucune constante métier structurante — natures, seuils, référentiel initial — n'est codée en dur dans une fonction de calcul.
 - **NFR34** — L'identifiant du modèle et ses paramètres d'appel sont lus depuis la configuration d'environnement, avec une **valeur distincte par usage** : catégorisation d'un côté, agent conversationnel de l'autre. Aucun module ne les code en dur. La clé d'API reste soumise à NFR8 et ne figure dans aucune interface. *(Ajoutée le 2026-09-12.)*
 
