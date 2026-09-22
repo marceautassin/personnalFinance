@@ -11,6 +11,11 @@ inputDocuments:
   - CLAUDE.md
 supersedes: _bmad-output/planning-artifacts/epics-v1-forecast.md
 amendments:
+  - date: '2026-09-22'
+    scope: >-
+      Chantier « Profils et banques » (rang 1). FR73 à FR81, NFR35, NFR36,
+      AR34 à AR41 ajoutées ; FR46, FR49, FR72, NFR6, NFR9, NFR24 amendées.
+      Epics 27 et 28 ajoutés ; story 22.2 absorbée.
   - date: '2026-09-12'
     scope: >-
       Périmètre foyer (Phase 1 bis du PRD). Inventaire étendu de FR44 à FR62 et
@@ -25,6 +30,8 @@ amendments:
 Découpage du PRD réécrit du 2026-09-04 (39 FRs / 23 NFRs / 4 parcours) et de l'amendement d'architecture du même jour (D17-D27) en epics et stories implémentables.
 
 > **Amendement du 2026-09-12 — le périmètre foyer.** Le PRD a été révisé puis validé le même jour : il porte désormais **62 FRs, 30 NFRs et 7 parcours**. Ce qui s'ajoute est la Phase 1 bis, où l'application cesse d'être mono-utilisateur et mono-machine : identité déléguée, second membre cloisonné, dépenses communes partagées à parts égales, saisie des dépenses en espèces, et décompte « qui doit combien à qui ».
+>
+> **Amendement du 2026-09-22 — profils et banques.** Le PRD porte **81 FRs, 36 NFRs et 9 parcours**. Chantier de rang 1 : les données appartiennent à des profils avant toute authentification, et les relevés Crédit Mutuel entrent au même niveau d'exigence que ceux de Boursorama. Epics **27 et 28** ; la story 22.2 est absorbée.
 >
 > **Ce document est complété, pas remplacé.** Les epics 12 à 21 restent en l'état ; les nouveaux démarrent à **22**, pour la raison exposée plus bas au sujet de la numérotation.
 
@@ -150,6 +157,19 @@ Il n'existe pas de spécification UX pour ce projet et il n'y en aura pas : mono
 - **FR72** — L'agent n'interroge que les données de l'utilisateur connecté et les dépenses marquées communes (FR64).
 - **FR37** — *(absorbée par FR65 à FR72.)* La synthèse narrative était la version non interactive de l'agent.
 
+**Profils et banques — ajoutées le 2026-09-22 (chantier de rang 1)**
+
+- **FR73** — L'utilisateur peut créer un profil (nom, banque par défaut). Un profil créé démarre sans relevé, transaction ni règle, avec le **référentiel initial**, jamais celui d'un autre profil.
+- **FR74** — L'utilisateur peut choisir le profil courant. Son nom est affiché sur chaque écran.
+- **FR75** — Toutes les données existantes sont rattachées au profil `marceau` par une migration unique. Nombre de transactions et total de chaque relevé identiques avant et après.
+- **FR76** — Chaque écran et chaque endpoint de données ne restitue que les données du profil courant, restriction appliquée côté serveur.
+- **FR77** — La banque d'un relevé est préremplie depuis le profil courant et modifiable. Chaque relevé conserve sa banque.
+- **FR78** — Le système extrait les relevés Boursorama et Crédit Mutuel. Un relevé qui ne correspond pas à la banque choisie est refusé avec sa cause, aucune transaction enregistrée.
+- **FR79** — Relevé Crédit Mutuel : seule la section du compte courant est ingérée et réconciliée sur ses propres soldes ; les autres sections sont ignorées et nommées.
+- **FR80** — Débit différé de carte : l'agrégat est remplacé par les achats du détail, datés du jour d'achat. Écart ≥ 1 centime → relevé non fiable, écart exposé. Agrégat sans détail → conservé, relevé non fiable avec cette cause.
+- **FR81** — Déduplication, chevauchement de période et réconciliation s'appliquent quelle que soit la banque, et par profil.
+- *(Amendées le 2026-09-22 : **FR46** — référentiel de départ = référentiel initial, rattachement à un profil existant ; **FR49** — s'applique entre profils dès FR76 ; **FR72** — profil courant, puis utilisateur connecté.)*
+
 **FR mises à jour le 2026-09-12**
 
 - **FR31** — *(réécrite)* L'utilisateur choisit **ce qu'il regarde** — un trimestre, une année, ou l'historique complet — et la série est toujours découpée au **mois**. L'ancienne rédaction, « sur plusieurs périodes consécutives », décrivait le comportement d'avant la refonte du 2026-09-07 et ne disait ni combien de périodes, ni qui choisissait la fenêtre. **Aucun travail : l'énoncé rattrape le produit livré.**
@@ -215,6 +235,12 @@ Il n'existe pas de spécification UX pour ce projet et il n'y en aura pas : mono
 - **NFR17** — *(étendue)* L'indisponibilité du fournisseur fait échouer proprement l'ingestion **et l'agent**. Toutes les autres capacités restent intactes.
 - **NFR6** — *(réécrite)* Bloc d'identité coupé avant transmission ; lignes brutes du tableau d'opérations transmises ; nom du titulaire résiduel dans les libellés, assumé.
 
+**Profils et banques — ajoutées le 2026-09-22**
+
+- **NFR35** — **Porte d'exposition.** Tant que FR44 n'est pas livrée, aucune connexion depuis l'extérieur du réseau local. Le choix du profil n'est présenté nulle part comme une authentification.
+- **NFR36** — Chaque banque a un test d'extraction sur relevé réel anonymisé : aucun IBAN, numéro de compte ni de carte dans le texte transmis, **libellés compris** ; aucun nom ni adresse hors libellés ; réconciliation au centime ; pour le Crédit Mutuel, compte courant seul et égalité détail carte / agrégat. Aucun identifiant réel dans la fixture.
+- *(Amendées le 2026-09-22 : **NFR6** vaut pour chaque banque ; **NFR9** s'applique à partir de FR44, NFR35 d'ici là ; **NFR24** vaut entre profils avant FR44.)*
+
 **Justesse du partage — ajoutées le 2026-09-12**
 
 - **NFR27** — La somme des parts d'une dépense commune égale son montant, au centime. Un montant à moitié impaire est réparti sans perte ni création : jamais deux fois le même arrondi.
@@ -277,6 +303,17 @@ Ces exigences ne sortent pas d'un amendement d'architecture déjà écrit : **l'
 - **AR32 — L'agent ne choisit pas librement, il remplit une requête que l'application valide.** Plutôt que de laisser le modèle appeler les endpoints, il produit une demande structurée — période, granularité, cible — que le code valide **avant** de l'exécuter. Une période absurde est rejetée par l'application, pas par la bonne volonté du modèle. ⚠️ **Pourquoi c'est nécessaire** : D20 a établi que les sorties structurées du fournisseur sont **injectées dans le prompt et non contraintes au décodage**. Si le schéma n'est qu'une instruction, le choix de la période l'est aussi. Ce design tient avec un modèle médiocre sur ce point et s'améliore si le modèle est bon.
 - **AR33 — Deux usages, deux configurations, un seul SDK.** L'agent ne crée pas de second fournisseur : NFR7 lui impose l'inférence en Europe comme à l'ingestion, et NFR16 continue d'exiger un point d'entrée unique vers le SDK. Mais les deux usages n'attendent pas la même chose du modèle — l'un produit du JSON, l'autre tient une conversation — et leurs paramètres sont donc distincts et lus depuis la configuration (NFR34).
 - **AR31 — La porte d'exposition est un jalon, pas une étape.** L'application n'est joignable depuis Internet qu'une fois le cloisonnement vérifié par test et la sauvegarde en place. Exposer avant, c'est accepter de perdre des données qu'aucun PDF ne reconstruit.
+
+**Profils et banques — ajoutées le 2026-09-22 (architecture D37 à D43)**
+
+- **AR34 (D37)** — Le **profil** est le propriétaire. `profile_id` sur `category_groups`, `category_items`, `bank_statements`, `classification_rules`, `settlement_groups` ; **pas** sur `transactions`, possédées via leur relevé. Référentiel en clé de substitution, `(profile_id, code)` unique ; l'API continue d'exposer des codes. Hash du relevé gardé comme clé **globale**. Migration `0010` unique : sauvegarde **vérifiée restaurable** avant, comptages et sommes par relevé avant/après, échec sur écart.
+- **AR35 (D38)** — Profil courant en cookie `pf_profile` ; seul `requireProfile(event)` le lit. **Les 23 endpoints** hors `profiles/` l'appellent ; filtrage dans la requête SQL ; ressource d'un autre profil → **404**. Test d'architecture qui échoue si un endpoint ne l'appelle pas. Changer de profil recharge l'application. L'agent propage le profil de la requête appelante.
+- **AR36 (D39)** — `seedReferential(tx, profileId)` depuis `DEFAULT_REFERENTIAL`, dans la transaction de création du profil, et au bootstrap pour tout profil sans rubrique.
+- **AR37 (D40)** — `BANKS = ['boursorama', 'credit_mutuel']` dans `shared/types/bank.ts` ; `bank_statements.bank` et `profiles.default_bank` ; champ multipart `bank` optionnel sur `POST /api/statements`.
+- **AR38 (D41)** — `server/services/bank-formats/` : un `BankFormat` par banque (`recognizes`, `operationsText`, `balancesAndPeriod`, `cardDebits`), aucun n'importe `unpdf`. `recognizes` court **avant** l'appel au fournisseur (`400 bank_mismatch`). Boursorama **déplacé sans changement de comportement**. Un seul prompt, paragraphe propre à la banque.
+- **AR39 (D42)** — Crédit Mutuel : découpage en sections sur les titres `€ …` (une section peut courir sur deux pages) ; compte courant seul, 0 ou ≥ 2 candidats → `400 statement_format_unrecognized` ; `ignoredSections` dans la réponse, sans numéros ; soldes `CREDITEUR`/`DEBITEUR` de la section retenue ; **période = lendemain du solde d'ouverture**. Détail carte : total lu par le code, lignes par un appel distinct, remplacement déterministe avant réconciliation ; `bank_statements.card_detail_missing` et état `card_detail_missing` dans `deriveReliability`. Identité en trois couches : construction, correspondance exacte des numéros lus, motif ≥ 10 chiffres.
+- **AR40 (D43)** — Fixtures JSON de pages `PositionedItem` sous `tests/fixtures/statements/`, identifiants substitués par des faux de même forme, **Boursorama compris** (ses tests actuels sont sautés faute de PDF versionné).
+- **AR41 (D42, points ouverts)** — ⚠️ **Bloquant pour les stories Crédit Mutuel** : trois à cinq relevés supplémentaires, couvrant solde débiteur, remboursement carte, deux cartes, détail prélevé hors période.
 
 ### UX Design Requirements
 
@@ -368,14 +405,31 @@ Ces exigences ne sortent pas d'un amendement d'architecture déjà écrit : **l'
 | FR69 | 26 | neuf | Refus explicite hors de portée du moteur |
 | FR70 | 26 | neuf | Retrouver et reprendre une conversation |
 | FR71 | 26 | neuf | Supprimer une conversation |
-| FR72 | 26 + 22 | **par construction** | L'agent ne touche pas la base (NFR32) ; le cloisonnement est posé en 22.2. Aucune story dédiée |
+| FR72 | 26 + 27 | **par construction** | L'agent ne touche pas la base (NFR32) ; le cloisonnement est posé en 27.2 (22.2 jusqu'au 2026-09-22). Aucune story dédiée |
 | FR37 | 26 | absorbée | La synthèse narrative devient une question parmi d'autres |
 
 **Couverture du périmètre agent : 8/8.**
 
 **Couverture du périmètre foyer : 21/21.** Aucune FR orpheline. L'epic 23 ne porte aucune FR : il livre NFR5, NFR12 et NFR26, et constitue la porte d'exposition.
 
-**Couverture totale : 72/72.**
+**Couverture totale : 72/72.** *(au 2026-09-12)*
+
+#### Profils et banques — chantier de rang 1 (ajouté le 2026-09-22)
+
+| FR | Epic | Statut | Note |
+|---|---|---|---|
+| FR73 | 27 | neuf | Création d'un profil, référentiel initial semé dans la même transaction (AR36) |
+| FR74 | 27 | neuf | Choix du profil courant, nom affiché partout |
+| FR75 | 27 | neuf | Migration unique vers `marceau`, préservante (AR34) — **reprend 22.2** |
+| FR76 | 27 | neuf | `requireProfile` sur 23 endpoints, test d'architecture (AR35) — **reprend 22.2** |
+| FR77 | 28 | neuf | Banque préremplie, modifiable, portée par le relevé (AR37) |
+| FR78 | 28 | neuf | Refus sous la mauvaise banque, avant tout appel au fournisseur (AR38) |
+| FR79 | 28 | neuf | Crédit Mutuel : compte courant seul, sections ignorées nommées (AR39) |
+| FR80 | 28 | neuf | Détail carte daté du jour d'achat ; agrégat sans détail → non fiable (AR39) |
+| FR81 | 27 + 28 | neuf | Chevauchement de période par profil (27.2) ; toutes banques (28.1, 28.2) |
+| FR46, FR49, FR72 | 22, 26 | amendées | FR49 est **tenue dès 27.2** entre profils ; FR72 par construction via 27.2 |
+
+**Couverture du chantier : 9/9. Couverture totale : 81/81.**
 
 ## Epic List
 
@@ -506,6 +560,49 @@ Le foyer conserve les numéros 22 à 25, attribués avant que l'ordre ne change.
 
 **Pourquoi 24 et 25 restent séparés malgré des fichiers communs.** Le gabarit recommande de fusionner des epics qui retouchent les mêmes fichiers, et c'est bien le cas ici : les deux modifient la transformation appliquée avant agrégation. Ils sont malgré tout maintenus distincts parce que livrer 24 seul répond à une question qu'aucune analyse sur le papier ne tranche — **marquer les dépenses communes est-il un geste réellement fait ?** Si la réponse est non, l'epic 25 change de forme. C'est une frontière de risque, pas une frontière décorative.
 
+
+### Epics 27 et 28 — profils et banques
+
+*Ajoutés le 2026-09-22. **Numérotés en dernier, livrés en premier** : c'est le chantier de rang 1 du PRD amendé.*
+
+### Epic 27 : Deux profils, chacun ses données
+
+Marceau retrouve tout son historique sous le profil `marceau`, crée un second profil, bascule de l'un à l'autre, et aucun ne voit les données de l'autre — **côté serveur**, pas par filtrage d'écran.
+
+**FRs couverts :** FR73, FR74, FR75, FR76, FR81 (chevauchement par profil)
+**Exigences additionnelles :** AR34, AR35, AR36, AR37 (colonnes) · NFR24, NFR35
+
+**Cet epic reprend la story 22.2.** La propriété des données et le cloisonnement serveur y étaient liés à l'authentification ; le PRD les en détache. 22.2 est marquée absorbée, pas supprimée : Vigie garde sa trace.
+
+**Ce que l'epic ne protège pas.** Choisir un profil n'est pas s'identifier. NFR35 interdit toute exposition hors du réseau local tant que 22.1 n'est pas livrée.
+
+### Epic 28 : Les relevés Crédit Mutuel
+
+Le second profil dépose ses relevés Crédit Mutuel : seul le compte courant est lu, les achats par carte sont détaillés et contrôlés au centime, et aucun identifiant bancaire ne part vers le fournisseur.
+
+**FRs couverts :** FR77, FR78, FR79, FR80, FR81 (toutes banques)
+**Exigences additionnelles :** AR37, AR38, AR39, AR40, AR41 · NFR6, NFR36
+
+⚠️ **Bloqué en partie** : 28.2 et 28.3 attendent trois à cinq relevés Crédit Mutuel supplémentaires (AR41). 28.1 ne l'est pas.
+
+**Pourquoi deux epics.** La frontière est de risque : l'epic 27 ne dépend d'aucun PDF et démarre tout de suite, l'epic 28 dépend de relevés à fournir. Fusionnés, le cloisonnement attendrait des PDF sans raison. Les fichiers se recouvrent peu (`schema.ts` et les endpoints pour 27, l'extracteur et l'orchestrateur pour 28).
+
+### Dépendances des epics 27 et 28
+
+```
+27.1 (migration, colonne bank)  →  27.2  →  27.3
+          └────────────────────→  28.1  →  28.2  →  28.3
+```
+
+28 ne dépend que de 27.1. Les deux branches peuvent avancer en parallèle après la migration.
+
+### Ordre de livraison — révisé le 2026-09-22
+
+```
+27 → 28 (profils et banques)  →  26 (agent)  →  22 → 23 → 24 → 25 (foyer)  →  forecast (non cadré)
+```
+
+*L'ordre précédent (26 → 22-25 → forecast) est remplacé. L'epic 22 perd sa story 22.2 ; 22.1 rattachera une identité à un profil existant au lieu de créer l'espace.*
 ---
 
 ## Epic 12: Référentiel hiérarchique et natures de mouvement
@@ -2348,6 +2445,11 @@ migration de propriété **préserve** les données. C'est la contrainte la plus
 
 ### Story 22.1: Se connecter avec un compte que l'on a déjà
 
+> *Amendée le 2026-09-22.* Les profils existent déjà (epic 27). Une identité vérifiée se
+> **rattache à un profil existant** — `marceau` pour le fondateur — et `requireProfile` lit
+> désormais la session au lieu du cookie `pf_profile`, sans qu'aucun endpoint change (AR35). Le
+> choix libre du profil disparaît à cette story.
+
 En tant qu'utilisateur,
 je veux entrer dans l'application avec un compte existant chez un fournisseur d'identité,
 afin de n'avoir ni mot de passe à choisir, ni compte de plus à créer.
@@ -2371,6 +2473,10 @@ afin de n'avoir ni mot de passe à choisir, ni compte de plus à créer.
 connexion exige Internet, y compris depuis le réseau local — renoncement assumé.
 
 ### Story 22.2: Chaque donnée a un propriétaire, et chaque requête s'y limite
+
+> ⚠️ **Absorbée le 2026-09-22 par les stories 27.1 et 27.2.** La propriété des données et le
+> cloisonnement serveur sont livrés par le chantier « Profils et banques », avant et sans
+> l'authentification. Le texte ci-dessous est conservé pour mémoire ; **ne pas l'implémenter**.
 
 En tant qu'utilisateur,
 je veux que mes relevés, mes transactions et mon référentiel m'appartiennent explicitement,
@@ -3024,3 +3130,318 @@ Elles relèvent donc de la sauvegarde obligatoire (NFR12) au même titre que les
 solde d'ouverture du foyer. Le PRD signale, sans l'exiger à ce stade, qu'elles s'accumulent sans borne
 et que la sauvegarde quotidienne les emporte : ni rétention ni purge ne sont définies. Sans effet
 aujourd'hui, à reconsidérer si le volume devient visible.
+
+---
+
+## Epic 27 — Deux profils, chacun ses données
+
+> **Ouvert le 2026-09-22.** « Je veux que toutes les données déjà chargées soient affectées à mon
+> profil marceau », puis « sur le prochain profil que je vais créer on va l'affecter à Crédit
+> Mutuel ». Chantier de rang 1, devant l'agent et le foyer.
+
+Marceau retrouve tout son historique sous son profil, crée un second profil pour une autre
+personne, et bascule de l'un à l'autre. Aucun profil ne voit les données de l'autre, et c'est le
+serveur qui l'impose.
+
+**FRs :** FR73, FR74, FR75, FR76, FR81 · **AR :** AR34, AR35, AR36, AR37 · **NFR :** NFR24, NFR35
+
+**Reprend la story 22.2**, marquée absorbée. **Ne protège pas d'une personne** : sans
+authentification, quiconque a l'application devant lui peut changer de profil — d'où NFR35.
+
+### Story 27.1: Tout mon historique m'appartient, sans rien perdre
+
+En tant que Marceau,
+je veux que chacune de mes données existantes soit rattachée à mon profil,
+afin qu'un second profil puisse exister sans que rien de ce que j'ai construit ne bouge.
+
+**Acceptance Criteria:**
+
+**Given** la base actuelle, avec deux ans d'historique, des corrections, des règles et des groupes
+**When** la migration `0010` s'applique
+**Then** une table `profiles` existe et contient le profil `marceau`, banque par défaut `boursorama`
+**And** chaque rubrique, poste, relevé, règle et groupe porte `profile_id` = `marceau`
+**And** chaque relevé porte `bank = 'boursorama'` (AR37)
+
+**Given** la migration
+**When** elle s'exécute
+**Then** une sauvegarde est prise **avant**, et sa restaurabilité est vérifiée — ouverture de la copie,
+`PRAGMA integrity_check` à `ok`, comptage de chaque table égal à la source — faute de quoi la
+migration ne démarre pas
+
+**Given** la base avant et après migration
+**When** on compare
+**Then** le nombre de lignes de chaque table et la somme de `amount_cents` de chaque relevé sont
+identiques, et tout écart fait échouer la migration (FR75)
+
+**Given** le référentiel migré
+**When** on le lit
+**Then** `category_groups` et `category_items` ont une clé de substitution entière et `(profile_id,
+code)` est unique ; `transactions` et `classification_rules` référencent le poste par identifiant ;
+`classification_rules` est unique par `(profile_id, pattern)` (AR34)
+**And** `transactions` ne porte **aucune** colonne de profil : elle appartient au profil de son relevé
+
+**Given** l'application après migration
+**When** Marceau l'utilise
+**Then** chaque écran affiche exactement les mêmes chiffres qu'avant — analyse, évolution,
+relevés, fiabilité, règles, groupes — et l'API expose toujours des **codes** de poste
+
+**Given** une base neuve (E2E)
+**When** les migrations sont rejouées puis le bootstrap s'exécute
+**Then** le profil `marceau` existe et reçoit le référentiel initial (AR36)
+
+**Note d'implémentation.** Rebuild de table (création, copie, bascule) : SQLite ne porte pas de clé
+étrangère `NOT NULL` par `ALTER TABLE`. Migration versionnée et commitée (D21), **jamais** de
+`drizzle push`. C'est la story la plus risquée du chantier : la perte de ces données n'est pas
+rattrapable depuis les PDF (NFR12).
+
+### Story 27.2: Chaque requête se limite au profil courant
+
+En tant qu'utilisateur,
+je veux que le serveur ne me rende et ne me laisse modifier que les données du profil choisi,
+afin qu'un profil ne puisse ni lire ni altérer les données d'un autre, même par une requête directe.
+
+**Acceptance Criteria:**
+
+**Given** une requête vers n'importe lequel des 23 endpoints de `server/api/`, hors `profiles/`
+**When** elle est traitée
+**Then** le profil courant est obtenu par `requireProfile(event)` et **uniquement** par lui (AR35)
+**And** en l'absence de profil valide, la réponse est `400 profile_required`
+
+**Given** deux profils A et B possédant chacun des données
+**When** A interroge l'analyse, l'évolution, les transactions, les relevés, le référentiel, les
+règles ou les groupes
+**Then** seules les données de A sont renvoyées, le filtre étant appliqué **dans la requête SQL** (FR76, NFR24)
+
+**Given** une ressource de B désignée par son identifiant, son code ou son hash
+**When** A tente de la lire, la modifier ou la supprimer
+**Then** la réponse est **404**, et la ressource est inchangée
+
+**Given** A crée un groupe de transactions
+**When** l'une des lignes appartient à B
+**Then** la création est refusée
+
+**Given** A dépose un relevé couvrant une période que seul B a déjà ingérée
+**When** la détection de chevauchement s'exécute
+**Then** aucun chevauchement n'est signalé (FR81)
+
+**Given** la suite de tests
+**When** elle s'exécute
+**Then** un test d'architecture énumère les fichiers de `server/api/` et échoue si l'un d'eux, hors
+`profiles/`, n'appelle pas `requireProfile`
+
+**Given** le moteur d'analyse
+**When** il calcule
+**Then** il ne connaît toujours pas la notion de profil (D19)
+
+**Note d'implémentation.** Le cookie `pf_profile` peut être posé à la main dans les tests : l'écran
+de choix arrive en 27.3. Un profil B de test se crée directement en base dans les fixtures.
+
+### Story 27.3: Créer un profil et passer de l'un à l'autre
+
+En tant que Marceau,
+je veux créer un profil pour une autre personne et choisir celui sur lequel je travaille,
+afin qu'elle suive ses dépenses dans un espace qui n'est pas le mien.
+
+**Acceptance Criteria:**
+
+**Given** l'écran de gestion des profils
+**When** je crée un profil avec un nom et une banque par défaut
+**Then** le profil existe, **avec le référentiel initial**, sans relevé, transaction ni règle (FR73)
+**And** profil et référentiel sont créés dans la même transaction : un échec ne laisse aucun profil
+à moitié créé (AR36)
+
+**Given** un nom déjà pris
+**When** je crée un profil
+**Then** la création est refusée avec un message explicite
+
+**Given** plusieurs profils
+**When** j'en choisis un
+**Then** le cookie `pf_profile` est posé, l'application **se recharge entièrement**, et chaque écran
+n'affiche que les données de ce profil (AR35)
+
+**Given** n'importe quel écran
+**When** il s'affiche
+**Then** le nom du profil courant est visible dans l'en-tête (FR74)
+
+**Given** l'écran de choix du profil
+**When** il s'affiche
+**Then** rien ne le présente comme une connexion ou une sécurité (NFR35)
+
+**Given** un nouveau profil
+**When** il dépose son premier relevé Boursorama
+**Then** la catégorisation range les lignes dans son référentiel initial, jamais dans celui de
+`marceau`
+
+**Note d'implémentation.** Pas de renommage ni de suppression de profil : hors périmètre au PRD.
+Composable `useProfiles`, pas de `$fetch` dans un composant.
+
+---
+
+## Epic 28 — Les relevés Crédit Mutuel
+
+> **Ouvert le 2026-09-22.** « La deuxième évolution est de pouvoir choisir une banque en fonction
+> de son compte […] je vais te donner un extrait de compte pour que tu puisses créer le parseur
+> spécifique. »
+
+Le second profil dépose ses relevés Crédit Mutuel. Seul le compte courant est lu, les achats par
+carte apparaissent un par un et leur somme est contrôlée au centime, et aucun identifiant bancaire
+ne part vers le fournisseur.
+
+**FRs :** FR77, FR78, FR79, FR80, FR81 · **AR :** AR37, AR38, AR39, AR40, AR41 · **NFR :** NFR6, NFR36
+
+⚠️ **28.2 et 28.3 sont bloquées par AR41** : trois à cinq relevés Crédit Mutuel supplémentaires,
+couvrant un solde débiteur, un remboursement carte, deux cartes et un détail prélevé hors période.
+Un seul relevé a été lu : écrire le format dessus figerait ses particularités comme des règles.
+
+### Story 28.1: Choisir la banque d'un relevé, et être arrêté si elle ne correspond pas
+
+En tant qu'utilisateur,
+je veux que la banque de mon relevé soit proposée d'office et qu'un mauvais choix soit refusé net,
+afin qu'un relevé ne soit jamais lu avec les règles d'une autre banque.
+
+**Acceptance Criteria:**
+
+**Given** l'écran de dépôt
+**When** il s'affiche
+**Then** la banque est préremplie avec la banque par défaut du profil courant, et modifiable (FR77)
+**And** `POST /api/statements` accepte un champ `bank` optionnel, qui vaut sinon la banque par
+défaut du profil (AR37)
+
+**Given** un relevé ingéré
+**When** on le consulte
+**Then** sa banque est enregistrée et affichée dans la liste des relevés
+
+**Given** un relevé Boursorama déposé sous « Crédit Mutuel », ou l'inverse
+**When** l'ingestion démarre
+**Then** il est refusé en `400 bank_mismatch` avec un message en français, **avant tout appel au
+fournisseur**, et aucune ligne n'est écrite (FR78, AR38)
+
+**Given** le code d'extraction
+**When** on le lit
+**Then** la logique propre à Boursorama vit dans `server/services/bank-formats/boursorama.ts`
+derrière le type `BankFormat`, et `pdf-extractor.ts` reste le seul importateur de `unpdf` (NFR21)
+
+**Given** les relevés Boursorama de référence
+**When** ils sont ré-extraits après déplacement
+**Then** soldes, période et texte transmis sont **identiques** à ceux d'avant : aucun changement de
+comportement
+
+**Given** la suite de tests
+**When** elle s'exécute, en local comme en CI
+**Then** un test d'extraction Boursorama tourne sur une fixture JSON de pages positionnées, aux
+identifiants substitués par des faux de même forme, et vérifie qu'**aucun** faux identifiant
+n'apparaît dans le texte transmis (NFR36, AR40)
+**And** ce test n'est plus sauté faute de PDF, comme le sont les tests actuels
+
+**Given** le prompt d'extraction
+**When** il est construit
+**Then** sa partie commune ne mentionne plus Boursorama, et un paragraphe propre à la banque du
+relevé s'y ajoute
+
+**Note d'implémentation.** Story sans relevé Crédit Mutuel : `credit_mutuel` n'y apporte que
+`recognizes`, ce qui suffit à tester le refus croisé. Le reste de son format arrive en 28.2.
+
+### Story 28.2: Lire le compte courant d'un relevé Crédit Mutuel, et lui seul
+
+En tant que titulaire d'un compte Crédit Mutuel,
+je veux que mes relevés soient lus, réconciliés et catégorisés comme ceux de Boursorama,
+afin de suivre mes dépenses sans rien saisir.
+
+**Acceptance Criteria:**
+
+**Given** un relevé Crédit Mutuel contenant un compte courant, des livrets et un plan d'épargne
+**When** il est ingéré
+**Then** seules les opérations de la section du compte courant sont importées (FR79)
+**And** la réponse d'ingestion nomme les sections ignorées, **sans leurs numéros**, et l'écran les
+affiche
+
+**Given** une section de compte courant qui court sur deux pages
+**When** le relevé est découpé
+**Then** elle reste une seule section, et ses opérations des deux pages sont importées
+
+**Given** aucune section, ou plusieurs, reconnue comme compte courant
+**When** l'ingestion s'exécute
+**Then** le relevé est refusé en `400 statement_format_unrecognized`, sans ligne écrite
+
+**Given** la section retenue
+**When** ses soldes sont lus
+**Then** ouverture et clôture sont le premier et le dernier `SOLDE CREDITEUR AU` ou
+`SOLDE DEBITEUR AU` **de cette section**, `DEBITEUR` donnant un montant négatif
+**And** la période commence **le lendemain** du solde d'ouverture et se termine au solde de clôture
+
+**Given** deux relevés Crédit Mutuel consécutifs
+**When** le second est déposé
+**Then** aucun chevauchement de période n'est signalé (FR81)
+
+**Given** un relevé dont la somme des lignes ne tombe pas sur les soldes
+**When** il est ingéré
+**Then** il est marqué « non fiable » avec l'écart, exactement comme un relevé Boursorama (FR81)
+
+**Given** le texte transmis au fournisseur
+**When** on le lit
+**Then** il ne contient ni IBAN, ni numéro de compte, ni numéro de carte — **libellés compris**,
+ex. `VIR PEL <numéro>` — ni nom ou adresse du titulaire hors libellés (NFR6, NFR36)
+**And** les trois couches d'AR39 sont en place : sélection par construction, remplacement exact des
+numéros lus dans le document, masquage des suites d'au moins dix chiffres
+**And** les numéros de chèque (sept chiffres) restent lisibles
+
+**Given** la suite de tests
+**When** elle s'exécute
+**Then** chaque relevé Crédit Mutuel de référence a sa fixture JSON anonymisée, qui vérifie soldes,
+période, section retenue, sections ignorées et absence de tout faux identifiant planté (AR40)
+
+**Note d'implémentation.** ⚠️ **Bloquée par AR41.** Dans cette story, la ligne `RELEVE CARTE` reste
+une ligne comme les autres : son remplacement par le détail est l'objet de 28.3. Le bloc de détail
+carte n'est **pas** transmis au fournisseur ici.
+
+### Story 28.3: Voir mes achats par carte un par un, au centime près
+
+En tant que titulaire d'une carte à débit différé,
+je veux voir chaque achat plutôt qu'une seule ligne mensuelle,
+afin de savoir où part l'argent que je dépense par carte.
+
+**Acceptance Criteria:**
+
+**Given** un relevé portant une ligne `RELEVE CARTE` de montant T et un bloc de détail totalisant T
+**When** il est ingéré
+**Then** la ligne agrégée disparaît et chaque achat du détail devient une transaction, catégorisée
+et **datée de son jour d'achat** (FR80)
+**And** le total T est lu par le code, jamais par le modèle ; les lignes du détail sont extraites
+par un **appel distinct** au fournisseur (AR39)
+
+**Given** un achat du détail antérieur au début de la période du relevé
+**When** l'analyse du mois de l'achat est affichée
+**Then** l'achat y figure, et le relevé qui le porte reste celui qu'on atteint en descendant jusqu'à
+la ligne (FR36)
+
+**Given** des achats du détail dont la somme diffère de T d'au moins un centime
+**When** le relevé est réconcilié
+**Then** il est marqué « non fiable », l'écart est exposé, et la réponse d'ingestion précise qu'il
+vient du détail carte
+
+**Given** une ligne `RELEVE CARTE` sans bloc de détail correspondant
+**When** le relevé est ingéré
+**Then** la ligne est conservée telle quelle, `card_detail_missing` est vrai, et le relevé est dans
+l'état dégradé `card_detail_missing` avec cette cause affichée partout où il contribue (FR80, FR12)
+**And** accepter un écart n'efface pas cet état
+
+**Given** deux cartes sur le même compte
+**When** le relevé est ingéré
+**Then** chaque agrégat est remplacé par **son** détail, rapproché par son total
+
+**Given** un bloc de détail sans ligne agrégée correspondante
+**When** le relevé est ingéré
+**Then** ses achats ne sont pas importés, et la réponse d'ingestion le dit
+
+**Given** le texte transmis pour le détail
+**When** on le lit
+**Then** il ne contient que les lignes d'achat : ni l'en-tête du bloc (numéro de carte, titulaire),
+ni la ligne de total (NFR36)
+
+**Given** le moteur d'analyse et `deriveReliability`
+**When** les tests s'exécutent
+**Then** le nouvel état a son cas nominal et deux cas limites, comme toute fonction de fiabilité
+(NFR3)
+
+**Note d'implémentation.** ⚠️ **Bloquée par AR41.** Le signe d'un remboursement dans le détail
+(colonne unique `Montant euros`) n'est pas connu : il se lit sur un relevé réel, pas se suppose.

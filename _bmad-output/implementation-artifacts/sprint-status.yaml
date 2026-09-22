@@ -1,5 +1,5 @@
 # generated: 2026-04-30
-# last_updated: 2026-09-08
+# last_updated: 2026-09-22
 # project: personnalFinance
 # project_key: NOKEY
 # tracking_system: file-system
@@ -489,7 +489,38 @@ development_status:
   #
   # Aucun fichier de story n'existe encore : tout est en backlog.
 
-  # --- Epic 26 — L'agent conversationnel. PREMIER CHANTIER. ----------------
+  # =========================================================================
+  # CHANTIER CADRE LE 2026-09-22 — PROFILS ET BANQUES. RANG 1.
+  # =========================================================================
+  # Ordre de livraison revise :
+  #   27 -> 28 (profils et banques)  ->  26 (agent)  ->  22-25 (foyer)  ->  forecast
+  # Les donnees appartiennent a des PROFILS avant toute authentification
+  # (PRD FR73-FR81, architecture D37-D43). La story 22.2 est absorbee.
+  # /!\ NFR35 : aucune exposition hors reseau local tant que 22.1 n'est pas
+  # livree. Choisir un profil n'est pas s'identifier.
+
+  # --- Epic 27 — Deux profils, chacun ses donnees. ------------------------
+  # 27-1 est la story la plus risquee du chantier : rebuild de cinq tables
+  # plus transactions, sur des donnees que les PDF ne reconstruisent pas.
+  # Sauvegarde VERIFIEE RESTAURABLE avant, comptages et sommes avant/apres.
+  epic-27: backlog
+  27-1-tout-mon-historique-m-appartient: backlog
+  27-2-chaque-requete-se-limite-au-profil-courant: backlog
+  27-3-creer-un-profil-et-basculer: backlog
+  epic-27-retrospective: optional
+
+  # --- Epic 28 — Les releves Credit Mutuel. -------------------------------
+  # Ne depend que de 27-1 (colonne bank) : peut avancer en parallele de 27-2.
+  # /!\ 28-2 et 28-3 BLOQUEES par AR41 : il faut 3 a 5 releves Credit Mutuel
+  # de plus (solde debiteur, remboursement carte, deux cartes, detail preleve
+  # hors periode). 28-1 ne l'est pas.
+  epic-28: backlog
+  28-1-choisir-la-banque-d-un-releve: backlog
+  28-2-lire-le-compte-courant-credit-mutuel: backlog
+  28-3-voir-mes-achats-par-carte-un-par-un: backlog
+  epic-28-retrospective: optional
+
+  # --- Epic 26 — L'agent conversationnel. DEUXIEME CHANTIER (rang 1 jusqu'au 2026-09-22). ---
   # L'utilisateur pose une question en francais, obtient une reponse, et peut
   # la verifier. L'agent interroge le moteur et RAPPORTE.
   # Trois frontieres non negociables :
@@ -498,7 +529,7 @@ development_status:
   #   - il ne touche pas la base (NFR32 : endpoints d'analyse uniquement)
   #   - il n'agit pas (aucun reclassement, aucune regle, aucun marquage)
   # FR72 (cloisonnement) est satisfaite PAR CONSTRUCTION : le cloisonnement
-  # sera pose dans les endpoints par la story 22.2, donc l'agent y sera
+  # est pose dans les endpoints par la story 27.2 (ex-22.2), donc l'agent y sera
   # conforme sans etre retouche. C'est le retour sur investissement de NFR32.
   epic-26: backlog
   # /!\ 26-1 est un JALON DE DECISION, pas une livraison ordinaire.
@@ -516,7 +547,10 @@ development_status:
   26-5-retrouver-reprendre-supprimer-une-conversation: backlog
   epic-26-retrospective: optional
 
-  # --- Epic 22 — Le foyer et son second membre. DEUXIEME CHANTIER. ---------
+  # --- Epic 22 — Le foyer et son second membre. TROISIEME CHANTIER. --------
+  # 22-2 ABSORBEE le 2026-09-22 par 27-1 et 27-2 : ne pas l'implementer.
+  # 22-1 rattache une identite a un profil existant (requireProfile lit la
+  # session au lieu du cookie pf_profile).
   # Deux personnes, deux espaces, aucune ne voit les donnees de l'autre.
   # /!\ AR5 NE S'APPLIQUE PLUS : la migration par vidage et re-ingestion etait
   # sure tant que NFR12 garantissait la reconstruction depuis les PDF. NFR12
@@ -524,7 +558,7 @@ development_status:
   # donnees. C'est la contrainte la plus structurante du chantier.
   epic-22: backlog
   22-1-se-connecter-avec-un-compte-existant: backlog
-  22-2-chaque-donnee-a-un-proprietaire: backlog
+  22-2-chaque-donnee-a-un-proprietaire: descoped
   22-3-inviter-quelqu-un-a-rejoindre-le-foyer: backlog
   22-4-voir-les-membres-et-en-retirer-un: backlog
   epic-22-retrospective: optional
