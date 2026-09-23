@@ -9,6 +9,7 @@ import { defineEventHandler, readMultipartFormData, getHeader } from 'h3'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { ingestStatement } from '~~/server/services/statement-ingestion-orchestrator'
+import { requireProfile } from '~~/server/utils/current-profile'
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 
@@ -19,6 +20,10 @@ function isPdfBuffer(buf: Buffer): boolean {
 }
 
 export default defineEventHandler(async (event) => {
+  // Échoue vite sur un profil manquant/invalide, AVANT de lire un multipart potentiellement
+  // volumineux — `ingestStatement` le revérifie de toute façon (point d'entrée unique, AC 1).
+  requireProfile(event)
+
   let form: Awaited<ReturnType<typeof readMultipartFormData>>
   try {
     form = await readMultipartFormData(event)

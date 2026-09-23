@@ -1,7 +1,7 @@
 import { defineEventHandler } from 'h3'
 import { asc, and, or, eq, gt, gte, lte, inArray } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions, categoryItems, categoryGroups } from '~~/server/db/schema'
+import { transactions, categoryItems, categoryGroups, bankStatements } from '~~/server/db/schema'
 import { type StatementReliability, worstReliability } from '~~/shared/types/statement-reliability'
 import { reliabilityOverlapping } from '~~/server/utils/statement-reliability'
 import { validateQuery } from '~~/server/utils/validation'
@@ -13,9 +13,11 @@ import {
   JOINT_GROUP_CODE,
 } from '~~/shared/constants/default-referential'
 import { TransactionListQuerySchema } from '~~/shared/schemas/transaction.schema'
+import { requireProfile } from '~~/server/utils/current-profile'
 
 export default defineEventHandler(async (event) => {
   const query = validateQuery(event, TransactionListQuerySchema)
+  const profileId = requireProfile(event)
 
   // Deux formes de requête, une seule lecture : la vue mensuelle et la descente depuis un
   // agrégat lisent la même table, avec le même tri.
@@ -59,7 +61,8 @@ export default defineEventHandler(async (event) => {
   const requestedScope = itemFilter
     ? inArray(
         transactions.categoryItemId,
-        db.select({ id: categoryItems.id }).from(categoryItems).where(eq(categoryItems.code, itemFilter)),
+        db.select({ id: categoryItems.id }).from(categoryItems)
+          .where(and(eq(categoryItems.profileId, profileId), eq(categoryItems.code, itemFilter))),
       )
     : groupFilter
       ? inArray(
@@ -67,13 +70,13 @@ export default defineEventHandler(async (event) => {
           db.select({ id: categoryItems.id })
             .from(categoryItems)
             .innerJoin(categoryGroups, eq(categoryGroups.id, categoryItems.groupId))
-            .where(eq(categoryGroups.code, groupFilter)),
+            .where(and(eq(categoryItems.profileId, profileId), eq(categoryGroups.code, groupFilter))),
         )
       : undefined
   const jointTransferIdSubquery = db
     .select({ id: categoryItems.id })
     .from(categoryItems)
-    .where(eq(categoryItems.code, JOINT_TRANSFER_ITEM_CODE))
+    .where(and(eq(categoryItems.profileId, profileId), eq(categoryItems.code, JOINT_TRANSFER_ITEM_CODE)))
   const scopeFilter = drillsIntoJointShare
     ? or(
         requestedScope,
@@ -103,7 +106,9 @@ export default defineEventHandler(async (event) => {
     })
     .from(transactions)
     .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
+    .innerJoin(bankStatements, eq(bankStatements.hashSha256, transactions.statementHash))
     .where(and(
+      eq(bankStatements.profileId, profileId),
       gte(transactions.transactionDate, from),
       lte(transactions.transactionDate, to),
       scopeFilter,
@@ -112,7 +117,7 @@ export default defineEventHandler(async (event) => {
 
   // Fiabilité agrégée des relevés *qui couvrent la période demandée*, le pire état
   // l'emportant (D23) : un seul relevé bancal contamine tout le mois.
-  const statements = await reliabilityOverlapping(from, to)
+  const statements = await reliabilityOverlapping(profileId, from, to)
 
   const reliability: StatementReliability | null = statements.length > 0
     ? worstReliability(statements.map(s => s.reliability))
@@ -141,7 +146,9 @@ export default defineEventHandler(async (event) => {
         })
         .from(transactions)
         .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
+        .innerJoin(bankStatements, eq(bankStatements.hashSha256, transactions.statementHash))
         .where(and(
+          eq(bankStatements.profileId, profileId),
           gte(transactions.transactionDate, settlementFrom),
           lte(transactions.transactionDate, settlementTo),
           inArray(transactions.settlementGroupId, groupIds),

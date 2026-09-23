@@ -1,7 +1,7 @@
 import { defineEventHandler, getRouterParam } from 'h3'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions, classificationRules, categoryItems } from '~~/server/db/schema'
+import { transactions, classificationRules, categoryItems, bankStatements } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { resolveItemId } from '~~/server/utils/category-fk'
 import { requireProfile } from '~~/server/utils/current-profile'
@@ -20,10 +20,13 @@ export default defineEventHandler(async (event) => {
   const patch = await validateBody(event, TransactionPatchSchema)
   const profileId = requireProfile(event)
 
+  // `transactions` n'a pas de `profile_id` (D37) : lecture jointe au relevé, sinon 404 — une
+  // transaction d'un autre profil n'existe pas POUR CE PROFIL (AC 3).
   const existing = await db
-    .select()
+    .select({ id: transactions.id })
     .from(transactions)
-    .where(eq(transactions.id, id))
+    .innerJoin(bankStatements, eq(bankStatements.hashSha256, transactions.statementHash))
+    .where(and(eq(transactions.id, id), eq(bankStatements.profileId, profileId)))
     .limit(1)
   if (existing.length === 0) {
     throw notFound(ApiErrorCode.NotFound, { resource: 'transaction', id })
@@ -38,7 +41,17 @@ export default defineEventHandler(async (event) => {
     update.isManual = true
   }
 
-  await db.update(transactions).set(update).where(eq(transactions.id, id))
+  // Course lecture/écriture (piège signalé par la story) : la condition de profil est refaite
+  // ICI, pas seulement dans la lecture qui précède — sans quoi une transaction d'un autre
+  // profil, désynchronisée entre les deux instants, pourrait franchir l'écriture.
+  const statementsOfProfile = db
+    .select({ hash: bankStatements.hashSha256 })
+    .from(bankStatements)
+    .where(eq(bankStatements.profileId, profileId))
+  await db.update(transactions).set(update).where(and(
+    eq(transactions.id, id),
+    inArray(transactions.statementHash, statementsOfProfile),
+  ))
 
   const [updated] = await db
     .select({
@@ -54,7 +67,7 @@ export default defineEventHandler(async (event) => {
     .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
     .where(eq(transactions.id, id))
 
-  return { ...updated, ruleSuggestion: suggestRule(updated, patch.categoryItemCode !== undefined) }
+  return { ...updated, ruleSuggestion: suggestRule(profileId, updated, patch.categoryItemCode !== undefined) }
 })
 
 /**
@@ -73,6 +86,7 @@ export default defineEventHandler(async (event) => {
  * une correction, et la remplacer silencieusement serait pire que de ne rien faire.
  */
 function suggestRule(
+  profileId: number,
   updated: { label: string, categoryItemCode: string } | undefined,
   categoryChanged: boolean,
 ): { pattern: string, categoryItemCode: string } | null {
@@ -88,6 +102,7 @@ function suggestRule(
     .select({ pattern: classificationRules.pattern, categoryItemCode: categoryItems.code })
     .from(classificationRules)
     .innerJoin(categoryItems, eq(categoryItems.id, classificationRules.categoryItemId))
+    .where(eq(classificationRules.profileId, profileId))
     .all()
   if (resolveRule(updated.label, rules)) return null
 

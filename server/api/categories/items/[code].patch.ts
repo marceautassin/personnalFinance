@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam } from 'h3'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { categoryItems, categoryGroups } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
@@ -45,7 +45,7 @@ export default defineEventHandler(async (event): Promise<CategoryItemWithCount> 
     .select({ code: categoryItems.code, groupCode: categoryGroups.code })
     .from(categoryItems)
     .innerJoin(categoryGroups, eq(categoryGroups.id, categoryItems.groupId))
-    .where(eq(categoryItems.code, code))
+    .where(and(eq(categoryItems.code, code), eq(categoryItems.profileId, profileId)))
     .get()
   if (!existing) throw domainError(ApiErrorCode.NotFound, { code }, 404)
 
@@ -66,7 +66,7 @@ export default defineEventHandler(async (event): Promise<CategoryItemWithCount> 
       ...(body.label !== undefined ? { label: body.label } : {}),
       ...(body.nature !== undefined ? { nature: body.nature } : {}),
     })
-    .where(eq(categoryItems.code, code))
+    .where(and(eq(categoryItems.code, code), eq(categoryItems.profileId, profileId)))
     .returning({
       code: categoryItems.code,
       label: categoryItems.label,
@@ -75,5 +75,5 @@ export default defineEventHandler(async (event): Promise<CategoryItemWithCount> 
     })
     .get()
 
-  return { ...updated, groupCode: existing.groupCode, transactionCount: itemTransactionCount(code) }
+  return { ...updated, groupCode: existing.groupCode, transactionCount: itemTransactionCount(profileId, code) }
 })

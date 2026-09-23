@@ -1,7 +1,8 @@
 import { defineEventHandler, getRouterParam, setResponseStatus } from 'h3'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { settlementGroups, transactions } from '~~/server/db/schema'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 
@@ -23,10 +24,12 @@ export default defineEventHandler((event) => {
     throw domainError(ApiErrorCode.ValidationFailed, { reason: 'invalid id', value: raw }, 422)
   }
 
+  const profileId = requireProfile(event)
+
   const existing = db
     .select({ id: settlementGroups.id })
     .from(settlementGroups)
-    .where(eq(settlementGroups.id, id))
+    .where(and(eq(settlementGroups.id, id), eq(settlementGroups.profileId, profileId)))
     .get()
   if (!existing) throw notFound(ApiErrorCode.NotFound, { resource: 'settlement_group', id })
 

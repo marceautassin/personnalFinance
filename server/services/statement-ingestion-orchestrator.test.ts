@@ -8,10 +8,16 @@ import { sha256 } from '~~/server/utils/hash'
 import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 /**
- * `event` est obligatoire dans `IngestStatementArgs` (revue de la story 27.1) : `requireProfile`
- * ne le lit pas encore, mais un mock minimal suffit — aucun test ici n'exerce son contenu.
+ * `event` est obligatoire dans `IngestStatementArgs` (revue de la story 27.1). Depuis la story
+ * 27.2, `requireProfile` LIT le cookie `pf_profile` — `node.req.headers` doit donc exister,
+ * même vide : sans cookie et avec le seul profil `marceau` semé par `TEST_REFERENTIAL_DDL`, le
+ * repli « exactement un profil » (AC 10) s'applique.
  */
-const FAKE_EVENT = { path: '/api/statements', method: 'POST' } as unknown as H3Event
+const FAKE_EVENT = {
+  path: '/api/statements',
+  method: 'POST',
+  node: { req: { headers: {} }, res: {} },
+} as unknown as H3Event
 
 // Setup tmpdirs AVANT tout import du singleton db/client (qui ouvre la DB à l'import).
 const tmpRoot = mkdtempSync(join(tmpdir(), 'pf-ingest-'))
@@ -444,5 +450,65 @@ describe('ingestStatement (orchestrator)', () => {
       statusCode: 503,
       statusMessage: ApiErrorCode.LlmConfigError,
     })
+  })
+
+  /**
+   * AC 5 (story 27.2) : A dépose un relevé couvrant une période que seul B a déjà ingérée —
+   * aucun chevauchement n'est signalé, le dépôt réussit.
+   *
+   * ⚠️ Semé un second profil de façon PERMANENTE dans la base de ce fichier (aucun cleanup
+   * possible sans violer la FK `bank_statements.profile_id`) : ce test reste le DERNIER de la
+   * suite, pour ne pas casser le repli « exactement un profil » (AC 10) sur lequel `FAKE_EVENT`
+   * s'appuie dans tous les tests précédents.
+   */
+  it('chevauchement avec un relevé d\'un AUTRE profil : ignoré, pas de period_overlap (AC 5)', async () => {
+    // Profil B, avec son propre référentiel minimal (un profil ne voit que ses propres codes).
+    const other = sqlite
+      .prepare('INSERT INTO profiles (name, default_bank) VALUES (?, ?)')
+      .run('conjoint', 'boursorama')
+    const otherProfileId = Number(other.lastInsertRowid)
+    const otherGroup = sqlite
+      .prepare('INSERT INTO category_groups (profile_id, code, label, position) VALUES (?, ?, ?, 0)')
+      .run(otherProfileId, 'alimentation', 'Alimentation (B)')
+    sqlite
+      .prepare('INSERT INTO category_items (profile_id, code, group_id, label, nature, position) VALUES (?, ?, ?, ?, ?, 0)')
+      .run(otherProfileId, 'alimentation-courses', Number(otherGroup.lastInsertRowid), 'Courses (B)', 'expense')
+
+    const eventForB = {
+      path: '/api/statements',
+      method: 'POST',
+      node: { req: { headers: { cookie: `pf_profile=${otherProfileId}` } }, res: {} },
+    } as unknown as H3Event
+
+    // B ingère avril en premier.
+    mockExtract({ periodStart: '2026-04-01', periodEnd: '2026-04-30' })
+    mockCategorize([
+      { transactionDate: '2026-04-10', label: 'A', amountCents: -50_000, categoryItemCode: 'alimentation-courses' },
+    ])
+    await orch.ingestStatement({ event: eventForB, pdfBuffer: pdf('other-profile-april'), confirmReplace: false })
+
+    // A dépose ensuite un relevé qui couvre la MÊME période : aucun chevauchement pour A.
+    // Deux profils existent désormais, le cookie doit désigner A explicitement (AC 10).
+    const eventForA = {
+      path: '/api/statements',
+      method: 'POST',
+      node: { req: { headers: { cookie: 'pf_profile=1' } }, res: {} },
+    } as unknown as H3Event
+    mockExtract({ periodStart: '2026-04-15', periodEnd: '2026-05-15' })
+    mockCategorize([
+      { transactionDate: '2026-04-20', label: 'B', amountCents: -30_000, categoryItemCode: 'alimentation-courses' },
+    ])
+    const result = await orch.ingestStatement({
+      event: eventForA,
+      pdfBuffer: pdf('profile-a-overlaps-b'),
+      confirmReplace: false,
+    })
+
+    // Aucun `period_overlap` : la période de B n'entre pas dans le calcul de A.
+    expect(result.periodStart).toBe('2026-04-15')
+    const statements = dbMod.db.select().from(schema.bankStatements).all()
+    expect(statements).toHaveLength(2)
+    expect(statements.find(s => s.profileId === 1)!.periodStart).toBe('2026-04-15')
+    expect(statements.find(s => s.profileId === otherProfileId)!.periodStart).toBe('2026-04-01')
   })
 })

@@ -1,8 +1,9 @@
 import { defineEventHandler, getRouterParam, setResponseStatus } from 'h3'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { categoryGroups } from '~~/server/db/schema'
 import { groupItemCount } from '~~/server/utils/category-references'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { isProtectedGroup } from '~~/shared/constants/protected-categories'
@@ -18,11 +19,12 @@ import { isProtectedGroup } from '~~/shared/constants/protected-categories'
  */
 export default defineEventHandler(async (event) => {
   const code = getRouterParam(event, 'code') ?? ''
+  const profileId = requireProfile(event)
 
   const existing = db
     .select({ code: categoryGroups.code })
     .from(categoryGroups)
-    .where(eq(categoryGroups.code, code))
+    .where(and(eq(categoryGroups.code, code), eq(categoryGroups.profileId, profileId)))
     .get()
   if (!existing) throw domainError(ApiErrorCode.GroupNotFound, { code }, 404)
 
@@ -30,12 +32,12 @@ export default defineEventHandler(async (event) => {
     throw domainError(ApiErrorCode.CategoryProtected, { code }, 409)
   }
 
-  const itemCount = groupItemCount(code)
+  const itemCount = groupItemCount(profileId, code)
   if (itemCount > 0) {
     throw domainError(ApiErrorCode.GroupNotEmpty, { code, itemCount }, 409)
   }
 
-  db.delete(categoryGroups).where(eq(categoryGroups.code, code)).run()
+  db.delete(categoryGroups).where(and(eq(categoryGroups.code, code), eq(categoryGroups.profileId, profileId))).run()
   setResponseStatus(event, 204)
   return null
 })

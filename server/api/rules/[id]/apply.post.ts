@@ -1,8 +1,9 @@
 import { defineEventHandler, getRouterParam } from 'h3'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { classificationRules, transactions, categoryItems } from '~~/server/db/schema'
+import { classificationRules, transactions, categoryItems, bankStatements } from '~~/server/db/schema'
 import { applyRules, patternCovers } from '~~/server/services/rule-matcher'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 
@@ -50,10 +51,12 @@ export default defineEventHandler(async (event): Promise<RuleApplyResult> => {
     throw domainError(ApiErrorCode.ValidationFailed, { reason: 'invalid id', value: raw }, 422)
   }
 
+  const profileId = requireProfile(event)
+
   const rule = db
     .select({ id: classificationRules.id, pattern: classificationRules.pattern })
     .from(classificationRules)
-    .where(eq(classificationRules.id, id))
+    .where(and(eq(classificationRules.id, id), eq(classificationRules.profileId, profileId)))
     .get()
   if (!rule) throw notFound(ApiErrorCode.NotFound, { resource: 'classification_rule', id })
 
@@ -64,6 +67,7 @@ export default defineEventHandler(async (event): Promise<RuleApplyResult> => {
     })
     .from(classificationRules)
     .innerJoin(categoryItems, eq(categoryItems.id, classificationRules.categoryItemId))
+    .where(eq(classificationRules.profileId, profileId))
     .orderBy(asc(classificationRules.id))
 
   const rows = await db
@@ -75,6 +79,10 @@ export default defineEventHandler(async (event): Promise<RuleApplyResult> => {
     })
     .from(transactions)
     .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
+    // `transactions` n'a pas de `profile_id` (D37) : jointure au relevé pour restreindre au
+    // profil, comme partout.
+    .innerJoin(bankStatements, eq(bankStatements.hashSha256, transactions.statementHash))
+    .where(eq(bankStatements.profileId, profileId))
 
   const covered = rows.filter(t => patternCovers(t.label, rule.pattern))
   const codeBefore = new Map(covered.map(t => [t.id, t.categoryItemCode]))
@@ -89,11 +97,23 @@ export default defineEventHandler(async (event): Promise<RuleApplyResult> => {
 
   if (changed.length > 0) {
     // `applyRules` (moteur, travaille sur des codes — Dev Notes) rend un code ; l'écriture, elle,
-    // passe par l'id (D37). Résolution une seule fois, sur le référentiel complet.
+    // passe par l'id (D37). Résolution une seule fois, sur le référentiel DU PROFIL — sans ce
+    // filtre, avec deux profils, cette Map rangerait une ligne sur le poste d'un autre profil
+    // dès qu'un code de poste coïncide entre eux (point signalé par la revue de la story 27.1).
     const itemIdByCode = new Map(
-      (await db.select({ id: categoryItems.id, code: categoryItems.code }).from(categoryItems))
+      (await db.select({ id: categoryItems.id, code: categoryItems.code })
+        .from(categoryItems)
+        .where(eq(categoryItems.profileId, profileId)))
         .map(i => [i.code, i.id]),
     )
+    // Défense en profondeur (revue de la story 27.2) : `changed` vient déjà d'une lecture
+    // filtrée par profil (l.75-79), mais l'`UPDATE` reprend tout de même la condition de
+    // profil, comme `transactions/[id].patch.ts` — une course entre lecture et écriture ne
+    // doit rien pouvoir franchir.
+    const statementsOfProfile = db
+      .select({ hash: bankStatements.hashSha256 })
+      .from(bankStatements)
+      .where(eq(bankStatements.profileId, profileId))
     db.transaction((tx) => {
       for (const row of changed) {
         const categoryItemId = itemIdByCode.get(row.categoryItemCode)
@@ -111,7 +131,7 @@ export default defineEventHandler(async (event): Promise<RuleApplyResult> => {
         }
         tx.update(transactions)
           .set({ categoryItemId })
-          .where(eq(transactions.id, row.id))
+          .where(and(eq(transactions.id, row.id), inArray(transactions.statementHash, statementsOfProfile)))
           .run()
       }
     })

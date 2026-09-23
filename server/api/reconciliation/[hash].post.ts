@@ -15,7 +15,7 @@
  *   La transaction d'écart accepté a `amountCents = gapCents` (sans inversion de signe).
  */
 import { defineEventHandler, getRouterParam, isError } from 'h3'
-import { eq, asc } from 'drizzle-orm'
+import { and, eq, asc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { bankStatements, transactions } from '~~/server/db/schema'
 import { ACCEPT_GAP_ITEM_CODE } from '~~/shared/constants/default-referential'
@@ -54,7 +54,7 @@ export default defineEventHandler(async (event) => {
   const [statement] = await db
     .select()
     .from(bankStatements)
-    .where(eq(bankStatements.hashSha256, hash))
+    .where(and(eq(bankStatements.hashSha256, hash), eq(bankStatements.profileId, profileId)))
     .limit(1)
   if (!statement) {
     throw notFound(ApiErrorCode.NotFound, { resource: 'bank_statement', hash })
@@ -151,7 +151,7 @@ export default defineEventHandler(async (event) => {
     }).run()
     trx.update(bankStatements)
       .set({ gapAccepted: true })
-      .where(eq(bankStatements.hashSha256, hash))
+      .where(and(eq(bankStatements.hashSha256, hash), eq(bankStatements.profileId, profileId)))
       .run()
     return recomputeReconciliation(trx, statement.openingBalanceCents, statement.closingBalanceCents, hash)
   })

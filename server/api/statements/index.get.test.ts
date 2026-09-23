@@ -52,7 +52,7 @@ const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
 
 function makeEvent(): H3Event {
-  return { path: '/api/statements', method: 'GET' } as unknown as H3Event
+  return { path: '/api/statements', method: 'GET', node: { req: { headers: {} }, res: {} } } as unknown as H3Event
 }
 
 describe('GET /api/statements', () => {

@@ -61,7 +61,13 @@ beforeEach(() => {
 })
 
 function query(qs: string): H3Event {
-  return { path: `/api/analysis?${qs}`, method: 'GET', node: { req: { url: `/api/analysis?${qs}` } } } as unknown as H3Event
+  return {
+    path: `/api/analysis?${qs}`,
+    method: 'GET',
+    // `headers: {}` : sans cookie `pf_profile`, `requireProfile` retombe sur le profil unique
+    // de test (story 27.2, AC 10).
+    node: { req: { url: `/api/analysis?${qs}`, headers: {} }, res: {} },
+  } as unknown as H3Event
 }
 
 /** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */

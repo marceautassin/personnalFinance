@@ -238,7 +238,8 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
     }, 502)
   }
 
-  // 7. Détection chevauchement période
+  // 7. Détection chevauchement période — restreinte AU PROFIL (AC 5, story 27.2) : A dépose un
+  // relevé couvrant une période que seul B a ingérée, aucun chevauchement n'est signalé.
   const overlapping = await db
     .select({
       hash: bankStatements.hashSha256,
@@ -247,6 +248,7 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
     })
     .from(bankStatements)
     .where(and(
+      eq(bankStatements.profileId, profileId),
       lte(bankStatements.periodStart, periodEnd),
       gte(bankStatements.periodEnd, periodStart),
     ))

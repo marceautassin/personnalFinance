@@ -54,7 +54,9 @@ beforeEach(() => {
 
 function eventWithQuery(query: string): H3Event {
   // h3 v1.x : getQuery(event) lit `event.path`. Mock minimal suffisant pour validateQuery.
-  return { path: `/api/transactions?${query}` } as unknown as H3Event
+  // `node.req.headers` : sans cookie `pf_profile`, `requireProfile` retombe sur le profil
+  // unique de test (story 27.2, AC 10).
+  return { path: `/api/transactions?${query}`, node: { req: { headers: {} }, res: {} } } as unknown as H3Event
 }
 
 const HASH_A = 'a'.repeat(64)

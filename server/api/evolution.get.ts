@@ -1,7 +1,7 @@
 import { defineEventHandler } from 'h3'
 import { and, gte, lte, lt, eq, asc, sql } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { transactions, categoryItems, categoryGroups } from '~~/server/db/schema'
+import { transactions, categoryItems, categoryGroups, bankStatements } from '~~/server/db/schema'
 import { validateQuery } from '~~/server/utils/validation'
 import { EvolutionQuerySchema, EVOLUTION_ALL } from '~~/shared/schemas/evolution.schema'
 import {
@@ -15,6 +15,7 @@ import {
 import { bucketBounds, shiftBucket, bucketLabel, bucketOf, type Granularity } from '~~/shared/types/granularity'
 import type { MovementNature } from '~~/shared/types/movement-nature'
 import { cents } from '~~/shared/types/money'
+import { requireProfile } from '~~/server/utils/current-profile'
 
 /**
  * GET /api/evolution — la trajectoire sur la période regardée (FR31, FR34).
@@ -43,14 +44,16 @@ function monthsOf(period: string): string[] {
   return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
 }
 
-/** Tous les mois portant ou séparant des transactions, du premier au dernier. */
-async function allHistoryBuckets(): Promise<string[]> {
+/** Tous les mois portant ou séparant des transactions DU PROFIL, du premier au dernier. */
+async function allHistoryBuckets(profileId: number): Promise<string[]> {
   const row = await db
     .select({
       first: sql<string | null>`min(${transactions.transactionDate})`,
       last: sql<string | null>`max(${transactions.transactionDate})`,
     })
     .from(transactions)
+    .innerJoin(bankStatements, eq(bankStatements.hashSha256, transactions.statementHash))
+    .where(eq(bankStatements.profileId, profileId))
     .get()
   if (!row?.first || !row.last) return []
 
@@ -65,7 +68,7 @@ async function allHistoryBuckets(): Promise<string[]> {
   return out
 }
 
-function loadReferential(): Promise<AnalysisItemRef[]> {
+function loadReferential(profileId: number): Promise<AnalysisItemRef[]> {
   return db
     .select({
       code: categoryItems.code,
@@ -76,6 +79,7 @@ function loadReferential(): Promise<AnalysisItemRef[]> {
     })
     .from(categoryItems)
     .innerJoin(categoryGroups, eq(categoryItems.groupId, categoryGroups.id))
+    .where(eq(categoryItems.profileId, profileId))
     .orderBy(asc(categoryGroups.position), asc(categoryItems.position))
 }
 
@@ -107,6 +111,7 @@ export interface EvolutionResponse {
 
 export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
   const { period, target } = await validateQuery(event, EvolutionQuerySchema)
+  const profileId = requireProfile(event)
 
   // Le PAS est toujours le mois : c'est la période regardée qui varie, pas le découpage
   // (refonte du 2026-09-07). Une année se lit en douze mois, un trimestre en trois.
@@ -115,7 +120,7 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
   // Les tranches attendues sont calculées, pas déduites des données : une tranche sans
   // mouvement doit apparaître à zéro, sinon la série se lit comme une accélération.
   const buckets = period === EVOLUTION_ALL
-    ? await allHistoryBuckets()
+    ? await allHistoryBuckets(profileId)
     : monthsOf(period)
 
   if (buckets.length === 0) {
@@ -126,14 +131,14 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
       targetSeries: null,
       targetLabel: null,
       targetNature: null,
-      groups: groupsOf(await loadReferential()),
+      groups: groupsOf(await loadReferential(profileId)),
     }
   }
 
   const from = bucketBounds(buckets[0]!, granularity).from
   const toDate = bucketBounds(buckets.at(-1)!, granularity).to
 
-  const referential = await loadReferential()
+  const referential = await loadReferential(profileId)
 
   const rows = await db
     .select({
@@ -145,7 +150,12 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
     })
     .from(transactions)
     .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
-    .where(and(gte(transactions.transactionDate, from), lte(transactions.transactionDate, toDate)))
+    .innerJoin(bankStatements, eq(bankStatements.hashSha256, transactions.statementHash))
+    .where(and(
+      eq(bankStatements.profileId, profileId),
+      gte(transactions.transactionDate, from),
+      lte(transactions.transactionDate, toDate),
+    ))
 
   /**
    * Patrimoine accumulé AVANT la fenêtre (demande du 2026-09-06).
@@ -166,7 +176,8 @@ export default defineEventHandler(async (event): Promise<EvolutionResponse> => {
     })
     .from(transactions)
     .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
-    .where(lt(transactions.transactionDate, from))
+    .innerJoin(bankStatements, eq(bankStatements.hashSha256, transactions.statementHash))
+    .where(and(eq(bankStatements.profileId, profileId), lt(transactions.transactionDate, from)))
     .orderBy(asc(transactions.transactionDate), asc(transactions.id))
   // Par le MOTEUR, et non par une somme SQL : la coupe du compte joint et la neutralisation des
   // avances doivent s'appliquer ici comme dans la fenêtre, sans quoi le même mois ne pèse pas la

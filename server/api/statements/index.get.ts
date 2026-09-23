@@ -11,13 +11,14 @@
  * touche la catégorie) l'a rendu fiable pour cet usage.
  */
 import { defineEventHandler } from 'h3'
-import { sql, desc } from 'drizzle-orm'
+import { sql, desc, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { ACCEPT_GAP_ITEM_CODE } from '~~/shared/constants/default-referential'
 import { bankStatements, transactions } from '~~/server/db/schema'
 import { ratio, type Ratio } from '~~/shared/types/ratio'
 import type { StatementReliability } from '~~/shared/types/statement-reliability'
 import { reliabilityByStatement } from '~~/server/utils/statement-reliability'
+import { requireProfile } from '~~/server/utils/current-profile'
 
 export interface StatementListItem {
   hash: string
@@ -33,7 +34,8 @@ export interface StatementListItem {
   correctionRate: Ratio | null
 }
 
-export default defineEventHandler(async (): Promise<{ statements: StatementListItem[] }> => {
+export default defineEventHandler(async (event): Promise<{ statements: StatementListItem[] }> => {
+  const profileId = requireProfile(event)
   const countFor = (condition: ReturnType<typeof sql> | null) => sql<number>`(
     SELECT COUNT(*) FROM ${transactions}
     WHERE ${transactions.statementHash} = ${bankStatements.hashSha256}
@@ -55,7 +57,15 @@ export default defineEventHandler(async (): Promise<{ statements: StatementListI
   // code)`) — dès qu'un second profil existe, la sous-requête peut rendre PLUSIEURS lignes, et
   // `<>` contre une sous-requête multi-lignes est une erreur SQL, pas un filtre silencieusement
   // restreint.
-  const notAcceptGap = sql`AND ${transactions.categoryItemId} NOT IN (SELECT id FROM category_items WHERE code = ${ACCEPT_GAP_ITEM_CODE})`
+  //
+  // Filtre de profil ajouté sur la sous-requête (revue de la story 27.2) : sans lui, elle juste
+  // sans mal aujourd'hui, parce que les transactions du profil courant ne référencent de toute
+  // façon que des postes DE CE PROFIL — mais un id d'écart-accepté d'un AUTRE profil s'y
+  // glisserait aussi, sans jamais rien exclure de faux : défense en profondeur, pas un
+  // correctif d'un vrai défaut observable.
+  const notAcceptGap = sql`AND ${transactions.categoryItemId} NOT IN (
+    SELECT id FROM category_items WHERE code = ${ACCEPT_GAP_ITEM_CODE} AND profile_id = ${profileId}
+  )`
 
   const rows = await db
     .select({
@@ -68,9 +78,10 @@ export default defineEventHandler(async (): Promise<{ statements: StatementListI
       ratedCount: countFor(notAcceptGap),
     })
     .from(bankStatements)
+    .where(eq(bankStatements.profileId, profileId))
     .orderBy(desc(bankStatements.periodStart))
 
-  const reliabilities = await reliabilityByStatement()
+  const reliabilities = await reliabilityByStatement(profileId)
 
   return {
     statements: rows.map(({ ratedCount, ...r }) => {

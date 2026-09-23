@@ -60,18 +60,18 @@ function toRow(r: {
   }
 }
 
-/** Fiabilité de tous les relevés, indexée par hash. */
-export async function reliabilityByStatement(): Promise<Map<string, StatementReliabilityRow>> {
-  const rows = await db.select(baseSelection).from(bankStatements)
+/** Fiabilité de tous les relevés DU PROFIL, indexée par hash (story 27.2, D37). */
+export async function reliabilityByStatement(profileId: number): Promise<Map<string, StatementReliabilityRow>> {
+  const rows = await db.select(baseSelection).from(bankStatements).where(eq(bankStatements.profileId, profileId))
   return new Map(rows.map(r => [r.hash, toRow(r)]))
 }
 
-/** Fiabilité d'un relevé précis, ou `null` s'il n'existe pas. */
-export async function reliabilityOfStatement(hash: string): Promise<StatementReliabilityRow | null> {
+/** Fiabilité d'un relevé précis DU PROFIL, ou `null` s'il n'existe pas ou pas dans ce profil. */
+export async function reliabilityOfStatement(profileId: number, hash: string): Promise<StatementReliabilityRow | null> {
   const [row] = await db
     .select(baseSelection)
     .from(bankStatements)
-    .where(eq(bankStatements.hashSha256, hash))
+    .where(and(eq(bankStatements.hashSha256, hash), eq(bankStatements.profileId, profileId)))
     .limit(1)
   return row ? toRow(row) : null
 }
@@ -84,12 +84,17 @@ export async function reliabilityOfStatement(hash: string): Promise<StatementRel
  * écart doit y être signalé (FR12).
  */
 export async function reliabilityOverlapping(
+  profileId: number,
   periodStart: string,
   periodEnd: string,
 ): Promise<StatementReliabilityRow[]> {
   const rows = await db
     .select(baseSelection)
     .from(bankStatements)
-    .where(and(lte(bankStatements.periodStart, periodEnd), gte(bankStatements.periodEnd, periodStart)))
+    .where(and(
+      eq(bankStatements.profileId, profileId),
+      lte(bankStatements.periodStart, periodEnd),
+      gte(bankStatements.periodEnd, periodStart),
+    ))
   return rows.map(toRow)
 }

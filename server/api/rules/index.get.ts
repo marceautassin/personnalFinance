@@ -5,6 +5,7 @@ import { classificationRules, categoryItems, categoryGroups } from '~~/server/db
 import { normalizeForMatch } from '~~/server/services/rule-matcher'
 import { coverageByRule } from '~~/server/utils/rule-coverage'
 import type { ClassificationRuleWithLabels } from '~~/shared/schemas/classification-rule.schema'
+import { requireProfile } from '~~/server/utils/current-profile'
 
 /**
  * GET /api/rules — règles de classement, avec la portée de chacune.
@@ -18,7 +19,8 @@ import type { ClassificationRuleWithLabels } from '~~/shared/schemas/classificat
  *
  * `pendingCount` dit, parmi ces lignes, combien une application déplacerait encore (story 18.9).
  */
-export default defineEventHandler(async (): Promise<ClassificationRuleWithLabels[]> => {
+export default defineEventHandler(async (event): Promise<ClassificationRuleWithLabels[]> => {
+  const profileId = requireProfile(event)
   const rows = await db
     .select({
       id: classificationRules.id,
@@ -31,11 +33,12 @@ export default defineEventHandler(async (): Promise<ClassificationRuleWithLabels
     .from(classificationRules)
     .innerJoin(categoryItems, eq(categoryItems.id, classificationRules.categoryItemId))
     .innerJoin(categoryGroups, eq(categoryGroups.id, categoryItems.groupId))
+    .where(eq(classificationRules.profileId, profileId))
     .orderBy(asc(classificationRules.id))
 
   // Couverture et retard sont CALCULÉS, jamais stockés (story 18.9) : un drapeau en base
   // divergerait de la réalité dès l'ingestion suivante.
-  const coverage = coverageByRule(rows)
+  const coverage = coverageByRule(profileId, rows)
 
   return rows.map((r, i) => ({
     ...r,

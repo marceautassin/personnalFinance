@@ -53,7 +53,11 @@ beforeEach(() => {
 })
 
 function query(qs: string): H3Event {
-  return { path: `/api/evolution?${qs}`, method: 'GET', node: { req: { url: `/api/evolution?${qs}` } } } as unknown as H3Event
+  return {
+    path: `/api/evolution?${qs}`,
+    method: 'GET',
+    node: { req: { url: `/api/evolution?${qs}`, headers: {} }, res: {} },
+  } as unknown as H3Event
 }
 
 /** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
