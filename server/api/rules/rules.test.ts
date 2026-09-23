@@ -50,10 +50,12 @@ beforeEach(() => {
   dbMod.db.delete(schema.bankStatements).run()
 })
 
-function makeEvent(opts: { method: string, body?: unknown, id?: string }): H3Event {
+function makeEvent(opts: { method: string, body?: unknown, id?: string, profileId?: number }): H3Event {
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  if (opts.profileId !== undefined) headers.cookie = `pf_profile=${opts.profileId}`
   return {
     _requestBody: opts.body === undefined ? '' : JSON.stringify(opts.body),
-    node: { req: { headers: { 'content-type': 'application/json' }, method: opts.method }, res: { statusCode: 200 } },
+    node: { req: { headers, method: opts.method }, res: { statusCode: 200 } },
     path: '/api/rules',
     method: opts.method,
     context: { params: opts.id ? { id: opts.id } : {} },
@@ -418,5 +420,53 @@ describe('POST /api/rules/:id/apply', () => {
     await expect(
       applyHandler(makeEvent({ method: 'POST', id: 'abc' })),
     ).rejects.toMatchObject({ statusCode: 422 })
+  })
+
+  /**
+   * Point signalé par la revue de la story 27.1 : la Map `code → id` de `apply.post.ts` était
+   * construite sur `category_items` TOUS PROFILS CONFONDUS. Avec deux profils partageant le
+   * même code de poste (unique seulement DANS un profil, D37), elle aurait pu ranger une
+   * transaction du profil A sur l'id du poste du profil B.
+   */
+  it('cloisonnement : une règle de A ne touche jamais les lignes de B, même à codes de poste identiques', async () => {
+    // AVANT de semer le profil B : avec un seul profil, `create`/`seedTransaction` (sans
+    // cookie) profitent encore du repli « exactement un profil » (AC 10).
+    seedTransaction('CARTE 01/03 CARREFOUR MARKET') // profil 1 (A), poste divers-non-categorise
+    const rule = await create('carrefour', 'alimentation-courses')
+
+    // Profil B, avec un poste de MÊME CODE que celui ciblé par la règle de A.
+    const other = sqlite
+      .prepare('INSERT INTO profiles (name, default_bank) VALUES (?, ?)')
+      .run('conjoint', 'boursorama')
+    const otherProfileId = Number(other.lastInsertRowid)
+    const otherGroup = sqlite
+      .prepare('INSERT INTO category_groups (profile_id, code, label, position) VALUES (?, ?, ?, 0)')
+      .run(otherProfileId, 'alimentation', 'Alimentation (B)')
+    const otherItem = sqlite
+      .prepare('INSERT INTO category_items (profile_id, code, group_id, label, nature, position) VALUES (?, ?, ?, ?, ?, 0)')
+      .run(otherProfileId, 'alimentation-courses', Number(otherGroup.lastInsertRowid), 'Courses (B)', 'expense')
+    const otherItemId = Number(otherItem.lastInsertRowid)
+    sqlite
+      .prepare('INSERT INTO bank_statements (hash_sha256, profile_id, bank, period_start, period_end, opening_balance_cents, closing_balance_cents) VALUES (?, ?, ?, ?, ?, 0, 0)')
+      .run('hb', otherProfileId, 'boursorama', '2026-01-01', '2026-01-31')
+    sqlite
+      .prepare('INSERT INTO transactions (statement_hash, transaction_date, label, amount_cents, category_item_id) VALUES (?, ?, ?, ?, ?)')
+      .run('hb', '2026-01-05', 'CARTE 01/03 CARREFOUR MARKET', -100, otherItemId)
+
+    // Deux profils existent désormais : le repli sans cookie (AC 10) ne s'applique plus, le
+    // cookie doit désigner explicitement A.
+    await expect(
+      applyHandler(makeEvent({ method: 'POST', id: String(rule.id), profileId: 1 })),
+    ).resolves.toMatchObject({ updatedCount: 1 })
+
+    // La ligne de A a bien basculé sur SON poste `alimentation-courses` (id du profil 1).
+    expect(codesByLabel()['CARTE 01/03 CARREFOUR MARKET']).toBe('alimentation-courses')
+    const aItemId = (sqlite.prepare('SELECT category_item_id AS id FROM transactions WHERE statement_hash = \'h\'').get() as { id: number }).id
+    expect(aItemId).toBe(itemId('alimentation-courses'))
+    expect(aItemId).not.toBe(otherItemId)
+
+    // La ligne de B, elle, n'a pas bougé.
+    const bRow = sqlite.prepare('SELECT category_item_id AS id FROM transactions WHERE statement_hash = \'hb\'').get() as { id: number }
+    expect(bRow.id).toBe(otherItemId)
   })
 })

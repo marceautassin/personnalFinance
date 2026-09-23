@@ -1,37 +1,54 @@
+import { getCookie } from 'h3'
+import { eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { profiles } from '~~/server/db/schema'
 import type { H3Event } from 'h3'
+import { type ProfileId, profileId } from '~~/shared/types/profile'
+import { badRequest } from './errors'
+import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 
 /**
- * Profil courant, version minimale (story 27.1, AR35).
+ * Profil courant (story 27.2, D38, AR35).
  *
- * La signature `requireProfile(event): number` est FINALE dès cette story — c'est elle que le
- * reste du code appelle. Ce qu'elle fait derrière ne l'est pas : ici, il n'existe qu'un seul
- * profil possible, et elle le renvoie ou échoue explicitement. Le cookie `pf_profile`, le
- * filtrage des lectures par profil et le 404 inter-profils arrivent en 27.2, SANS changer cette
- * signature ni ses appelants.
+ * Point d'entrée UNIQUE : c'est la seule fonction du code qui lit le cookie `pf_profile`. Tous
+ * les 23 endpoints de `server/api/` (hors `profiles/`, qui arrive en 27.3) l'appellent et
+ * n'accèdent jamais au cookie eux-mêmes — c'est ce qui rendra l'authentification (22.1) bon
+ * marché : elle remplacera l'intérieur de cette fonction par une session, sans toucher aux
+ * appelants.
  *
- * `event` n'est pas encore LU : il est déjà dans la signature pour que 27.2 n'ait à modifier
- * aucun appelant, seulement le corps de cette fonction. Il reste **obligatoire** (revue de la
- * story 27.1) — un paramètre optionnel qu'on ignore aujourd'hui invite un appelant futur à
- * l'omettre, et retomberait alors silencieusement sur « le profil par défaut » au lieu d'échouer
- * quand 27.2 branchera la lecture du cookie sur ce même paramètre.
+ * **Repli sans cookie.** Sans cookie, et SEULEMENT s'il existe exactement un profil en base, ce
+ * profil est renvoyé. L'écran de choix du profil arrive en 27.3 ; sans ce repli, l'application
+ * et toute la suite E2E répondraient `400` entre les deux stories. Dès qu'un second profil
+ * existe, le repli disparaît de lui-même : il n'y a alors plus d'unique choix possible, et
+ * rester silencieux reviendrait à deviner à la place de l'utilisateur.
+ *
+ * **Cookie invalide** (non entier, ou profil inexistant) : toujours `400 profile_required`,
+ * jamais de repli silencieux — un cookie qui ne désigne rien de valide n'est pas une absence de
+ * cookie. Les deux cas rendent EXACTEMENT la même erreur, sans le cookie reçu ni aucun détail
+ * distinguant « mal formé » de « profil inconnu » (revue de la story 27.2, esprit de D38 :
+ * jamais confirmer l'existence d'une ressource). Un cookie qui énumérerait les id valides par
+ * essais successifs n'apprendrait donc rien de la réponse.
+ *
+ * `event` reste obligatoire (revue de la story 27.1) : un paramètre optionnel qu'on ignorerait
+ * inviterait un appelant futur à l'omettre, avec un retour silencieux sur « le profil par
+ * défaut » plutôt qu'une erreur.
  */
-export function requireProfile(_event: H3Event): number {
-  const rows = db.select({ id: profiles.id }).from(profiles).all()
+export function requireProfile(event: H3Event): ProfileId {
+  const raw = getCookie(event, 'pf_profile')
 
-  if (rows.length === 0) {
-    throw new Error(
-      'Aucun profil en base. La migration 0010 sème `marceau` inconditionnellement : '
-      + 'lance `yarn apply-migration` puis relance le serveur.',
-    )
-  }
-  if (rows.length > 1) {
-    throw new Error(
-      `${rows.length} profils en base, mais requireProfile() de cette story n'en gère qu'un `
-      + 'seul (le cookie et le filtrage arrivent en 27.2).',
-    )
+  if (raw === undefined) {
+    const rows = db.select({ id: profiles.id }).from(profiles).all()
+    if (rows.length === 1) return profileId(rows[0]!.id)
+    throw badRequest(ApiErrorCode.ProfileRequired, { reason: rows.length === 0 ? 'no_profile' : 'ambiguous_without_cookie' })
   }
 
-  return rows[0]!.id
+  const id = Number(raw)
+  if (Number.isInteger(id) && id > 0) {
+    const row = db.select({ id: profiles.id }).from(profiles).where(eq(profiles.id, id)).limit(1).get()
+    if (row !== undefined) return profileId(row.id)
+  }
+
+  // Même erreur, sans le cookie reçu ni le motif précis : un cookie mal formé et un cookie
+  // désignant un profil inexistant ne doivent pas se distinguer dans la réponse.
+  throw badRequest(ApiErrorCode.ProfileRequired, { reason: 'invalid_cookie' })
 }

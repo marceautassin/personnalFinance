@@ -1,7 +1,8 @@
 import { defineEventHandler, getRouterParam, setResponseStatus } from 'h3'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { classificationRules } from '~~/server/db/schema'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 
@@ -19,14 +20,16 @@ export default defineEventHandler(async (event) => {
     throw domainError(ApiErrorCode.ValidationFailed, { reason: 'invalid id', value: raw }, 422)
   }
 
+  const profileId = requireProfile(event)
+
   const existing = db
     .select({ id: classificationRules.id })
     .from(classificationRules)
-    .where(eq(classificationRules.id, id))
+    .where(and(eq(classificationRules.id, id), eq(classificationRules.profileId, profileId)))
     .get()
   if (!existing) throw notFound(ApiErrorCode.NotFound, { resource: 'classification_rule', id })
 
-  db.delete(classificationRules).where(eq(classificationRules.id, id)).run()
+  db.delete(classificationRules).where(and(eq(classificationRules.id, id), eq(classificationRules.profileId, profileId))).run()
   setResponseStatus(event, 204)
   return null
 })

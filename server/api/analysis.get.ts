@@ -9,6 +9,7 @@ import { bucketOf, shiftBucket, bucketBounds } from '~~/shared/types/granularity
 import { reliabilityOverlapping } from '~~/server/utils/statement-reliability'
 import { worstReliability, type StatementReliability } from '~~/shared/types/statement-reliability'
 import type { Cents } from '~~/shared/types/money'
+import { requireProfile } from '~~/server/utils/current-profile'
 
 /**
  * GET /api/analysis — l'arbre d'agrégats et les indicateurs d'une période (D19).
@@ -51,6 +52,7 @@ const SERIES_WINDOW = 12
 
 export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
   const { from, to, granularity } = await validateQuery(event, AnalysisQuerySchema)
+  const profileId = requireProfile(event)
 
   const referential: AnalysisItemRef[] = await db
     .select({
@@ -62,6 +64,7 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
     })
     .from(categoryItems)
     .innerJoin(categoryGroups, eq(categoryItems.groupId, categoryGroups.id))
+    .where(eq(categoryItems.profileId, profileId))
     .orderBy(asc(categoryGroups.position), asc(categoryItems.position))
 
   const rowsIn = (start: string, end: string) => db
@@ -76,7 +79,14 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
     })
     .from(transactions)
     .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
-    .where(and(gte(transactions.transactionDate, start), lte(transactions.transactionDate, end)))
+    // `transactions` n'a pas de `profile_id` (D37) : une transaction appartient au profil de
+    // son relevé, atteint par jointure sur `statement_hash` (Dev Notes de la story 27.2).
+    .innerJoin(bankStatements, eq(bankStatements.hashSha256, transactions.statementHash))
+    .where(and(
+      eq(bankStatements.profileId, profileId),
+      gte(transactions.transactionDate, start),
+      lte(transactions.transactionDate, end),
+    ))
     // Ordre EXPLICITE. `neutralizeSettlements` trie les avances par date, et son tri est
     // stable : deux avances du même jour sont donc départagées par l'ordre d'ARRIVÉE. Le
     // laisser au hasard du plan d'exécution ferait imputer un remboursement sur l'une ici et
@@ -111,7 +121,7 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
     granularity,
   })
 
-  const statements = await reliabilityOverlapping(from, to)
+  const statements = await reliabilityOverlapping(profileId, from, to)
   const unreliableStatements = statements
     .filter(s => s.reliability !== 'reliable')
     .map(s => ({ hash: s.hash, periodStart: s.periodStart, periodEnd: s.periodEnd, gapCents: s.gapCents }))
@@ -122,7 +132,7 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
     to,
     reliability: worstReliability(statements.map(s => s.reliability)),
     unreliableStatements,
-    bankBalance: await bankBalanceFor(from, to),
+    bankBalance: await bankBalanceFor(profileId, from, to),
     seriesFrom: seriesStart,
   }
 })
@@ -140,7 +150,7 @@ export default defineEventHandler(async (event): Promise<AnalysisResponse> => {
  * annoncé — `from` et `to` disent ce que le solde couvre — pour que l'écran cesse de laisser
  * croire qu'il décrit la période demandée (revue du 2026-09-05).
  */
-async function bankBalanceFor(from: string, to: string) {
+async function bankBalanceFor(profileId: number, from: string, to: string) {
   const covering = await db
     .select({
       periodStart: bankStatements.periodStart,
@@ -149,7 +159,11 @@ async function bankBalanceFor(from: string, to: string) {
       closingBalanceCents: bankStatements.closingBalanceCents,
     })
     .from(bankStatements)
-    .where(and(lte(bankStatements.periodStart, to), gte(bankStatements.periodEnd, from)))
+    .where(and(
+      eq(bankStatements.profileId, profileId),
+      lte(bankStatements.periodStart, to),
+      gte(bankStatements.periodEnd, from),
+    ))
     .orderBy(asc(bankStatements.periodStart))
 
   if (covering.length === 0) return null

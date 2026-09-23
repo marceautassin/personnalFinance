@@ -56,6 +56,7 @@ function makeEvent(hash: string): H3Event {
     path: `/api/statements/${hash}`,
     method: 'GET',
     context: { params: { hash } },
+    node: { req: { headers: {} }, res: {} },
   } as unknown as H3Event
 }
 

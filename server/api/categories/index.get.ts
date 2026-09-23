@@ -1,9 +1,10 @@
 import { defineEventHandler } from 'h3'
-import { asc } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { categoryGroups, categoryItems } from '~~/server/db/schema'
 import { transactionCountsByItem } from '~~/server/utils/category-references'
 import type { CategoryGroupWithItems } from '~~/shared/schemas/category.schema'
+import { requireProfile } from '~~/server/utils/current-profile'
 
 /**
  * Référentiel complet : rubriques et leurs postes (FR15), avec le nombre de transactions
@@ -17,18 +18,22 @@ import type { CategoryGroupWithItems } from '~~/shared/schemas/category.schema'
  * le `ORDER BY` de SQLite est en collation binaire, qui classe « École » et « énergie » après
  * « Zoo ».
  */
-export default defineEventHandler(async (): Promise<CategoryGroupWithItems[]> => {
+export default defineEventHandler(async (event): Promise<CategoryGroupWithItems[]> => {
+  const profileId = requireProfile(event)
+
   const groups = await db
     .select()
     .from(categoryGroups)
+    .where(eq(categoryGroups.profileId, profileId))
     .orderBy(asc(categoryGroups.position))
 
   const items = await db
     .select()
     .from(categoryItems)
+    .where(eq(categoryItems.profileId, profileId))
     .orderBy(asc(categoryItems.position))
 
-  const counts = transactionCountsByItem()
+  const counts = transactionCountsByItem(profileId)
 
   const byPositionThenLabel = <T extends { position: number, label: string }>(a: T, b: T) =>
     a.position - b.position || a.label.localeCompare(b.label, 'fr')

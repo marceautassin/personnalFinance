@@ -1,8 +1,9 @@
 import { defineEventHandler, getRouterParam, setResponseStatus } from 'h3'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { categoryItems } from '~~/server/db/schema'
 import { itemTransactionCount } from '~~/server/utils/category-references'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { isProtectedItem } from '~~/shared/constants/protected-categories'
@@ -20,11 +21,12 @@ import { isProtectedItem } from '~~/shared/constants/protected-categories'
  */
 export default defineEventHandler(async (event) => {
   const code = getRouterParam(event, 'code') ?? ''
+  const profileId = requireProfile(event)
 
   const existing = db
     .select({ code: categoryItems.code })
     .from(categoryItems)
-    .where(eq(categoryItems.code, code))
+    .where(and(eq(categoryItems.code, code), eq(categoryItems.profileId, profileId)))
     .get()
   if (!existing) throw domainError(ApiErrorCode.NotFound, { code }, 404)
 
@@ -32,12 +34,12 @@ export default defineEventHandler(async (event) => {
     throw domainError(ApiErrorCode.CategoryProtected, { code }, 409)
   }
 
-  const transactionCount = itemTransactionCount(code)
+  const transactionCount = itemTransactionCount(profileId, code)
   if (transactionCount > 0) {
     throw domainError(ApiErrorCode.CategoryInUse, { code, transactionCount }, 409)
   }
 
-  db.delete(categoryItems).where(eq(categoryItems.code, code)).run()
+  db.delete(categoryItems).where(and(eq(categoryItems.code, code), eq(categoryItems.profileId, profileId))).run()
   setResponseStatus(event, 204)
   return null
 })

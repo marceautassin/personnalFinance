@@ -75,9 +75,11 @@ function seedTransaction(): number {
   return Number(result.lastInsertRowid)
 }
 
-function makeEvent(id: string, body: unknown): H3Event {
+function makeEvent(id: string, body: unknown, profileId?: number): H3Event {
   const rawBody = body === undefined ? '' : JSON.stringify(body)
-  const req = { headers: { 'content-type': 'application/json' }, method: 'PATCH' }
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  if (profileId !== undefined) headers.cookie = `pf_profile=${profileId}`
+  const req = { headers, method: 'PATCH' }
   return {
     _requestBody: rawBody,
     node: { req, res: {} },
@@ -241,5 +243,33 @@ describe('PATCH /api/transactions/[id] — proposition de règle', () => {
   it('refuse un patch qui ne touche pas la catégorie, avant même la proposition', async () => {
     const id = seedTx('CARTE 12/03/26 CDISCOUNT A CB*0000')
     await expect(handler(makeEvent(String(id), {}))).rejects.toMatchObject({ statusCode: 422 })
+  })
+})
+
+/** Cloisonnement entre profils (story 27.2, AC 3) : une transaction de A n'existe pas pour B. */
+describe('PATCH /api/transactions/[id] — cloisonnement entre profils', () => {
+  beforeEach(() => {
+    dbMod.db.delete(schema.classificationRules).run()
+  })
+
+  it('404 not_found : une transaction du profil A n\'existe pas pour B, même identifiant', async () => {
+    seedStatement()
+    const id = seedTransaction() // profil 1 (A)
+
+    const other = sqlite
+      .prepare('INSERT INTO profiles (name, default_bank) VALUES (?, ?)')
+      .run('conjoint', 'boursorama')
+    const otherProfileId = Number(other.lastInsertRowid)
+
+    await expect(
+      handler(makeEvent(String(id), { categoryItemCode: 'alimentation-restaurant' }, otherProfileId)),
+    ).rejects.toMatchObject({ statusCode: 404, statusMessage: ApiErrorCode.NotFound })
+
+    // La ligne de A n'a pas bougé.
+    const row = dbMod.db.select().from(schema.transactions).all().find(r => r.id === id)!
+    expect(row.categoryItemId).toBe(itemId('alimentation-courses'))
+    expect(row.isManual).toBe(false)
+
+    sqlite.prepare('DELETE FROM profiles WHERE id = ?').run(otherProfileId)
   })
 })

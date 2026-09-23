@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam } from 'h3'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
 import { categoryGroups } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
@@ -22,7 +22,7 @@ export default defineEventHandler(async (event): Promise<CategoryGroup> => {
   const existing = db
     .select({ code: categoryGroups.code })
     .from(categoryGroups)
-    .where(eq(categoryGroups.code, code))
+    .where(and(eq(categoryGroups.code, code), eq(categoryGroups.profileId, profileId)))
     .get()
   if (!existing) throw domainError(ApiErrorCode.GroupNotFound, { code }, 404)
 
@@ -31,7 +31,7 @@ export default defineEventHandler(async (event): Promise<CategoryGroup> => {
   return db
     .update(categoryGroups)
     .set({ label: body.label })
-    .where(eq(categoryGroups.code, code))
+    .where(and(eq(categoryGroups.code, code), eq(categoryGroups.profileId, profileId)))
     .returning({
       code: categoryGroups.code,
       label: categoryGroups.label,

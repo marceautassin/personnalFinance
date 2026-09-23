@@ -61,10 +61,14 @@ beforeEach(() => {
   sqlite.exec(TEST_REFERENTIAL_DDL)
 })
 
-function makeEvent(opts: { method: string, body?: unknown, code?: string }): H3Event {
+function makeEvent(opts: { method: string, body?: unknown, code?: string, profileId?: number }): H3Event {
   const rawBody = opts.body === undefined ? '' : JSON.stringify(opts.body)
   const res = { statusCode: 200 }
-  const req = { headers: { 'content-type': 'application/json' }, method: opts.method }
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  // `pf_profile` : absent par défaut, le repli « exactement un profil » s'applique (AC 10). Un
+  // scénario à deux profils le pose explicitement — `getCookie` lit `node.req.headers.cookie`.
+  if (opts.profileId !== undefined) headers.cookie = `pf_profile=${opts.profileId}`
+  const req = { headers, method: opts.method }
   return {
     _requestBody: rawBody,
     node: { req, res },
@@ -421,5 +425,81 @@ describe('DELETE /api/categories/items/[code]', () => {
     expect(() =>
       sqlite.exec('DELETE FROM category_items WHERE code = \'alimentation-courses\''),
     ).toThrow(/FOREIGN KEY/i)
+  })
+})
+
+/**
+ * Cloisonnement entre profils (story 27.2, AC 2, AC 3). Un second profil est semé directement
+ * en SQL — l'écran de création arrive en 27.3, cette story n'en dépend pas.
+ */
+describe('cloisonnement entre profils', () => {
+  let otherProfileId: number
+  let otherGroupCode: string
+
+  beforeEach(() => {
+    const result = sqlite
+      .prepare('INSERT INTO profiles (name, default_bank) VALUES (?, ?)')
+      .run('conjoint', 'boursorama')
+    otherProfileId = Number(result.lastInsertRowid)
+    otherGroupCode = 'alimentation' // même code que le profil 1 : deux profils peuvent le partager.
+    sqlite
+      .prepare('INSERT INTO category_groups (profile_id, code, label, position) VALUES (?, ?, ?, 0)')
+      .run(otherProfileId, otherGroupCode, 'Alimentation (conjoint)')
+  })
+
+  it('le référentiel de B ne fuite pas dans le listing de A', async () => {
+    const result = (await getHandler(makeEvent({ method: 'GET', profileId: 1 }))) as Group[]
+    expect(result.find(g => g.label === 'Alimentation (conjoint)')).toBeUndefined()
+  })
+
+  it('deux profils peuvent chacun porter une rubrique de même code, sans collision (D37)', async () => {
+    // Le profil 1 a déjà une rubrique `alimentation` (TEST_REFERENTIAL_DDL) : la créer côté B
+    // dans `beforeEach` n'a levé aucune erreur d'unicité — la clé est `(profile_id, code)`.
+    const result = (await getHandler(makeEvent({ method: 'GET', profileId: otherProfileId }))) as Group[]
+    expect(result.some(g => g.code === 'alimentation')).toBe(true)
+  })
+
+  it('PATCH sur une rubrique du profil A échoue en 404 group_not_found pour B', async () => {
+    await expectError(
+      groupPatch(makeEvent({ method: 'PATCH', code: 'transport', body: { label: 'Renommé' }, profileId: otherProfileId })),
+      ApiErrorCode.GroupNotFound,
+      404,
+    )
+  })
+
+  it('DELETE sur une rubrique du profil A échoue en 404 pour B, jamais 403', async () => {
+    await expectError(
+      groupDelete(makeEvent({ method: 'DELETE', code: 'style', profileId: otherProfileId })),
+      ApiErrorCode.GroupNotFound,
+      404,
+    )
+  })
+
+  it('PATCH sur un poste du profil A échoue en 404 not_found pour B', async () => {
+    await expectError(
+      itemPatch(makeEvent({ method: 'PATCH', code: 'alimentation-courses', body: { label: 'X' }, profileId: otherProfileId })),
+      ApiErrorCode.NotFound,
+      404,
+    )
+  })
+
+  it('DELETE sur un poste du profil A échoue en 404 not_found pour B', async () => {
+    await expectError(
+      itemDelete(makeEvent({ method: 'DELETE', code: 'alimentation-courses', profileId: otherProfileId })),
+      ApiErrorCode.NotFound,
+      404,
+    )
+  })
+
+  it('POST group : le libellé du profil A n\'empêche pas B de créer le même', async () => {
+    // Le profil 1 porte déjà une rubrique « Alimentation » (TEST_REFERENTIAL_DDL) : sans
+    // cloisonnement, `assertGroupLabelAvailable` la verrait et refuserait la création côté B.
+    sqlite.exec(`DELETE FROM category_groups WHERE profile_id = ${otherProfileId}`)
+    const created = (await groupPost(makeEvent({
+      method: 'POST',
+      body: { label: 'Alimentation' },
+      profileId: otherProfileId,
+    }))) as Group
+    expect(created.label).toBe('Alimentation')
   })
 })

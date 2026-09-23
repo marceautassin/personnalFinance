@@ -68,6 +68,6 @@ export default defineEventHandler(async (event): Promise<ClassificationRuleWithL
     categoryItemCode: body.categoryItemCode,
     itemLabel: item?.itemLabel ?? body.categoryItemCode,
     groupLabel: item?.groupLabel ?? '',
-    matchCount: countCoveredTransactions(pattern),
+    matchCount: countCoveredTransactions(profileId, pattern),
   }
 })

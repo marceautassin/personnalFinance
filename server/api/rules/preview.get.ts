@@ -1,6 +1,7 @@
 import { defineEventHandler, getQuery } from 'h3'
 import { normalizeForMatch } from '~~/server/services/rule-matcher'
 import { countCoveredTransactions } from '~~/server/utils/rule-coverage'
+import { requireProfile } from '~~/server/utils/current-profile'
 
 /**
  * GET /api/rules/preview?pattern=… — portée qu'aurait une règle, AVANT de la créer.
@@ -14,9 +15,10 @@ import { countCoveredTransactions } from '~~/server/utils/rule-coverage'
  * l'utilisateur décide de créer une règle doit dire la même chose que ce que la règle fera.
  */
 export default defineEventHandler((event): { pattern: string, matchCount: number } => {
+  const profileId = requireProfile(event)
   const raw = getQuery(event).pattern
   const pattern = normalizeForMatch(typeof raw === 'string' ? raw : '')
   if (pattern.length < 2) return { pattern, matchCount: 0 }
 
-  return { pattern, matchCount: countCoveredTransactions(pattern) }
+  return { pattern, matchCount: countCoveredTransactions(profileId, pattern) }
 })

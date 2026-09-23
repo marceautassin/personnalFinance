@@ -9,6 +9,8 @@ export const ApiErrorCode = {
   ValidationFailed: 'validation_failed',
   NotFound: 'not_found',
   Unauthorized: 'unauthorized',
+  /** Cookie `pf_profile` absent/invalide et plus d'un profil en base (D38, story 27.2). */
+  ProfileRequired: 'profile_required',
 
   // Domaine — Statements / Ingestion
   PdfAlreadyIngested: 'pdf_already_ingested',

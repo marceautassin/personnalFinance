@@ -1,8 +1,8 @@
 import { defineEventHandler, setResponseStatus } from 'h3'
-import { inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '~~/server/db/client'
-import { settlementGroups, transactions } from '~~/server/db/schema'
+import { settlementGroups, transactions, bankStatements } from '~~/server/db/schema'
 import { validateBody } from '~~/server/utils/validation'
 import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError } from '~~/server/utils/errors'
@@ -26,10 +26,14 @@ export default defineEventHandler(async (event) => {
   const profileId = requireProfile(event)
   const ids = [...new Set(body.transactionIds)]
 
+  // `transactions` n'a pas de `profile_id` (D37) : jointure au relevé pour restreindre au
+  // profil. Une ligne d'un AUTRE profil est donc absente de `rows`, exactement comme un id
+  // inexistant — même erreur (AC 4), et l'appelant n'apprend rien qui distingue les deux cas.
   const rows = db
     .select({ id: transactions.id, settlementGroupId: transactions.settlementGroupId })
     .from(transactions)
-    .where(inArray(transactions.id, ids))
+    .innerJoin(bankStatements, eq(bankStatements.hashSha256, transactions.statementHash))
+    .where(and(inArray(transactions.id, ids), eq(bankStatements.profileId, profileId)))
     .all()
 
   if (rows.length !== ids.length) {
@@ -48,11 +52,19 @@ export default defineEventHandler(async (event) => {
     }, 422)
   }
 
+  // Défense en profondeur (revue de la story 27.2) : `ids` vient déjà d'une lecture filtrée
+  // par profil (l.32-37), mais l'`UPDATE` reprend tout de même la condition de profil — une
+  // course entre lecture et écriture ne doit rien pouvoir franchir.
+  const statementsOfProfile = db
+    .select({ hash: bankStatements.hashSha256 })
+    .from(bankStatements)
+    .where(eq(bankStatements.profileId, profileId))
+
   const group = db.transaction((tx) => {
     const created = tx.insert(settlementGroups).values({ profileId, label: body.label }).returning().get()
     tx.update(transactions)
       .set({ settlementGroupId: created.id })
-      .where(inArray(transactions.id, ids))
+      .where(and(inArray(transactions.id, ids), inArray(transactions.statementHash, statementsOfProfile)))
       .run()
     return created
   })
