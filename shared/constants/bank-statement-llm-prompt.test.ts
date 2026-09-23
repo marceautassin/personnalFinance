@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildBankStatementUserMessage,
+  buildBankStatementSystemPrompt,
   BANK_STATEMENT_SYSTEM_PROMPT,
+  BANK_STATEMENT_PROMPT_VERSION,
   type LlmCategoryItem,
 } from './bank-statement-llm-prompt'
 import { DEFAULT_REFERENTIAL, FALLBACK_ITEM_CODE } from './default-referential'
@@ -99,5 +101,54 @@ describe('BANK_STATEMENT_SYSTEM_PROMPT', () => {
 
   it('écarte explicitement les lignes de solde', () => {
     expect(BANK_STATEMENT_SYSTEM_PROMPT).toMatch(/lignes de solde.*ne sont PAS des opérations/su)
+  })
+
+  /** Depuis la version 4 (story 28.1), la partie commune est neutre vis-à-vis de la banque. */
+  it('ne mentionne plus Boursorama (D41, AC 8)', () => {
+    expect(BANK_STATEMENT_SYSTEM_PROMPT).not.toMatch(/boursorama/i)
+  })
+
+  it('ne cite plus les intitulés de solde propres à Boursorama', () => {
+    expect(BANK_STATEMENT_SYSTEM_PROMPT).not.toContain('SOLDE AU')
+    expect(BANK_STATEMENT_SYSTEM_PROMPT).not.toContain('Nouveau solde')
+  })
+})
+
+describe('BANK_STATEMENT_PROMPT_VERSION', () => {
+  it('vaut 4 depuis la story 28.1', () => {
+    expect(BANK_STATEMENT_PROMPT_VERSION).toBe(4)
+  })
+})
+
+/**
+ * buildBankStatementSystemPrompt(bank) — D41, AC 8. Pour Boursorama, l'ensemble « commun +
+ * paragraphe » doit conserver TOUTES les règles de la version 3, phrase-clé par phrase-clé.
+ */
+describe('buildBankStatementSystemPrompt', () => {
+  const boursoramaPrompt = buildBankStatementSystemPrompt('boursorama')
+
+  it('cite « SOLDE AU » uniquement dans le paragraphe Boursorama', () => {
+    expect(boursoramaPrompt).toContain('SOLDE AU')
+    expect(boursoramaPrompt).toContain('Nouveau solde')
+  })
+
+  it.each([
+    /Exhaustivité/i, // règle 1
+    /Ne JAMAIS contredire le marqueur/, // règle 2
+    /masquerait un déficit/i, // règle 3
+    /Poste de repli/i, // règle 4
+    /CENTIMES/, // règle 5
+    /YYYY-MM-DD/, // règle 6
+    /conserver le libellé brut du relevé.*sans paraphraser/i, // règle 7
+    /Pas d'invention/i, // règle 8
+    /Pas d'enrichissement/i, // règle 9
+  ])('conserve la règle « %s » de la v3', (rule) => {
+    expect(boursoramaPrompt).toMatch(rule)
+  })
+
+  it('credit_mutuel reste neutre (extraction reportée à la story 28.2)', () => {
+    const creditMutuelPrompt = buildBankStatementSystemPrompt('credit_mutuel')
+    expect(creditMutuelPrompt).toBe(BANK_STATEMENT_SYSTEM_PROMPT)
+    expect(creditMutuelPrompt).not.toContain('SOLDE AU')
   })
 })

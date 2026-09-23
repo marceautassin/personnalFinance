@@ -1,0 +1,18 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`fixture Boursorama synthétique (AC 7, D43) > ce qui part au fournisseur (après redactIdentity) > correspond au snapshot verrouillé 1`] = `
+"Date opération Libellé Valeur Débit Crédit
+SOLDE AU : 27/02/2026 1 000,00
+02/03/2026 VIRT SALAIRE SOCIETE FICTIVE 2 500,00 [CRÉDIT]
+03/03/2026 PRLV ABONNEMENT INTERNET FICTIF 39,99 [DÉBIT]
+05/03/2026 CARTE ACHAT SUPERMARCHE FICTIF 87,50 [DÉBIT]
+07/03/2026 CARTE RESTAURANT LE FICTIF 42,00 [DÉBIT]
+Date opération Libellé Valeur Débit Crédit
+10/03/2026 VIR RECU AMI FICTIF 50,00 [CRÉDIT]
+15/03/2026 PRLV ASSURANCE HABITATION FICTIVE 65,00 [DÉBIT]
+18/03/2026 CARTE ESSENCE STATION FICTIVE 60,00 [DÉBIT]
+22/03/2026 VIR EPARGNE VERS LIVRET FICTIF 200,00 [DÉBIT]
+25/03/2026 CARTE LOISIRS CINEMA FICTIF 15,00 [DÉBIT]
+29/03/2026 REMBOURSEMENT ASSURANCE FICTIVE 30,00 [CRÉDIT]
+Nouveau solde en EUR : Montant frais bancaires* : 0,00 3 070,51 0,00"
+`;

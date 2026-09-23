@@ -58,6 +58,20 @@ describe('useApiError.mapError', () => {
     expect(mapError({ statusMessage: { nested: true } })).toContain('Une erreur est survenue')
   })
 
+  it('nomme la banque reconnue sur bank_mismatch (data.detected)', () => {
+    expect(mapError({
+      statusMessage: 'Bad Request',
+      data: { statusMessage: ApiErrorCode.BankMismatch, data: { expected: 'boursorama', detected: 'credit_mutuel' } },
+    })).toBe('Ce relevé semble être un relevé Crédit Mutuel — sélectionne cette banque et redépose le fichier.')
+  })
+
+  it('signale l\'absence de reconnaissance sur bank_mismatch (detected: null)', () => {
+    expect(mapError({
+      statusMessage: 'Bad Request',
+      data: { statusMessage: ApiErrorCode.BankMismatch, data: { expected: 'boursorama', detected: null } },
+    })).toContain('n\'a pas pu être reconnue')
+  })
+
   it('couvre tous les codes définis dans ApiErrorCode', () => {
     for (const code of Object.values(ApiErrorCode)) {
       const msg = mapError({ statusMessage: code })

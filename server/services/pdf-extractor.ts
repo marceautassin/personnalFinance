@@ -1,21 +1,19 @@
 /**
  * pdf-extractor — extraction texte + métadonnées d'un relevé bancaire PDF.
  *
- * SEUL POINT D'ENTRÉE vers `unpdf` (NFR16, CLAUDE.md §Boundaries imperméables).
+ * SEUL POINT D'ENTRÉE vers `unpdf` (NFR21, CLAUDE.md §Boundaries imperméables).
  * Tout autre import direct de `unpdf` ailleurs dans le code est un anti-pattern.
+ *
+ * La logique propre à chaque banque (reconnaissance, coupe du texte, lecture des soldes et
+ * de la période) vit derrière `BankFormat`, dans `server/services/bank-formats/` (D41). Ce
+ * fichier ne fait plus que : lire le PDF, router vers le bon format, et redacter l'identité
+ * en dernier (règle commune à toutes les banques).
  */
 import { extractText, getDocumentProxy } from 'unpdf'
-import { eurosToCents, type Cents } from '~~/shared/types/money'
-
-/** Marqueurs de colonne ajoutés aux montants. Consommés par le prompt de catégorisation. */
-/**
- * Un montant au format français, séparateurs de milliers compris (espace ASCII, insécable,
- * fine, ou point). Partagé par la lecture des soldes et la coupe du texte plat.
- */
-const FR_AMOUNT_TOKEN = /-?\d{1,3}(?:[\s\u00a0\u202f.]\d{3})*,\d{2}|-?\d+[.,]\d{2}/gu
-
-export const DEBIT_MARKER = '[DÉBIT]'
-export const CREDIT_MARKER = '[CRÉDIT]'
+import type { Cents } from '~~/shared/types/money'
+import type { Bank } from '~~/shared/types/bank'
+import { BANK_FORMATS, detectBank } from '~~/server/services/bank-formats'
+import { BankMismatchError, type PositionedItem } from '~~/server/services/bank-formats/types'
 
 export interface RawStatement {
   /** Texte concaténé de toutes les pages du PDF. */
@@ -30,7 +28,12 @@ export interface RawStatement {
   closingBalanceCents: Cents | null
 }
 
-export async function extractStatement(pdfBuffer: Buffer): Promise<RawStatement> {
+/**
+ * Texte plat concaténé de toutes les pages. Exportée pour la capture de fixture (D43, story
+ * 28.1) : `unpdf` reste importé par ce seul fichier (NFR21), la capture y accède via cette
+ * fonction plutôt qu'en important `unpdf` elle-même.
+ */
+export async function readFlatText(pdfBuffer: Buffer): Promise<string> {
   let flatText: string
 
   try {
@@ -47,17 +50,37 @@ export async function extractStatement(pdfBuffer: Buffer): Promise<RawStatement>
     throw new Error('PDF contains no extractable text')
   }
 
-  // Le texte plat reste la source des métadonnées : ses expressions régulières sont calées
-  // dessus depuis la story 2.2 et n'ont aucune raison de changer.
-  const period = extractPeriod(flatText)
-  const balances = extractBalances(flatText)
+  return flatText
+}
+
+export async function extractStatement(pdfBuffer: Buffer, bank: Bank): Promise<RawStatement> {
+  const flatText = await readFlatText(pdfBuffer)
+
+  // Refus croisé (FR78, AR38) : AVANT tout appel au fournisseur, sans PDF sauvegardé ni ligne
+  // écrite. Sur le texte plat COMPLET, avant toute coupe — reconnaître sur un texte déjà
+  // amputé de son en-tête raterait le marqueur d'émetteur.
+  const format = BANK_FORMATS[bank]
+  if (!format.recognizes(flatText)) {
+    throw new BankMismatchError(bank, detectBank(flatText))
+  }
+
+  // La lecture positionnelle est un CONFORT DE FIABILITÉ, pas un prérequis : son échec ne
+  // doit pas faire échouer une ingestion que le texte plat rend possible. `console.warn` pour
+  // que le repli reste visible (pas un `catch` qui avale silencieusement, CLAUDE.md).
+  const pages = await readPositionedPages(pdfBuffer).catch((err) => {
+    console.warn('[pdf-extractor] lecture positionnelle indisponible, repli sur le texte plat', err)
+    return null
+  })
+
+  const rawText = redactIdentity(format.operationsText({ pages, flatText }))
+  const { periodStart, periodEnd, openingCents, closingCents } = format.balancesAndPeriod(flatText)
 
   return {
-    rawText: redactIdentity((await extractPositionalText(pdfBuffer)) ?? cutBeforeOperations(flatText)),
-    periodStart: period.start,
-    periodEnd: period.end,
-    openingBalanceCents: balances.openingCents,
-    closingBalanceCents: balances.closingCents,
+    rawText,
+    periodStart,
+    periodEnd,
+    openingBalanceCents: openingCents,
+    closingBalanceCents: closingCents,
   }
 }
 
@@ -65,9 +88,10 @@ export async function extractStatement(pdfBuffer: Buffer): Promise<RawStatement>
  * Remplace les identifiants bancaires par un marqueur neutre (NFR6, story 17.1).
  *
  * **Filet de sécurité, pas ligne de défense principale.** La coupe géométrique
- * (`operationRows`) retire déjà le bloc d'identité sur les relevés dont les colonnes sont
- * reconnues. Cette passe couvre ce qu'elle ne peut pas atteindre : une page sans en-tête, un
- * pied de page, un gabarit inconnu tombé sur le repli texte plat.
+ * (`operationRows`, dans `bank-formats/columns.ts`) retire déjà le bloc d'identité sur les
+ * relevés dont les colonnes sont reconnues. Cette passe couvre ce qu'elle ne peut pas
+ * atteindre : une page sans en-tête, un pied de page, un gabarit inconnu tombé sur le repli
+ * texte plat. Appliquée en dernier, pour toutes les banques.
  *
  * **Portée assumée.** Le nom du titulaire figure DANS les libellés bancaires eux-mêmes
  * (`VIR SEPA DUPONT Jean charges`) : il est indissociable de la donnée métier et reste
@@ -83,102 +107,12 @@ export function redactIdentity(text: string): string {
 }
 
 /**
- * Ne garde que les tableaux d'opérations d'un texte plat (NFR6, story 17.1).
+ * Lit les pages d'un PDF avec la position (x, y, largeur) de chaque fragment de texte.
  *
- * Repli du repli : quand la géométrie des colonnes n'est pas reconnue, on ne peut pas couper
- * par ordonnée, mais l'intitulé du tableau reste un point d'ancrage textuel fiable.
- *
- * **Chaque** occurrence de l'ancre est traitée, pas seulement la première (revue du
- * 2026-09-06) : un relevé multipage aplati réimprime son bloc d'identité en tête de chaque
- * page, et ne couper qu'en tête de document laissait passer les blocs des pages 2 à N.
- *
- * Chaque tranche est en outre TRONQUÉE APRÈS SON DERNIER MONTANT. Sans cela, la tranche
- * courant jusqu'à l'ancre suivante réavalait précisément le bloc d'identité qu'on cherche à
- * écarter — il se trouve entre la fin d'un tableau et l'en-tête de la page suivante. Le
- * dernier montant est une borne déterministe : au-delà, il n'y a plus d'opérations.
- *
- * Sans ancre, le texte est rendu inchangé — l'expurgation par motif reste la seule garde.
+ * Exportée pour la capture de fixture (D43, story 28.1) : c'est la seule façon d'obtenir des
+ * pages positionnées hors de `extractStatement`, sans dupliquer l'appel à `unpdf` ailleurs.
  */
-export function cutBeforeOperations(flatText: string): string {
-  const anchor = /Date\s+op[ée]ration[^\n]{0,40}?Cr[ée]dit|D[ée]bit\s+Cr[ée]dit/gu
-  const starts = [...flatText.matchAll(anchor)].map(m => m.index)
-  if (starts.length === 0) return flatText
-
-  return starts
-    .map((start, i) => {
-      const slice = flatText.slice(start, starts[i + 1] ?? flatText.length)
-      const amounts = [...slice.matchAll(FR_AMOUNT_TOKEN)]
-      const last = amounts.at(-1)
-      return last ? slice.slice(0, last.index + last[0].length) : slice
-    })
-    .join('\n')
-}
-
-/** Un fragment de texte du PDF, avec sa position. `right` est le bord droit. */
-export interface PositionedItem {
-  x: number
-  right: number
-  y: number
-  text: string
-}
-
-/** Tolérance verticale, en points, pour considérer deux fragments sur la même ligne. */
-const ROW_TOLERANCE = 2
-
-/** Un montant au format français, tel qu'il apparaît dans une colonne du relevé. */
-const AMOUNT_RE = /^-?\d{1,3}(?:[\s\u00a0\u202f.]\d{3})*,\d{2}$/u
-
-/**
- * Reconstruit le texte du relevé en RESPECTANT LES COLONNES, et marque chaque montant
- * `[DÉBIT]` ou `[CRÉDIT]` selon la colonne où il se trouve.
- *
- * **Pourquoi (constaté le 2026-09-05).** L'extraction à plat perd les colonnes : une ligne
- * arrivait au modèle sous la forme `VIR INST SOCIETEX 02/03/2026 500,00`, sans rien qui dise si
- * ce montant est au débit ou au crédit. Le modèle devinait — et se trompait, jusqu'à donner
- * DEUX SIGNES OPPOSÉS au même libellé récurrent (`VIR Epargne programmee`, −10,00 puis
- * +10,00). Sur les deux relevés réels, la réconciliation accusait 2 187 € et 1 764 € d'écart.
- *
- * L'information existe pourtant dans le PDF : les colonnes Débit et Crédit sont séparées de
- * plus de soixante points. La lire est déterministe ; la deviner ne l'est pas. C'est aussi
- * l'esprit de NFR15 — le modèle ne doit rien inventer qu'on puisse constater.
- *
- * Retourne `null` si la structure de colonnes n'est pas reconnue (autre banque, autre
- * gabarit) : l'appelant retombe alors sur le texte plat, dégradé mais fonctionnel.
- */
-async function extractPositionalText(pdfBuffer: Buffer): Promise<string | null> {
-  let pages: PositionedItem[][]
-  try {
-    pages = await readPositionedPages(pdfBuffer)
-  }
-  catch {
-    // L'extraction positionnelle est un CONFORT DE FIABILITÉ, pas un prérequis : son échec
-    // ne doit pas faire échouer une ingestion que le texte plat rend possible.
-    return null
-  }
-
-  // Le séparateur est cherché page par page, mais REPORTÉ sur celles qui n'ont pas d'en-tête.
-  //
-  // Une page de continuation ne réimprime pas « Débit / Crédit » : ses montants sortaient donc
-  // sans marqueur, et la règle du prompt renvoyait le modèle à la déduction — la panne
-  // d'origine, sur une partie du relevé. La géométrie des colonnes ne change pas d'une page à
-  // l'autre dans un même document : le report est sûr (revue du 2026-09-05).
-  const headers = pages.map(findDebitCreditHeader)
-  const known = headers.find(h => h !== null) ?? null
-  if (!known) return null
-
-  let current = known.separator
-  return pages
-    .map((items, index) => {
-      const header = headers[index]
-      if (header) current = header.separator
-      // Coupe du bloc d'identité : voir `operationRows` (NFR6). Une page sans en-tête ne peut
-      // pas être coupée géométriquement — l'expurgation par motif prend alors le relais.
-      return renderRows(operationRows(items, header ?? null), current)
-    })
-    .join('\n')
-}
-
-async function readPositionedPages(pdfBuffer: Buffer): Promise<PositionedItem[][]> {
+export async function readPositionedPages(pdfBuffer: Buffer): Promise<PositionedItem[][]> {
   const doc = await getDocumentProxy(new Uint8Array(pdfBuffer))
   const pages: PositionedItem[][] = []
   for (let n = 1; n <= doc.numPages; n++) {
@@ -194,199 +128,4 @@ async function readPositionedPages(pdfBuffer: Buffer): Promise<PositionedItem[][
     pages.push(items)
   }
   return pages
-}
-
-/**
- * Abscisse qui sépare la colonne Débit de la colonne Crédit, déduite des en-têtes.
- *
- * On prend le milieu entre les CENTRES des deux en-têtes plutôt qu'un bord : les montants
- * sont alignés à droite et débordent de leur en-tête, si bien qu'un seuil calé sur un bord
- * classait mal les montants les plus larges.
- */
-export function findDebitCreditSeparator(items: PositionedItem[]): number | null {
-  return findDebitCreditHeader(items)?.separator ?? null
-}
-
-/** L'en-tête de colonnes : son abscisse de séparation et l'ordonnée de sa ligne. */
-export interface ColumnHeader {
-  /** Abscisse qui sépare la colonne Débit de la colonne Crédit. */
-  separator: number
-  /** Ordonnée de la ligne d'en-tête. Tout ce qui est au-dessus n'est pas une opération. */
-  y: number
-}
-
-export function findDebitCreditHeader(items: PositionedItem[]): ColumnHeader | null {
-  const center = (i: PositionedItem) => (i.x + i.right) / 2
-  const debit = items.find(i => /^d[ée]bit$/iu.test(i.text))
-  const credit = items.find(i => /^cr[ée]dit$/iu.test(i.text))
-  if (!debit || !credit) return null
-  // Les deux en-têtes doivent être sur la même ligne et dans cet ordre : sinon on lit autre
-  // chose qu'un tableau d'opérations et le seuil n'aurait aucun sens.
-  if (Math.abs(debit.y - credit.y) > ROW_TOLERANCE) return null
-  if (center(debit) >= center(credit)) return null
-  return { separator: (center(debit) + center(credit)) / 2, y: debit.y }
-}
-
-/**
- * Garde les fragments situés sur la ligne d'en-tête ou EN DESSOUS (NFR6, story 17.1).
- *
- * **Pourquoi.** Le bloc situé au-dessus de l'en-tête de colonnes n'est pas un tableau
- * d'opérations : c'est l'identité — IBAN, numéro de compte, nom et adresse du titulaire.
- * Vérifié sur les relevés réels du 2026-09-06 : l'IBAN `FR76…` s'y trouve sur les cinq pages,
- * toujours au-dessus de l'en-tête. Comme le texte transmis au fournisseur est construit ici,
- * c'est ici que la coupe doit avoir lieu — pas plus loin.
- *
- * Les ordonnées PDF croissent vers le haut : « en dessous » signifie `y` inférieur.
- */
-export function operationRows(items: PositionedItem[], header: ColumnHeader | null): PositionedItem[] {
-  if (header === null) return items
-  return items.filter(i => i.y <= header.y + ROW_TOLERANCE)
-}
-
-/** Regroupe les fragments par ligne (y décroissant), puis par abscisse croissante. */
-export function renderRows(items: PositionedItem[], separator: number | null): string {
-  const rows: PositionedItem[][] = []
-  for (const item of [...items].sort((a, b) => b.y - a.y || a.x - b.x)) {
-    const current = rows.at(-1)
-    if (current && Math.abs(current[0]!.y - item.y) <= ROW_TOLERANCE) current.push(item)
-    else rows.push([item])
-  }
-
-  return rows
-    .map(row => row
-      .sort((a, b) => a.x - b.x)
-      .map((item) => {
-        if (separator === null || !AMOUNT_RE.test(item.text)) return item.text
-        // Le montant est aligné à droite dans sa colonne : c'est son bord droit qui la désigne.
-        return `${item.text} ${item.right <= separator ? DEBIT_MARKER : CREDIT_MARKER}`
-      })
-      .join(' '))
-    .join('\n')
-}
-
-function frDateToIso(dd: string, mm: string, yyyy: string): string | null {
-  const day = Number(dd)
-  const month = Number(mm)
-  const year = Number(yyyy)
-  if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year)) return null
-  if (month < 1 || month > 12 || day < 1) return null
-  const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0
-  const daysInMonth = [31, isLeap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-  if (day > daysInMonth[month - 1]!) return null
-  return `${yyyy}-${mm}-${dd}`
-}
-
-interface PeriodResult {
-  start: string | null
-  end: string | null
-}
-
-function extractPeriod(rawText: string): PeriodResult {
-  // Ancrage en-tête : on limite la recherche aux premiers caractères pour éviter
-  // qu'un intervalle de dates parasite (description de prestation, etc.) plus bas
-  // dans le PDF ne soit confondu avec la période du relevé.
-  const header = rawText.slice(0, 2000)
-
-  const patterns: RegExp[] = [
-    /[Pp]ériode\s+du\s+(\d{2})\/(\d{2})\/(\d{4})\s+au\s+(\d{2})\/(\d{2})\/(\d{4})/,
-    /[Dd]u\s+(\d{2})\/(\d{2})\/(\d{4})\s+au\s+(\d{2})\/(\d{2})\/(\d{4})/,
-    /(\d{2})\/(\d{2})\/(\d{4})\s*[-–]\s*(\d{2})\/(\d{2})\/(\d{4})/,
-  ]
-
-  for (const re of patterns) {
-    const m = header.match(re)
-    if (m && m.length >= 7) {
-      const start = frDateToIso(m[1]!, m[2]!, m[3]!)
-      const end = frDateToIso(m[4]!, m[5]!, m[6]!)
-      if (start && end && start <= end) return { start, end }
-    }
-  }
-
-  return { start: null, end: null }
-}
-
-interface BalancesResult {
-  openingCents: Cents | null
-  closingCents: Cents | null
-}
-
-/**
- * Patterns soldes Boursobank (validés sur Releve-compte-31-03-2026.pdf) :
- *   Ouverture : "SOLDE AU : JJ/MM/AAAA  XXX,XX" (avant les premières transactions)
- *   Clôture   : "Nouveau solde en EUR : Montant frais bancaires* : <m1> <m2> <m3>"
- *               où <m2> est le solde, <m3> les frais (souvent 0,00).
- *
- * Fallbacks préservés pour formats Boursorama legacy / autres banques.
- *
- * **Correctif du 2026-09-06 (story 17.2).** Les captures étaient paresseuses et s'arrêtaient à
- * la première espace : `SOLDE AU : 31/12/2024 2 817,46` rendait `"2"`, soit 2,00 € au lieu de
- * 2 817,46 €. Le défaut ne se voyait pas parce qu'`unpdf` aplatit sans séparateur de milliers ;
- * un changement de version l'aurait réveillé en silence, avec des écarts de plusieurs milliers
- * d'euros. On ancre désormais sur l'intitulé, puis on lit des MONTANTS ENTIERS derrière lui.
- */
-export function extractBalances(rawText: string): BalancesResult {
-  const opening
-    = amountsAfter(rawText, /SOLDE\s+AU\s*:\s*\d{2}\/\d{2}\/\d{4}/i)[0]
-      ?? amountsAfter(rawText, /[Ss]olde\s+pr[ée]c[ée]dent/)[0]
-      ?? amountsAfter(rawText, /[Aa]ncien\s+solde/)[0]
-
-  // Le récapitulatif aplatit trois montants : total, SOLDE, frais. C'est le deuxième.
-  const closing
-    = amountsAfter(rawText, /Nouveau\s+solde\s+en\s+EUR\s*:\s*Montant\s+frais\s+bancaires\*?\s*:/i, 3)[1]
-      ?? amountsAfter(rawText, /[Nn]ouveau\s+solde/)[0]
-
-  return { openingCents: opening ?? null, closingCents: closing ?? null }
-}
-
-/**
- * Montants français lus juste après un intitulé.
- *
- * Le jeton accepte les séparateurs de milliers — espace ASCII, insécable, fine, ou point — ce
- * qui lève le défaut de la story 17.2. L'ambiguïté résiduelle (`2 817,46` peut se lire « 2 »
- * puis « 817,46 ») est tranchée en faveur du groupement : sur un relevé bancaire, tout montant
- * porte ses deux décimales, et un montant isolé de « 3 » n'existe pas.
- */
-function amountsAfter(rawText: string, anchor: RegExp, count = 1): Array<Cents | null> {
-  const m = anchor.exec(rawText)
-  if (!m) return []
-  // Fenêtre courte : au-delà, on lirait des montants d'opérations, pas le solde annoncé.
-  // Les dates sont neutralisées d'abord : sur `Ancien solde 31.12.2024 1 500,00`, le jeton
-  // aurait lu `31.12` comme un montant de 31,12 € (revue du 2026-09-06).
-  const window = rawText
-    .slice(m.index + m[0].length, m.index + m[0].length + 60)
-    .replace(/\d{2}[./-]\d{2}[./-]\d{2,4}/gu, ' ')
-  const found = window.match(FR_AMOUNT_TOKEN) ?? []
-  return found.slice(0, count).map(parseFrAmount)
-}
-
-/**
- * Parse un montant FR vers Cents. Formats acceptés :
- *   - "1 234,56" / "1 234,56" / "1 234,56" (espace standard, U+00A0, U+202F en milliers)
- *   - "1.023,56" (point milliers, virgule décimale — format Boursobank récap)
- *   - "-12,34" (signe négatif)
- *   - "1234.56" (point décimal seul, fallback ASCII — au plus 2 décimales)
- *   - "1 234,56 €" (symbole euro)
- *
- * Heuristique :
- *   - Si la chaîne contient une virgule → `,` est décimal, tous les `.` et espaces sont
- *     des séparateurs de milliers et doivent être supprimés.
- *   - Sinon → on suppose `.` décimal (style ASCII), on supprime juste les espaces.
- *
- * Mode strict : on rejette `\d+\.\d{3}` (un seul point suivi d'exactement 3 chiffres,
- * sans virgule) qui est ambigu — pourrait être 1.234 € ASCII OU 1 234 € au format
- * milliers-point. Renvoyer `null` force la chaîne d'appel à fournir un format levé.
- */
-export function parseFrAmount(s: string): Cents | null {
-  const stripped = s.replace(/[\s   €]/g, '')
-  if (stripped === '' || stripped === '-' || stripped === '.' || stripped === ',') return null
-
-  if (!stripped.includes(',') && /^-?\d+\.\d{3}$/.test(stripped)) return null
-
-  const cleaned = stripped.includes(',')
-    ? stripped.replace(/\./g, '').replace(',', '.')
-    : stripped
-
-  const num = Number(cleaned)
-  if (!Number.isFinite(num)) return null
-  return eurosToCents(num)
 }

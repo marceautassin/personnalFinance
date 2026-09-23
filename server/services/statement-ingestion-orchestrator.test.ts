@@ -286,6 +286,51 @@ describe('ingestStatement (orchestrator)', () => {
     expect(dbMod.db.select().from(schema.bankStatements).all()).toHaveLength(0)
   })
 
+  it('bank absent → défaut boursorama, transmis à extractStatement et categorizeStatement (D41)', async () => {
+    mockExtract()
+    mockCategorize([])
+    await orch.ingestStatement({ pdfBuffer: pdf('default-bank'), confirmReplace: false })
+    expect(vi.mocked(pdfMod.extractStatement).mock.calls[0]![1]).toBe('boursorama')
+    expect(vi.mocked(llmMod.categorizeStatement).mock.calls[0]![2]).toBe('boursorama')
+  })
+
+  it('bank explicite → transmise telle quelle à extractStatement', async () => {
+    mockExtract()
+    mockCategorize([])
+    await orch.ingestStatement({ pdfBuffer: pdf('explicit-bank'), confirmReplace: false, bank: 'credit_mutuel' })
+    expect(vi.mocked(pdfMod.extractStatement).mock.calls[0]![1]).toBe('credit_mutuel')
+  })
+
+  it('banque déclarée ne reconnaît pas le relevé → 400 bank_mismatch (FR78, AR38)', async () => {
+    const { BankMismatchError } = await import('~~/server/services/bank-formats/types')
+    vi.mocked(pdfMod.extractStatement).mockRejectedValue(new BankMismatchError('credit_mutuel', 'boursorama'))
+    await expect(
+      orch.ingestStatement({ pdfBuffer: pdf('bank-mismatch'), confirmReplace: false, bank: 'credit_mutuel' }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: ApiErrorCode.BankMismatch,
+      data: { expected: 'credit_mutuel', detected: 'boursorama' },
+    })
+    // AVANT tout appel au fournisseur, sans PDF sauvegardé ni ligne écrite.
+    expect(llmMod.categorizeStatement).not.toHaveBeenCalled()
+    expect(dbMod.db.select().from(schema.bankStatements).all()).toHaveLength(0)
+    expect(dbMod.db.select().from(schema.transactions).all()).toHaveLength(0)
+    expect(existsSync(pdfPathFor(pdf('bank-mismatch')))).toBe(false)
+  })
+
+  it('Crédit Mutuel non supporté (story 28.1) → 400 pdf_parse_failed, avant l\'appel au fournisseur', async () => {
+    vi.mocked(pdfMod.extractStatement).mockRejectedValue(new Error('credit_mutuel_not_supported_yet'))
+    await expect(
+      orch.ingestStatement({ pdfBuffer: pdf('cm-not-supported'), confirmReplace: false, bank: 'credit_mutuel' }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: ApiErrorCode.PdfParseFailed,
+      data: { reason: 'credit_mutuel_not_supported_yet' },
+    })
+    expect(llmMod.categorizeStatement).not.toHaveBeenCalled()
+    expect(dbMod.db.select().from(schema.bankStatements).all()).toHaveLength(0)
+  })
+
   it('fallback période G3 : déduit periodStart/End des dates min/max si extracteur null', async () => {
     mockExtract({ periodStart: null, periodEnd: null })
     mockCategorize([

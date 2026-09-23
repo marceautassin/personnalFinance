@@ -1,5 +1,5 @@
 /**
- * Prompt système pour l'extraction et la catégorisation des transactions Boursorama.
+ * Prompt système pour l'extraction et la catégorisation des transactions bancaires (D41).
  *
  * VERSIONING : le prompt est une constante versionnée. Pour le modifier, incrémenter
  * `BANK_STATEMENT_PROMPT_VERSION` — la cohérence des catégorisations passées dépend de sa
@@ -7,7 +7,12 @@
  *
  * NFR6 : ne JAMAIS injecter de données personnelles ici (nom, IBAN, adresse). Seuls la date,
  * le libellé et le montant sortent de la machine.
+ *
+ * Depuis la version 4 (story 28.1), la partie commune est neutre vis-à-vis de la banque : un
+ * paragraphe propre à chaque banque (`BANK_PROMPT_NOTES`) s'y ajoute via
+ * `buildBankStatementSystemPrompt(bank)`.
  */
+import type { Bank } from '../types/bank'
 import type { MovementNature } from '../types/movement-nature'
 
 /**
@@ -26,8 +31,12 @@ export interface LlmCategoryItem {
   readonly groupLabel: string
 }
 
-/** Version 3 : référentiel hiérarchique, trois natures (D17) et marqueurs de colonne. */
-export const BANK_STATEMENT_PROMPT_VERSION = 3
+/**
+ * Version 4 (story 28.1) : partie commune neutre vis-à-vis de la banque, complétée par un
+ * paragraphe par banque (`BANK_PROMPT_NOTES`). Précédemment, version 3 : référentiel
+ * hiérarchique, trois natures (D17) et marqueurs de colonne.
+ */
+export const BANK_STATEMENT_PROMPT_VERSION = 4
 
 const NATURE_FR: Record<MovementNature, string> = {
   income: 'recette',
@@ -35,7 +44,7 @@ const NATURE_FR: Record<MovementNature, string> = {
   internal_transfer: 'mouvement interne',
 }
 
-export const BANK_STATEMENT_SYSTEM_PROMPT = `Tu es un assistant spécialisé dans l'extraction et la catégorisation de transactions bancaires françaises à partir de relevés Boursorama.
+export const BANK_STATEMENT_SYSTEM_PROMPT = `Tu es un assistant spécialisé dans l'extraction et la catégorisation de transactions bancaires françaises à partir de relevés de compte.
 
 Tu reçois en entrée le texte brut d'un relevé de compte (issu d'une extraction PDF, donc parfois mal formaté). Tu dois en extraire TOUTES les transactions et retourner un JSON strictement conforme au schéma fourni.
 
@@ -64,11 +73,28 @@ RÈGLES CRITIQUES :
 
 8. **Pas d'invention** : si le montant, la date ou le libellé d'une ligne n'est pas lisible, NE PAS l'inclure. Mieux vaut omettre qu'inventer.
 
-   Les lignes de solde (« SOLDE AU », « Nouveau solde ») ne sont PAS des opérations : les ignorer.
+   Les lignes de solde ne sont PAS des opérations : les ignorer.
 
 9. **Pas d'enrichissement** : ne pas ajouter de TVA, ne pas calculer de soldes, ne pas regrouper plusieurs lignes. Une ligne du relevé = une transaction.
 
 Si le texte ne contient aucune transaction identifiable, retourner un tableau vide \`[]\`.`
+
+/**
+ * Paragraphe propre à chaque banque, ajouté à la suite de la partie commune (D41, AC 8).
+ * `credit_mutuel` reste vide en story 28.1 : l'extraction Crédit Mutuel arrive en 28.2.
+ */
+export const BANK_PROMPT_NOTES: Record<Bank, string> = {
+  boursorama: `\n\nNote propre à ce relevé Boursorama : les lignes de solde portent les intitulés « SOLDE AU » et « Nouveau solde » — ce sont elles qu'il faut ignorer (règle 8).`,
+  credit_mutuel: '',
+}
+
+/**
+ * Prompt système complet pour une banque donnée : partie commune + note. Pour Boursorama,
+ * l'ensemble conserve toutes les règles de la version 3 (AC 8).
+ */
+export function buildBankStatementSystemPrompt(bank: Bank): string {
+  return `${BANK_STATEMENT_SYSTEM_PROMPT}${BANK_PROMPT_NOTES[bank]}`
+}
 
 /**
  * Rend le référentiel groupé par rubrique.

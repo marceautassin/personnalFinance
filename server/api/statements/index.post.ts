@@ -1,9 +1,13 @@
 /**
- * POST /api/statements — ingestion d'un PDF de relevé Boursorama (Story 2.6).
+ * POST /api/statements — ingestion d'un PDF de relevé bancaire (Story 2.6).
  *
  * Handler thin : valide le multipart (présence + taille du fichier), lit le header
  * `X-Confirm-Replace`, puis délègue toute la logique pipeline à
  * `ingestStatement` (server/services/statement-ingestion-orchestrator.ts).
+ *
+ * La banque du relevé (D41) n'est pas encore lue ici : le champ multipart `bank`, son
+ * préremplissage depuis le profil et sa persistance en base arrivent avec les stories
+ * 27.1/27.3 — `ingestStatement` défaute sur `'boursorama'` en leur absence (story 28.1).
  */
 import { defineEventHandler, readMultipartFormData, getHeader } from 'h3'
 import { domainError } from '~~/server/utils/errors'
