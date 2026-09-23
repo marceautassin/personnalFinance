@@ -1,4 +1,5 @@
 import { ApiErrorCode, type ApiErrorCodeValue } from '~~/shared/schemas/api-errors'
+import { BANK_LABELS, BANKS, type Bank } from '~~/shared/types/bank'
 
 /**
  * Mapping code stable → message FR utilisateur.
@@ -10,8 +11,9 @@ const FR_MESSAGES: Record<ApiErrorCodeValue, string> = {
   [ApiErrorCode.Unauthorized]: 'Tu n\'es pas autorisé à effectuer cette action.',
   [ApiErrorCode.ProfileRequired]: 'Choisis un profil pour continuer.',
   [ApiErrorCode.PdfAlreadyIngested]: 'Ce relevé a déjà été ingéré. Si c\'est une mise à jour, supprime l\'ancien d\'abord.',
-  [ApiErrorCode.PdfParseFailed]: 'L\'analyse du PDF a échoué. Vérifie qu\'il s\'agit bien d\'un relevé Boursorama valide.',
+  [ApiErrorCode.PdfParseFailed]: 'L\'analyse du PDF a échoué. Vérifie qu\'il s\'agit bien d\'un relevé valide pour la banque sélectionnée.',
   [ApiErrorCode.PeriodOverlap]: 'La période de ce relevé chevauche un relevé déjà ingéré. Confirme le remplacement pour continuer.',
+  [ApiErrorCode.BankMismatch]: 'Ce relevé ne correspond pas à la banque sélectionnée.',
   [ApiErrorCode.LlmExtractionFailed]: 'L\'analyse automatique du relevé a échoué. Réessaie ou ajoute les transactions manuellement.',
   [ApiErrorCode.LlmUnavailable]: 'Le service de catégorisation est indisponible. Réessaie dans quelques instants.',
   [ApiErrorCode.LlmConfigError]: 'Accès au fournisseur refusé : vérifiez la clé MISTRAL_API_KEY dans .env. Réessayer n\'y changera rien.',
@@ -64,6 +66,19 @@ function groupNotEmptyMessage(data: unknown): string | null {
 }
 
 /**
+ * Message détaillé du 400 `bank_mismatch` : nomme la banque reconnue par le contenu du PDF
+ * (`data.detected`), ou dit qu'aucune banque n'a été reconnue. Sans ce détail, l'utilisateur
+ * ne sait pas quelle banque choisir pour redéposer le même fichier.
+ */
+function bankMismatchMessage(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null
+  const detected = (data as Record<string, unknown>).detected
+  if (detected === null) return 'Ce relevé ne correspond pas à la banque sélectionnée, et sa banque n\'a pas pu être reconnue.'
+  if (typeof detected !== 'string' || !(BANKS as readonly string[]).includes(detected)) return null
+  return `Ce relevé semble être un relevé ${BANK_LABELS[detected as Bank]} — sélectionne cette banque et redépose le fichier.`
+}
+
+/**
  * Composable de mapping erreur API → message utilisateur FR.
  * Accepte n'importe quelle erreur Nuxt/Fetch, extrait `statusMessage`, retourne FR.
  */
@@ -87,6 +102,10 @@ export function useApiError() {
     }
     if (code === ApiErrorCode.GroupNotEmpty) {
       const detailed = groupNotEmptyMessage(e.data?.data)
+      if (detailed) return detailed
+    }
+    if (code === ApiErrorCode.BankMismatch) {
+      const detailed = bankMismatchMessage(e.data?.data)
       if (detailed) return detailed
     }
 

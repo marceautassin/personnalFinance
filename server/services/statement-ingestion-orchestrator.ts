@@ -28,6 +28,7 @@ import { db } from '~~/server/db/client'
 import { bankStatements, transactions, categoryItems, categoryGroups, classificationRules } from '~~/server/db/schema'
 import { applyRules } from '~~/server/services/rule-matcher'
 import { extractStatement } from '~~/server/services/pdf-extractor'
+import { BankMismatchError } from '~~/server/services/bank-formats/types'
 import {
   categorizeStatement,
   LlmExtractionError,
@@ -40,6 +41,7 @@ import { savePdfByHash, deletePdfByHash } from '~~/server/utils/file-storage'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { cents } from '~~/shared/types/money'
+import type { Bank } from '~~/shared/types/bank'
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
 import type { H3Event } from 'h3'
 import { requireProfile } from '~~/server/utils/current-profile'
@@ -54,10 +56,16 @@ export interface IngestStatementArgs {
   event: H3Event
   pdfBuffer: Buffer
   confirmReplace: boolean
+  /**
+   * Banque du relevé (D41). Sans persistance à ce stade — `bank_statements.bank` arrive avec
+   * la story 27.1 — et sans préremplissage depuis le profil (27.3, hors périmètre 28.1) :
+   * défaut fixe à `'boursorama'` tant que l'appelant ne le précise pas.
+   */
+  bank?: Bank
 }
 
 export async function ingestStatement(args: IngestStatementArgs): Promise<IngestionResult> {
-  const { event, pdfBuffer, confirmReplace } = args
+  const { event, pdfBuffer, confirmReplace, bank = 'boursorama' } = args
   const profileId = requireProfile(event)
   const t0 = Date.now()
   const step = (name: string, payload: Record<string, unknown> = {}) => {
@@ -84,9 +92,18 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
   // 3. Extraction PDF
   let raw: Awaited<ReturnType<typeof extractStatement>>
   try {
-    raw = await extractStatement(pdfBuffer)
+    raw = await extractStatement(pdfBuffer, bank)
   }
   catch (err) {
+    // Refus croisé (FR78, AR38) : code stable dédié, distinct d'un simple échec de parsing.
+    // Doit être vérifié AVANT le catch générique — `BankMismatchError` est une `Error`.
+    if (err instanceof BankMismatchError) {
+      throw domainError(
+        ApiErrorCode.BankMismatch,
+        { expected: err.expected, detected: err.detected },
+        400,
+      )
+    }
     throw domainError(
       ApiErrorCode.PdfParseFailed,
       { reason: err instanceof Error ? err.message : String(err) },
@@ -172,7 +189,7 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
 
   let extracted: Awaited<ReturnType<typeof categorizeStatement>>
   try {
-    extracted = await categorizeStatement(raw.rawText, availableCategories)
+    extracted = await categorizeStatement(raw.rawText, availableCategories, bank)
   }
   catch (err) {
     // `LlmConfigError` étend `LlmUnavailableError` : le test le plus spécifique d'abord.

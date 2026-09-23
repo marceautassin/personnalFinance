@@ -27,12 +27,13 @@ import {
   type ExtractedTransaction,
 } from '~~/shared/schemas/transaction.schema'
 import {
-  BANK_STATEMENT_SYSTEM_PROMPT,
   BANK_STATEMENT_PROMPT_VERSION,
+  buildBankStatementSystemPrompt,
   buildBankStatementUserMessage,
   type LlmCategoryItem,
 } from '~~/shared/constants/bank-statement-llm-prompt'
 import { FALLBACK_ITEM_CODE } from '~~/shared/constants/default-referential'
+import type { Bank } from '~~/shared/types/bank'
 
 /**
  * Erreurs domaine de ce service. L'orchestrateur les traduit en `createError()` avec les
@@ -298,12 +299,14 @@ function validate(
  *
  * @param rawText Texte brut extrait du PDF (`pdf-extractor`)
  * @param availableCategories Postes autorisés, lus depuis `category_items` (D17)
+ * @param bank Banque du relevé (D41) — sélectionne le paragraphe de prompt propre à la banque
  * @throws LlmUnavailableError si le fournisseur est injoignable ou en erreur opérationnelle
  * @throws LlmExtractionError si la réponse reste non conforme après la relance
  */
 export async function categorizeStatement(
   rawText: string,
   availableCategories: ReadonlyArray<LlmCategoryItem>,
+  bank: Bank,
 ): Promise<ExtractedTransaction[]> {
   if (!rawText || rawText.trim().length === 0) {
     throw new LlmExtractionError('rawText is empty')
@@ -322,7 +325,7 @@ export async function categorizeStatement(
 
   const schema = buildOutputSchema(availableCategories)
   const baseMessages = [
-    { role: 'system' as const, content: BANK_STATEMENT_SYSTEM_PROMPT },
+    { role: 'system' as const, content: buildBankStatementSystemPrompt(bank) },
     { role: 'user' as const, content: buildBankStatementUserMessage(rawText, availableCategories, fallbackCode) },
   ]
 

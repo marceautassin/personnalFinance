@@ -16,6 +16,8 @@ export const ApiErrorCode = {
   PdfAlreadyIngested: 'pdf_already_ingested',
   PdfParseFailed: 'pdf_parse_failed',
   PeriodOverlap: 'period_overlap',
+  /** Le relevé déposé n'est pas de la banque sélectionnée (FR78, AR38). */
+  BankMismatch: 'bank_mismatch',
   LlmExtractionFailed: 'llm_extraction_failed',
   LlmUnavailable: 'llm_unavailable',
   /**

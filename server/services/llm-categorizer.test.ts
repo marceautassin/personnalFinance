@@ -103,18 +103,18 @@ afterEach(() => vi.clearAllMocks())
 describe('categorizeStatement — cas nominal', () => {
   it('retourne les transactions validées', async () => {
     mockComplete.mockResolvedValueOnce(reply({ transactions: [TX] }))
-    const out = await categorizeStatement('relevé', AVAILABLE_ITEMS)
+    const out = await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
     expect(out).toEqual([TX])
   })
 
   it('accepte un relevé sans aucune transaction', async () => {
     mockComplete.mockResolvedValueOnce(reply({ transactions: [] }))
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).resolves.toEqual([])
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).resolves.toEqual([])
   })
 
   it('appelle le modèle GLM en inférence Mistral, à température 0', async () => {
     mockComplete.mockResolvedValueOnce(reply({ transactions: [] }))
-    await categorizeStatement('relevé', AVAILABLE_ITEMS)
+    await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
     expect(mockComplete).toHaveBeenCalledWith(expect.objectContaining({
       model: 'zai-glm-5-2',
       temperature: 0,
@@ -123,7 +123,7 @@ describe('categorizeStatement — cas nominal', () => {
 
   it('déclare un schéma de sortie strict au fournisseur', async () => {
     mockComplete.mockResolvedValueOnce(reply({ transactions: [] }))
-    await categorizeStatement('relevé', AVAILABLE_ITEMS)
+    await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
     const arg = mockComplete.mock.calls[0]![0] as {
       responseFormat: { type: string, jsonSchema: { strict: boolean } }
     }
@@ -133,7 +133,7 @@ describe('categorizeStatement — cas nominal', () => {
 
   it('nomme le poste de repli dans le message envoyé', async () => {
     mockComplete.mockResolvedValueOnce(reply({ transactions: [] }))
-    await categorizeStatement('relevé', AVAILABLE_ITEMS)
+    await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
     const arg = mockComplete.mock.calls[0]![0] as { messages: { content: string }[] }
     expect(arg.messages[1]!.content).toContain(FALLBACK_ITEM_CODE)
   })
@@ -149,7 +149,7 @@ describe('categorizeStatement — conformité vérifiée côté application (NFR
       .mockResolvedValueOnce(reply({ transactions: [{ ...TX, categoryItemCode: 'AUTRES_DEPENSES' }] }))
       .mockResolvedValueOnce(reply({ transactions: [TX] }))
 
-    const out = await categorizeStatement('relevé', AVAILABLE_ITEMS)
+    const out = await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
     expect(out).toEqual([TX])
     expect(mockComplete).toHaveBeenCalledTimes(2)
   })
@@ -159,7 +159,7 @@ describe('categorizeStatement — conformité vérifiée côté application (NFR
       .mockResolvedValueOnce(reply({ transactions: [{ ...TX, categoryItemCode: 'AUTRES_DEPENSES' }] }))
       .mockResolvedValueOnce(reply({ transactions: [TX] }))
 
-    await categorizeStatement('relevé', AVAILABLE_ITEMS)
+    await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
     const retry = mockComplete.mock.calls[1]![0] as { messages: { content: string }[] }
     const lastMessage = retry.messages.at(-1)!.content
     expect(lastMessage).toContain('AUTRES_DEPENSES')
@@ -168,18 +168,18 @@ describe('categorizeStatement — conformité vérifiée côté application (NFR
 
   it('échoue après DEUX tentatives : la relance est bornée', async () => {
     mockComplete.mockResolvedValue(reply({ transactions: [{ ...TX, categoryItemCode: 'inventé' }] }))
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmExtractionError)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toBeInstanceOf(LlmExtractionError)
     expect(mockComplete).toHaveBeenCalledTimes(2)
   })
 
   it('rejette une réponse non conforme au schéma', async () => {
     mockComplete.mockResolvedValue(reply({ transactions: [{ label: 'incomplet' }] }))
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmExtractionError)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toBeInstanceOf(LlmExtractionError)
   })
 
   it('rejette un contenu qui n\'est pas du JSON', async () => {
     mockComplete.mockResolvedValue({ choices: [{ finishReason: 'stop', message: { content: 'désolé !' } }] })
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toThrow(/non parsable/i)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toThrow(/non parsable/i)
   })
 
   /**
@@ -188,29 +188,29 @@ describe('categorizeStatement — conformité vérifiée côté application (NFR
    */
   it('rejette une réponse tronquée par la limite de tokens', async () => {
     mockComplete.mockResolvedValue(reply({ transactions: [TX] }, 'length'))
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toThrow(/tronquée/i)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toThrow(/tronquée/i)
   })
 
   it('rejette une réponse sans choix', async () => {
     mockComplete.mockResolvedValue({ choices: [] })
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toThrow(/sans choix/i)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toThrow(/sans choix/i)
   })
 
   it('rejette un contenu vide', async () => {
     mockComplete.mockResolvedValue({ choices: [{ finishReason: 'stop', message: { content: '   ' } }] })
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toThrow(/vide/i)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toThrow(/vide/i)
   })
 })
 
 describe('categorizeStatement — indisponibilité du fournisseur (NFR17)', () => {
   it.each([500, 502, 429, 408, 401, 403])('traite le statut %i en indisponibilité', async (status) => {
     mockComplete.mockRejectedValue(new errors.SDKError(status, 'boom'))
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmUnavailableError)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toBeInstanceOf(LlmUnavailableError)
   })
 
   it('traite un 400 en erreur d\'extraction, pas en indisponibilité', async () => {
     mockComplete.mockRejectedValue(new errors.SDKError(400, 'bad request'))
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmExtractionError)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toBeInstanceOf(LlmExtractionError)
   })
 
   it.each([
@@ -219,7 +219,7 @@ describe('categorizeStatement — indisponibilité du fournisseur (NFR17)', () =
     ['RequestAbortedError', () => new errors.RequestAbortedError()],
   ])('traite %s en indisponibilité', async (_name, build) => {
     mockComplete.mockRejectedValue(build())
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmUnavailableError)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toBeInstanceOf(LlmUnavailableError)
   })
 
   /**
@@ -231,7 +231,7 @@ describe('categorizeStatement — indisponibilité du fournisseur (NFR17)', () =
    */
   it('relance UNE fois sur indisponibilité passagère', async () => {
     mockComplete.mockRejectedValue(new errors.SDKError(503, 'down'))
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmUnavailableError)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toBeInstanceOf(LlmUnavailableError)
     expect(mockComplete).toHaveBeenCalledTimes(2)
   })
 
@@ -239,50 +239,50 @@ describe('categorizeStatement — indisponibilité du fournisseur (NFR17)', () =
     mockComplete
       .mockRejectedValueOnce(new errors.SDKError(503, 'down'))
       .mockResolvedValueOnce(reply({ transactions: [TX] }))
-    const result = await categorizeStatement('relevé', AVAILABLE_ITEMS)
+    const result = await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
     expect(result).toEqual([TX])
     expect(mockComplete).toHaveBeenCalledTimes(2)
   })
 
   it.each([401, 403])('ne relance PAS sur un défaut de configuration (%i)', async (status) => {
     mockComplete.mockRejectedValue(new errors.SDKError(status, 'forbidden'))
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmConfigError)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toBeInstanceOf(LlmConfigError)
     expect(mockComplete).toHaveBeenCalledTimes(1)
   })
 
   it('relance sur une réponse illisible, mais PAS sur une troncature', async () => {
     mockComplete.mockResolvedValue({ choices: [{ message: { content: 'pas du json' } }] })
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmExtractionError)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toBeInstanceOf(LlmExtractionError)
     expect(mockComplete).toHaveBeenCalledTimes(2)
 
     mockComplete.mockClear()
     mockComplete.mockResolvedValue({ choices: [{ finishReason: 'length', message: { content: '{' } }] })
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toThrow(/tronqu/i)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toThrow(/tronqu/i)
     expect(mockComplete).toHaveBeenCalledTimes(1)
   })
 
   it('laisse remonter une erreur inattendue telle quelle', async () => {
     const oops = new Error('inattendu')
     mockComplete.mockRejectedValue(oops)
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toBe(oops)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toBe(oops)
   })
 })
 
 describe('categorizeStatement — garde-fous d\'entrée', () => {
   it('refuse un texte vide', async () => {
-    await expect(categorizeStatement('', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmExtractionError)
-    await expect(categorizeStatement('   \n  ', AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmExtractionError)
+    await expect(categorizeStatement('', AVAILABLE_ITEMS, 'boursorama')).rejects.toBeInstanceOf(LlmExtractionError)
+    await expect(categorizeStatement('   \n  ', AVAILABLE_ITEMS, 'boursorama')).rejects.toBeInstanceOf(LlmExtractionError)
   })
 
   it('refuse une taxonomie vide', async () => {
-    await expect(categorizeStatement('relevé', [])).rejects.toBeInstanceOf(LlmExtractionError)
+    await expect(categorizeStatement('relevé', [], 'boursorama')).rejects.toBeInstanceOf(LlmExtractionError)
   })
 
   it('exige la clé d\'API dans l\'environnement (NFR8)', async () => {
     delete process.env.MISTRAL_API_KEY
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toThrow(/MISTRAL_API_KEY/)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toThrow(/MISTRAL_API_KEY/)
     process.env.MISTRAL_API_KEY = ''
     _resetClientForTesting()
-    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS)).rejects.toThrow(/MISTRAL_API_KEY/)
+    await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toThrow(/MISTRAL_API_KEY/)
   })
 })
