@@ -503,10 +503,10 @@ development_status:
   # 27-1 est la story la plus risquee du chantier : rebuild de six tables
   # plus transactions, sur des donnees que les PDF ne reconstruisent pas.
   # Sauvegarde VERIFIEE RESTAURABLE avant, comptages et sommes avant/apres.
-  epic-27: in-progress
+  epic-27: done
   27-1-tout-mon-historique-m-appartient: done
   27-2-chaque-requete-se-limite-au-profil-courant: done
-  27-3-creer-un-profil-et-basculer: ready-for-dev
+  27-3-creer-un-profil-et-basculer: done
   epic-27-retrospective: optional
 
   # --- Epic 28 — Les releves Credit Mutuel. -------------------------------
