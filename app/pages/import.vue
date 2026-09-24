@@ -1,13 +1,38 @@
 <script setup lang="ts">
 import { useStatementsList, type StatementListItem } from '~/composables/useStatements'
 import { useIngestionQueue } from '~/composables/useIngestionQueue'
+import { useCurrentProfile } from '~/composables/useCurrentProfile'
 import { useApiError } from '~/composables/useApiError'
 import { formatRatio } from '~~/shared/types/ratio'
 import type { Cents } from '~~/shared/types/money'
 import { MANUAL_CORRECTION_THRESHOLD } from '~~/shared/constants/quality-thresholds'
+import { BANKS, BANK_LABELS, type Bank } from '~~/shared/types/bank'
 
 const { mapError } = useApiError()
 const { data: listData, error: listError } = useStatementsList()
+const { currentProfile } = useCurrentProfile()
+
+/**
+ * Banque du prochain dépôt (FR77, AC 1) — préremplie avec la banque par défaut du profil
+ * courant, modifiable. `watch` (et non une seule initialisation) : le profil arrive par un
+ * `useFetch` asynchrone, souvent résolu APRÈS le montage de cette page — sans lui, le
+ * sélecteur resterait bloqué sur `boursorama` (première valeur de `BANKS`) tant que
+ * l'utilisateur ne le touche pas lui-même.
+ *
+ * Surveille l'ID du profil, PAS l'objet `currentProfile` entier (bug trouvé en revue) :
+ * `useIngestionQueue.drain()` appelle `invalidateAnalysis()` en fin de file, qui fait un
+ * `refreshNuxtData()` SANS clé — donc recharge aussi `current-profile`. Un `watch` sur l'objet
+ * se redéclenchait à CHAQUE fin de file, même sans changement de profil, et écrasait le choix
+ * que l'utilisateur venait de faire pour son PROCHAIN dépôt. Le profil ne change que si son id
+ * change (bascule de profil, story 27.3) — c'est la seule condition qui doit réappliquer le
+ * défaut.
+ */
+const selectedBank = ref<Bank>(currentProfile.value?.defaultBank ?? BANKS[0])
+watch(() => currentProfile.value?.id, (id, previousId) => {
+  if (id !== undefined && id !== previousId) {
+    selectedBank.value = currentProfile.value!.defaultBank
+  }
+})
 const {
   items,
   running,
@@ -77,9 +102,28 @@ function periodSlug(periodStart: string): string {
       </span>
     </header>
 
+    <label
+      v-if="!running && awaiting === null"
+      class="import__bank-field"
+    >
+      <span>Banque</span>
+      <select
+        v-model="selectedBank"
+        class="select"
+      >
+        <option
+          v-for="bank in BANKS"
+          :key="bank"
+          :value="bank"
+        >
+          {{ BANK_LABELS[bank] }}
+        </option>
+      </select>
+    </label>
+
     <PdfDropZone
       v-if="!running && awaiting === null"
-      @upload="enqueue($event)"
+      @upload="enqueue($event, selectedBank)"
     />
 
     <IngestionQueue
@@ -145,6 +189,9 @@ function periodSlug(periodStart: string): string {
             <th scope="col">
               Période
             </th>
+            <th scope="col">
+              Banque
+            </th>
             <th
               scope="col"
               class="num"
@@ -176,6 +223,9 @@ function periodSlug(periodStart: string): string {
             >
               {{ periodLabel(stmt.periodStart, stmt.periodEnd) }}
             </th>
+            <td class="statements__bank">
+              {{ BANK_LABELS[stmt.bank] }}
+            </td>
             <td class="num statements__count">
               {{ stmt.transactionCount }}
             </td>
@@ -221,12 +271,22 @@ function periodSlug(periodStart: string): string {
 .import { display: flex; flex-direction: column; gap: var(--space-3); }
 .statements__empty { color: var(--color-text-muted); margin: 0; padding: var(--space-3); }
 .statements__table { table-layout: fixed; }
-.statements__table th:nth-child(2), .statements__table td:nth-child(2) { width: 6rem; }
+.statements__table th:nth-child(2), .statements__table td:nth-child(2) { width: 9rem; }
 .statements__table th:nth-child(3), .statements__table td:nth-child(3) { width: 6rem; }
-.statements__table th:nth-child(4), .statements__table td:nth-child(4) { width: 15rem; }
-.statements__table th:nth-child(5), .statements__table td:nth-child(5) { width: 17rem; }
+.statements__table th:nth-child(4), .statements__table td:nth-child(4) { width: 6rem; }
+.statements__table th:nth-child(5), .statements__table td:nth-child(5) { width: 15rem; }
+.statements__table th:nth-child(6), .statements__table td:nth-child(6) { width: 17rem; }
 .statements__period { font-weight: 500 !important; }
+.statements__bank { color: var(--color-text-muted); }
 .statements__count { color: var(--color-text-muted); }
+.import__bank-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 16rem;
+  font-size: var(--font-size-sm);
+}
+.import__bank-field span { color: var(--color-text-muted); }
 .statements__rate { color: var(--color-text-muted); }
 .statements__rate--high { color: var(--color-danger); font-weight: 600; }
 .statements__links { display: flex; gap: var(--space-1); justify-content: flex-end; }

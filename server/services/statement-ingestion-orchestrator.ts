@@ -44,29 +44,31 @@ import { cents } from '~~/shared/types/money'
 import type { Bank } from '~~/shared/types/bank'
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
 import type { H3Event } from 'h3'
-import { requireProfile } from '~~/server/utils/current-profile'
+import { requireCurrentProfile } from '~~/server/utils/current-profile'
+import { profileId as toProfileId } from '~~/shared/types/profile'
 
 export interface IngestStatementArgs {
   /**
-   * Obligatoire (revue de la story 27.1) : `requireProfile` ne le lit pas encore, mais un
-   * paramètre optionnel qu'on ignore aujourd'hui inviterait un appelant futur à l'omettre, avec
-   * un retour silencieux au profil par défaut au lieu d'une erreur quand 27.2 branchera le
-   * cookie sur ce même paramètre. Les tests construisent un `H3Event` minimal.
+   * Obligatoire (revue de la story 27.1) : `requireCurrentProfile` ne le lisait pas encore à
+   * l'origine, mais un paramètre optionnel qu'on ignore aujourd'hui inviterait un appelant futur
+   * à l'omettre, avec un retour silencieux au profil par défaut au lieu d'une erreur. Les tests
+   * construisent un `H3Event` minimal.
    */
   event: H3Event
   pdfBuffer: Buffer
   confirmReplace: boolean
   /**
-   * Banque du relevé (D41). Sans persistance à ce stade — `bank_statements.bank` arrive avec
-   * la story 27.1 — et sans préremplissage depuis le profil (27.3, hors périmètre 28.1) :
-   * défaut fixe à `'boursorama'` tant que l'appelant ne le précise pas.
+   * Banque du relevé (D41, AR37). Absente → banque par défaut du profil courant
+   * (`profile.defaultBank`, story 28.1) plutôt qu'une valeur fixe.
    */
   bank?: Bank
 }
 
 export async function ingestStatement(args: IngestStatementArgs): Promise<IngestionResult> {
-  const { event, pdfBuffer, confirmReplace, bank = 'boursorama' } = args
-  const profileId = requireProfile(event)
+  const { event, pdfBuffer, confirmReplace, bank: requestedBank } = args
+  const currentProfile = requireCurrentProfile(event)
+  const profileId = toProfileId(currentProfile.id)
+  const bank = requestedBank ?? currentProfile.defaultBank
   const t0 = Date.now()
   const step = (name: string, payload: Record<string, unknown> = {}) => {
     console.warn(`[ingest] ${name}`, { elapsedMs: Date.now() - t0, ...payload })
@@ -344,9 +346,7 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
       tx.insert(bankStatements).values({
         hashSha256: hash,
         profileId,
-        // Banque en dur — hors périmètre de cette story (28.1 y branchera le champ `bank` au
-        // dépôt, une fois l'extracteur Crédit Mutuel écrit).
-        bank: 'boursorama',
+        bank,
         periodStart,
         periodEnd,
         openingBalanceCents: raw.openingBalanceCents!,

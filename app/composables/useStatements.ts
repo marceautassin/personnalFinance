@@ -1,9 +1,11 @@
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
 import type { StatementReliability } from '~~/shared/types/statement-reliability'
 import type { Ratio } from '~~/shared/types/ratio'
+import type { Bank } from '~~/shared/types/bank'
 
 export interface StatementListItem {
   hash: string
+  bank: Bank
   periodStart: string
   periodEnd: string
   reliability: StatementReliability
@@ -69,10 +71,11 @@ export function useStatements() {
 
   async function uploadStatement(
     file: File,
-    opts: { confirmReplace?: boolean, signal?: AbortSignal } = {},
+    opts: { confirmReplace?: boolean, signal?: AbortSignal, bank?: Bank } = {},
   ): Promise<UploadOutcome> {
     const form = new FormData()
     form.append('file', file)
+    if (opts.bank) form.append('bank', opts.bank)
 
     try {
       const result = await $fetch<IngestionResult>('/api/statements', {

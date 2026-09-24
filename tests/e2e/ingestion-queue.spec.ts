@@ -13,6 +13,18 @@ import { resolve } from 'node:path'
 const FIXTURE = resolve('tests/fixtures/pdfs/releve.pdf')
 
 test.describe('Dépôt multiple', () => {
+  /**
+   * Auto-suffisance vis-à-vis des autres specs E2E (même raison que `rules.spec.ts`) : la base
+   * E2E est partagée par toute la suite, et `import-bank.spec.ts` (exécuté avant, dans l'ordre
+   * alphabétique des fichiers) y crée désormais un second profil. Sans cookie explicite, ces
+   * tests dépendaient implicitement du repli « exactement un profil » (D38), qui disparaît dès
+   * qu'un second profil existe.
+   */
+  test.beforeEach(async ({ page }, testInfo) => {
+    const baseURL = testInfo.project.use.baseURL as string
+    await page.context().addCookies([{ name: 'pf_profile', value: '1', url: baseURL }])
+  })
+
   test('rejette les fichiers non conformes en les nommant, sans bloquer les autres', async ({ page }) => {
     await page.goto('/import')
     await expect(page.getByRole('heading', { name: 'Importer des relevés' })).toBeVisible()
