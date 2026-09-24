@@ -517,7 +517,7 @@ development_status:
   # hors periode). 28-1 ne l'est pas. Fichiers de story rediges le 2026-09-22 :
   # 28-2 et 28-3 portent un bandeau NE PAS DEMARRER tant qu'AR41 n'est pas leve.
   epic-28: in-progress
-  28-1-choisir-la-banque-d-un-releve: in-progress
+  28-1-choisir-la-banque-d-un-releve: done
   28-2-lire-le-compte-courant-credit-mutuel: ready-for-dev
   28-3-voir-mes-achats-par-carte-un-par-un: ready-for-dev
   epic-28-retrospective: optional
