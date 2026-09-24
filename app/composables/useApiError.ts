@@ -10,6 +10,7 @@ const FR_MESSAGES: Record<ApiErrorCodeValue, string> = {
   [ApiErrorCode.NotFound]: 'Ressource introuvable.',
   [ApiErrorCode.Unauthorized]: 'Tu n\'es pas autorisé à effectuer cette action.',
   [ApiErrorCode.ProfileRequired]: 'Choisis un profil pour continuer.',
+  [ApiErrorCode.ProfileNameTaken]: 'Ce nom de profil est déjà utilisé.',
   [ApiErrorCode.PdfAlreadyIngested]: 'Ce relevé a déjà été ingéré. Si c\'est une mise à jour, supprime l\'ancien d\'abord.',
   [ApiErrorCode.PdfParseFailed]: 'L\'analyse du PDF a échoué. Vérifie qu\'il s\'agit bien d\'un relevé valide pour la banque sélectionnée.',
   [ApiErrorCode.PeriodOverlap]: 'La période de ce relevé chevauche un relevé déjà ingéré. Confirme le remplacement pour continuer.',

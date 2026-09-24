@@ -10,6 +10,25 @@ import { test, expect } from '@playwright/test'
 const PATTERN = 'MOTIF E2E'
 
 test.describe('Règles de classement', () => {
+  /**
+   * Auto-suffisance vis-à-vis des autres specs E2E (revue de la story 27.3, BLOQUANT 1) : la
+   * base de test est partagée par TOUTE la suite (`playwright.config.ts`), et un profil créé
+   * par `tests/e2e/profiles.spec.ts` (« Test B ») peut survivre à son propre run. Sans cookie
+   * explicite, ces tests dépendaient implicitement du repli « exactement un profil » sans
+   * cookie (D38) — qui disparaît dès qu'un second profil existe, et fait alors répondre
+   * `400 profile_required` à `/api/categories`, laissant le `<select>` « Ranger dans » vide.
+   * On épingle donc le profil `marceau` (id 1) explicitement, et on vérifie la résolution
+   * AVANT de continuer : un échec ici se lirait sinon comme un défaut du formulaire, pas du
+   * profil.
+   */
+  test.beforeEach(async ({ page }, testInfo) => {
+    const baseURL = testInfo.project.use.baseURL as string
+    await page.context().addCookies([{ name: 'pf_profile', value: '1', url: baseURL }])
+
+    const response = await page.request.get(`${baseURL}/api/categories`)
+    expect(response.status()).toBe(200)
+  })
+
   test('créer une règle, la voir listée, la supprimer', async ({ page }) => {
     await page.goto('/regles')
     await expect(page.getByRole('heading', { name: 'Règles de classement' })).toBeVisible()

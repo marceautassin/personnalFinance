@@ -27,8 +27,27 @@ const BASE_URL = `http://localhost:${PORT}`
 /**
  * Base dédiée aux E2E — jamais celle de travail. Recréée MAINTENANT, au chargement de la
  * config, parce que Playwright lance le `webServer` avant tout `globalSetup`.
+ *
+ * **Une seule vraie recréation par run** (revue de la story 27.3, SUGGESTION 5). Ce module est
+ * importé DEUX FOIS dans le même run — une fois par le processus principal de Playwright, une
+ * fois par le worker, qui hérite de `process.env` — et un `prepareE2eDatabase()` sans garde
+ * recrée le fichier une seconde fois PENDANT que le `webServer` (démarré une seule fois, par le
+ * processus principal) tient déjà une connexion dessus : la base sur disque paraît alors vierge
+ * après coup alors que le serveur, lui, continue d'écrire dans le fichier qu'il avait ouvert.
+ * Sans impact fonctionnel connu (le serveur ne relit jamais le fichier depuis le disque), mais
+ * trompeur pour tout diagnostic « qu'y a-t-il en base après un run ». Le drapeau ci-dessous fait
+ * de la première recréation la SEULE ; la seconde importation réutilise le même chemin.
  */
-const E2E_DATABASE_URL = hasE2ESpecs() ? prepareE2eDatabase() : ''
+const E2E_DATABASE_URL = hasE2ESpecs()
+  ? (process.env.PF_E2E_DB_PREPARED ? process.env.E2E_DATABASE_URL! : prepareE2eDb())
+  : ''
+
+function prepareE2eDb(): string {
+  const path = prepareE2eDatabase()
+  process.env.PF_E2E_DB_PREPARED = '1'
+  process.env.E2E_DATABASE_URL = path
+  return path
+}
 
 export default defineConfig({
   testDir: './tests/e2e',

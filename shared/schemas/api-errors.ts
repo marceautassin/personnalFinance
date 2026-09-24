@@ -11,6 +11,8 @@ export const ApiErrorCode = {
   Unauthorized: 'unauthorized',
   /** Cookie `pf_profile` absent/invalide et plus d'un profil en base (D38, story 27.2). */
   ProfileRequired: 'profile_required',
+  /** Nom de profil déjà pris, comparaison insensible à la casse et aux espaces (story 27.3). */
+  ProfileNameTaken: 'profile_name_taken',
 
   // Domaine — Statements / Ingestion
   PdfAlreadyIngested: 'pdf_already_ingested',

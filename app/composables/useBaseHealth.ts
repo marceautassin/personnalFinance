@@ -1,4 +1,5 @@
 import { useStatementsList } from '~/composables/useStatements'
+import { useCurrentProfile } from '~/composables/useCurrentProfile'
 import { ratio, type Ratio } from '~~/shared/types/ratio'
 import type { Cents } from '~~/shared/types/money'
 
@@ -12,9 +13,19 @@ import type { Cents } from '~~/shared/types/money'
  * La dérivation vit ici et non dans un endpoint parce que `GET /api/statements` porte déjà
  * tout le nécessaire, et qu'un agrégat de plus côté serveur serait un état dérivé persisté —
  * exactement ce que D19 interdit.
+ *
+ * **Gardé derrière le profil courant (story 27.3, revue IMPORTANT 2).** La barre — donc ce
+ * composable — s'affiche même sur `/profils`, l'écran où la garde de route envoie un visiteur
+ * SANS profil courant. Sans cette garde, le fetch partait quand même et l'endpoint répondait
+ * `400 profile_required` à chaque affichage de cet écran précis.
  */
 export function useBaseHealth() {
-  const { data, pending, error } = useStatementsList()
+  const { currentProfile } = useCurrentProfile()
+  const { data, pending, error, refresh } = useStatementsList({ immediate: false })
+
+  watch(currentProfile, (profile) => {
+    if (profile) refresh()
+  }, { immediate: true })
 
   const statements = computed(() => data.value?.statements ?? [])
 
