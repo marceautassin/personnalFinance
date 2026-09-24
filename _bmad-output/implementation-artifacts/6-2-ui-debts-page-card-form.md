@@ -98,7 +98,7 @@ so that I can manage my debts visually (FR29-FR31) — the backend CRUD (story 6
 
 ### Agent Model Used
 
-claude-opus-4-8 (dev-story workflow)
+Agent de développement.
 
 ### Debug Log References
 

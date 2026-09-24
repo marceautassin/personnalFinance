@@ -95,7 +95,7 @@ champ « trésorerie perso » déclaré ; on prend la dernière vérité bancair
 
 ### Agent Model Used
 
-claude-opus-4-8 (dev-story workflow)
+Agent de développement.
 
 ### Completion Notes List
 

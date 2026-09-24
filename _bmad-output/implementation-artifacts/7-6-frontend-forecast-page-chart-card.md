@@ -66,7 +66,7 @@ des 4 sources et le dialog d'override sont la story 7.7. `reducedReliability` : 
 
 ### Agent Model Used
 
-claude-opus-4-8 (dev-story workflow)
+Agent de développement.
 
 ### Completion Notes List
 

@@ -75,7 +75,7 @@ FR44 parle de mois futur, mais on ne borne pas à `> mois courant` au write (év
 
 ### Agent Model Used
 
-claude-opus-4-8 (dev-story workflow)
+Agent de développement.
 
 ### Completion Notes List
 

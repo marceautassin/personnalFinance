@@ -266,7 +266,7 @@ Cette story modifie/crée :
 
 ### Agent Model Used
 
-claude-opus-4-7 (1M context) via Claude Code
+Agent de développement.
 
 ### Debug Log References
 

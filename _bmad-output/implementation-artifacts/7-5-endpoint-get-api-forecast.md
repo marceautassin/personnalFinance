@@ -81,7 +81,7 @@ Signal simple : mois ingérés `< N` (défaut 3) → `reducedReliability`. L'aff
 
 ### Agent Model Used
 
-claude-opus-4-8 (dev-story workflow)
+Agent de développement.
 
 ### Completion Notes List
 

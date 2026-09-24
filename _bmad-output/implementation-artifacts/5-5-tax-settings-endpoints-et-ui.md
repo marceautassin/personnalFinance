@@ -193,7 +193,7 @@ Cette story crée :
 
 ### Agent Model Used
 
-claude-opus-4-8 (dev-story workflow)
+Agent de développement.
 
 ### Debug Log References
 

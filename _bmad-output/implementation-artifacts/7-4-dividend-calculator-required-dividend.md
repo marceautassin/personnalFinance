@@ -71,7 +71,7 @@ l'UI 7.7 (ils ont besoin de la date d'AG et des libellés). Ici, uniquement le c
 
 ### Agent Model Used
 
-claude-opus-4-8 (dev-story workflow)
+Agent de développement.
 
 ### Completion Notes List
 

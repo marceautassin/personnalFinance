@@ -68,7 +68,7 @@ de la liste d'overrides. L'effet numérique de l'override est déjà testé unit
 
 ### Agent Model Used
 
-claude-opus-4-8 (dev-story workflow)
+Agent de développement.
 
 ### Completion Notes List
 

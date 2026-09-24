@@ -220,7 +220,7 @@ Cette story ne crée **aucun** fichier dans `app/`, `server/`, `shared/`, `tests
 
 ### Agent Model Used
 
-claude-opus-4-7 (1M context)
+Agent de développement.
 
 ### Debug Log References
 

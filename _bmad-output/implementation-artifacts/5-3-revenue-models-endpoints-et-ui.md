@@ -210,7 +210,7 @@ Cette story crée :
 
 ### Agent Model Used
 
-claude-opus-4-8[1m] (Amelia / bmad-dev-story)
+Agent de développement.
 
 ### Debug Log References
 

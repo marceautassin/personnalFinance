@@ -251,7 +251,7 @@ Les dossiers `server/db/` et `shared/constants/` peuvent ne pas exister encore ‚
 
 ### Agent Model Used
 
-claude-opus-4-7 (1M context)
+Agent de d√©veloppement.
 
 ### Debug Log References
 

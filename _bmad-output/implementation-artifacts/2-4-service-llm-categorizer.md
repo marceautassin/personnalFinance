@@ -512,7 +512,7 @@ Cette story crée :
 
 ### Agent Model Used
 
-claude-opus-4-7 (1M context)
+Agent de développement.
 
 ### Debug Log References
 

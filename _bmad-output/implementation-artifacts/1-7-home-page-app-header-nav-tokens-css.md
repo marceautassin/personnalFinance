@@ -465,7 +465,7 @@ _Code review du 2026-04-30 (3 layers : Blind Hunter, Edge Case Hunter, Acceptanc
 
 ### Agent Model Used
 
-claude-opus-4-7 (Claude Code, mode dev story)
+Agent de développement.
 
 ### Debug Log References
 

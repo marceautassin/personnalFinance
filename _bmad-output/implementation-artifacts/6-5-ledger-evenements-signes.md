@@ -140,7 +140,7 @@ exprimables avec une seule table et un seul calcul.
 ## Dev Agent Record
 
 ### Agent Model Used
-claude-opus-5[1m] (exécution autonome, 2026-09-04)
+Agent de développement.
 
 ### Completion Notes
 

@@ -139,7 +139,7 @@ et le passe à `projectDebt`. La projection part donc du solde RÉEL restant, pa
 
 ### Agent Model Used
 
-claude-opus-4-8 (dev-story workflow)
+Agent de développement.
 
 ### Completion Notes List
 

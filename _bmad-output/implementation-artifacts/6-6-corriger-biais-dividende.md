@@ -109,7 +109,7 @@ problème.
 ## Dev Agent Record
 
 ### Agent Model Used
-claude-opus-5[1m] (exécution autonome, 2026-09-04)
+Agent de développement.
 
 ### Décision AC#1 — plafonner, pas déduire
 

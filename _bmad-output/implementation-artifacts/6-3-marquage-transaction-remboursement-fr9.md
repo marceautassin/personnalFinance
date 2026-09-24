@@ -108,7 +108,7 @@ FR9 parle de transaction « sortante ». `amount_cents < 0` = sortie. Marquer un
 
 ### Agent Model Used
 
-claude-opus-4-8 (dev-story workflow)
+Agent de développement.
 
 ### Completion Notes List
 

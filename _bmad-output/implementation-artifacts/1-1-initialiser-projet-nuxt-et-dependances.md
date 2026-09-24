@@ -271,7 +271,7 @@ Pas de tests unitaires ou E2E à écrire dans cette story (les outils sont insta
 
 ### Agent Model Used
 
-Claude Opus 4.7 (1M context) via Claude Code (`/bmad-dev-story` workflow), avril 2026.
+Agent de développement.
 
 ### Debug Log References
 
@@ -351,7 +351,7 @@ Fichiers du planning **non modifiés** (vérification finale) :
 
 ### Change Log
 
-- 2026-04-30 : Story 1.1 implémentée par Claude Code. Statut `ready-for-dev` → `review`. 6 tasks et 5 ACs validés. Aucun changement aux artefacts de planning.
+- 2026-04-30 : Story 1.1 implémentée. Statut `ready-for-dev` → `review`. 6 tasks et 5 ACs validés. Aucun changement aux artefacts de planning.
 - 2026-04-30 : Code review (3 agents adversariaux). 2 decisions résolues, 6 patches appliqués (compatibilityDate corrigée, README projet, engines+packageManager, .gitignore complété, .gitkeep, robots.txt), 6 items deferred (cf. `deferred-work.md`), ~15 dismissed. Statut `review` → `done`.
 
 ### Review Findings
