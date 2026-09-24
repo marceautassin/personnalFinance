@@ -24,6 +24,22 @@ test.describe('Réconciliation manuelle', () => {
   test.skip(!FIXTURE, 'Aucun PDF de fixture sous tests/fixtures/pdfs/')
   test.skip(!process.env.MISTRAL_API_KEY, 'MISTRAL_API_KEY non défini : E2E LLM-dépendant skippé')
 
+  /**
+   * Auto-suffisance vis-à-vis des autres specs E2E (revue de la story 27.3, même correctif que
+   * `tests/e2e/rules.spec.ts`, BLOQUANT 1) : cette spec vient APRÈS `profiles.spec.ts` dans
+   * l'ordre alphabétique, sans quoi elle dépendrait implicitement du repli « exactement un
+   * profil » (D38) — qui disparaît dès qu'un second profil survit d'un run précédent. Skippée
+   * ici faute de fixture/clé, mais tomberait sur la garde `/profils` sans ce cookie sur un
+   * poste équipé.
+   */
+  test.beforeEach(async ({ page }, testInfo) => {
+    const baseURL = testInfo.project.use.baseURL as string
+    await page.context().addCookies([{ name: 'pf_profile', value: '1', url: baseURL }])
+
+    const response = await page.request.get(`${baseURL}/api/categories`)
+    expect(response.status()).toBe(200)
+  })
+
   async function ingestFixture(page: import('@playwright/test').Page) {
     await page.goto('/import')
     await expect(page.getByRole('heading', { name: /Importer un relevé/i })).toBeVisible({ timeout: 10_000 })

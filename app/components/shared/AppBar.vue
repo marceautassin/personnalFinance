@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useBaseHealth } from '~/composables/useBaseHealth'
+import { useCurrentProfile } from '~/composables/useCurrentProfile'
 import { formatEuros } from '~~/shared/types/money'
 import { formatRatio } from '~~/shared/types/ratio'
 
@@ -21,6 +22,14 @@ const route = useRoute()
 interface NavItem { label: string, href: string, match: string }
 
 const health = useBaseHealth()
+
+/**
+ * Nom du profil courant (story 27.3, FR74) — visible sur CHAQUE écran, y compris sous 1200 px
+ * où `.bar__stats` disparaît (AC 4). Placé hors de `.bar__stats` pour cette raison : c'est ce
+ * qui distingue ce lien des compteurs de santé, indicateurs de contexte plutôt qu'information
+ * structurante.
+ */
+const { currentProfile } = useCurrentProfile()
 
 /**
  * Tranche visée par « Transactions » — l'ANNÉE du dernier relevé (demande du 2026-09-06).
@@ -150,6 +159,17 @@ watch(() => route.path, () => {
       />
     </nav>
 
+    <!-- Nom du profil courant (AC 4) — hors de `.bar__stats`, donc jamais masqué sous 1200 px. -->
+    <NuxtLink
+      v-if="currentProfile"
+      to="/profils"
+      class="bar__profile"
+      :title="currentProfile.name"
+      :aria-label="`Profil : ${currentProfile.name}`"
+    >
+      Profil : <strong>{{ currentProfile.name }}</strong>
+    </NuxtLink>
+
     <!--
       Santé de la base — portée GLOBALE, constante d'un écran à l'autre. Les compteurs des
       en-têtes de page sont, eux, bornés à la période affichée : chaque libellé le dit, sans
@@ -215,6 +235,26 @@ watch(() => route.path, () => {
 .bar__mark { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--color-text); flex-shrink: 0; }
 
 .bar__nav { display: flex; gap: 2px; flex-shrink: 0; }
+
+/*
+ * Nom du profil courant (story 27.3, AC 4) — `margin-left: auto` le pousse à droite, juste
+ * avant `.bar__stats` quand les deux sont visibles ; seul lui reste sous 1200 px, puisque
+ * `.bar__stats` disparaît alors (règle ci-dessous). `flex-shrink: 0` : il ne doit jamais céder
+ * de la place, contrairement aux compteurs qui sont de simples indicateurs de contexte.
+ */
+.bar__profile {
+  flex-shrink: 0;
+  margin-left: auto;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+.bar__profile strong { color: var(--color-text); font-weight: 600; }
+.bar__profile:hover { color: var(--color-accent); }
+.bar__profile:hover strong { color: var(--color-accent); }
 /* `.bar__link` vit désormais dans `components.css` : le déclencheur de menu le porte aussi, et
    un style scopé ne franchit pas la frontière d'un composant enfant (revue du 2026-09-08). */
 

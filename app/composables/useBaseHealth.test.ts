@@ -1,15 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const statements = ref<Array<Record<string, unknown>>>([])
 vi.stubGlobal('ref', ref)
 vi.stubGlobal('computed', computed)
+vi.stubGlobal('watch', watch)
 
 vi.mock('~/composables/useStatements', () => ({
   useStatementsList: () => ({
     data: computed(() => ({ statements: statements.value })),
     pending: ref(false),
+    error: ref(null),
+    refresh: vi.fn(),
   }),
+}))
+
+/**
+ * Un profil courant TOUJOURS présent ici : ces tests exercent la DÉRIVATION des chiffres à
+ * partir de `statements`, pas la garde ajoutée en story 27.3 (revue IMPORTANT 2), déjà couverte
+ * par `useBaseHealth.profile-guard.test.ts`.
+ */
+vi.mock('~/composables/useCurrentProfile', () => ({
+  useCurrentProfile: () => ({ currentProfile: ref({ id: 1, name: 'marceau', defaultBank: 'boursorama' }) }),
 }))
 
 const { useBaseHealth } = await import('./useBaseHealth')

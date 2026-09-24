@@ -24,12 +24,18 @@ const EMPTY_STATEMENTS_LIST: StatementsListResponse = { statements: [] }
 
 /**
  * Liste de tous les relevés ingérés (story 3.3) — `key` constante pour partage du cache.
+ *
+ * `immediate` (défaut `true`) : `useBaseHealth` le passe à `false` pour ne PAS partir tant
+ * qu'aucun profil courant n'existe (story 27.3, revue IMPORTANT 2) — sans quoi la barre
+ * d'application déclenche ce fetch sur `/profils`, précisément l'écran où la garde de route
+ * envoie un visiteur SANS profil, et l'endpoint répond `400 profile_required`.
  */
-export function useStatementsList() {
+export function useStatementsList(options: { immediate?: boolean } = {}) {
   return useFetch<StatementsListResponse>('/api/statements', {
     key: 'statements-list',
     default: () => EMPTY_STATEMENTS_LIST,
     server: false,
+    immediate: options.immediate ?? true,
   })
 }
 
