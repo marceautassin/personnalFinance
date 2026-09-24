@@ -15,6 +15,20 @@ const trigger = (page: import('@playwright/test').Page, name: string) =>
   page.getByRole('button', { name: new RegExp(`^${name}`) })
 
 test.describe('Navigation — deux menus', () => {
+  /**
+   * Auto-suffisance vis-à-vis des autres specs E2E (même raison que `rules.spec.ts`) : la base
+   * E2E est partagée par toute la suite, et `import-bank.spec.ts` (qui s'exécute avant, dans
+   * l'ordre alphabétique des fichiers) y crée désormais un second profil pour distinguer un
+   * vrai préremplissage d'une coïncidence avec le repli `BANKS[0]`. Sans cookie explicite, ces
+   * tests dépendaient implicitement du repli « exactement un profil » (D38), qui disparaît dès
+   * qu'un second profil existe — le comportement testé ici n'a rien à voir avec les profils,
+   * on épingle donc `marceau` (id 1) pour ne pas en dépendre.
+   */
+  test.beforeEach(async ({ page }, testInfo) => {
+    const baseURL = testInfo.project.use.baseURL as string
+    await page.context().addCookies([{ name: 'pf_profile', value: '1', url: baseURL }])
+  })
+
   test('la barre porte quatre entrées, dont deux menus', async ({ page }) => {
     await page.goto('/analyse')
     const nav = page.getByRole('navigation', { name: 'Navigation principale' })

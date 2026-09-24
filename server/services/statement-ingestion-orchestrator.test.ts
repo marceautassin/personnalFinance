@@ -299,19 +299,60 @@ describe('ingestStatement (orchestrator)', () => {
     expect(dbMod.db.select().from(schema.bankStatements).all()).toHaveLength(0)
   })
 
-  it('bank absent → défaut boursorama, transmis à extractStatement et categorizeStatement (D41)', async () => {
+  it('bank absent → défaut la banque du profil courant, transmis à extractStatement et categorizeStatement (D41, story 28.1)', async () => {
     mockExtract()
     mockCategorize([])
-    await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('default-bank'), confirmReplace: false })
+    const result = await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('default-bank'), confirmReplace: false })
     expect(vi.mocked(pdfMod.extractStatement).mock.calls[0]![1]).toBe('boursorama')
     expect(vi.mocked(llmMod.categorizeStatement).mock.calls[0]![2]).toBe('boursorama')
+    const stmt = dbMod.db.select().from(schema.bankStatements).all().find(s => s.hashSha256 === result.hash)
+    expect(stmt?.bank).toBe('boursorama')
   })
 
-  it('bank explicite → transmise telle quelle à extractStatement', async () => {
+  it('bank explicite → transmise telle quelle à extractStatement, et persistée (AC 3)', async () => {
     mockExtract()
     mockCategorize([])
-    await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('explicit-bank'), confirmReplace: false, bank: 'credit_mutuel' })
+    const result = await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('explicit-bank'), confirmReplace: false, bank: 'credit_mutuel' })
     expect(vi.mocked(pdfMod.extractStatement).mock.calls[0]![1]).toBe('credit_mutuel')
+    const stmt = dbMod.db.select().from(schema.bankStatements).all().find(s => s.hashSha256 === result.hash)
+    expect(stmt?.bank).toBe('credit_mutuel')
+  })
+
+  it('bank absent → défaut LA BANQUE DU PROFIL COURANT, pas une constante globale (story 28.1)', async () => {
+    // Profil temporaire, nettoyé en fin de test (contrairement au profil « conjoint » du
+    // dernier test de la suite, qui reste en base à dessein).
+    const tmp = sqlite
+      .prepare('INSERT INTO profiles (name, default_bank) VALUES (?, ?)')
+      .run('cm-default', 'credit_mutuel')
+    const tmpProfileId = Number(tmp.lastInsertRowid)
+    // Référentiel minimal : un profil sans poste échoue en `categories_not_seeded` avant même
+    // d'atteindre la résolution de la banque.
+    const tmpGroup = sqlite
+      .prepare('INSERT INTO category_groups (profile_id, code, label, position) VALUES (?, ?, ?, 0)')
+      .run(tmpProfileId, 'alimentation', 'Alimentation (tmp)')
+    sqlite
+      .prepare('INSERT INTO category_items (profile_id, code, group_id, label, nature, position) VALUES (?, ?, ?, ?, ?, 0)')
+      .run(tmpProfileId, 'alimentation-courses', Number(tmpGroup.lastInsertRowid), 'Courses (tmp)', 'expense')
+    const tmpEvent = {
+      path: '/api/statements',
+      method: 'POST',
+      node: { req: { headers: { cookie: `pf_profile=${tmpProfileId}` } }, res: {} },
+    } as unknown as H3Event
+
+    try {
+      mockExtract()
+      mockCategorize([])
+      const result = await orch.ingestStatement({ event: tmpEvent, pdfBuffer: pdf('profile-default-bank'), confirmReplace: false })
+      expect(vi.mocked(pdfMod.extractStatement).mock.calls[0]![1]).toBe('credit_mutuel')
+      const stmt = dbMod.db.select().from(schema.bankStatements).all().find(s => s.hashSha256 === result.hash)
+      expect(stmt?.bank).toBe('credit_mutuel')
+    }
+    finally {
+      sqlite.prepare('DELETE FROM bank_statements WHERE profile_id = ?').run(tmpProfileId)
+      sqlite.prepare('DELETE FROM category_items WHERE profile_id = ?').run(tmpProfileId)
+      sqlite.prepare('DELETE FROM category_groups WHERE profile_id = ?').run(tmpProfileId)
+      sqlite.prepare('DELETE FROM profiles WHERE id = ?').run(tmpProfileId)
+    }
   })
 
   it('banque déclarée ne reconnaît pas le relevé → 400 bank_mismatch (FR78, AR38)', async () => {

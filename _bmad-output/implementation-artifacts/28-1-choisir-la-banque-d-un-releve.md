@@ -1,6 +1,6 @@
 # Story 28.1: Choisir la banque d'un relevé, et être arrêté si elle ne correspond pas
 
-Status: in-progress
+Status: review
 
 <!-- Validation optionnelle : lancer validate-create-story avant dev-story. -->
 
@@ -39,15 +39,15 @@ afin qu'un relevé ne soit jamais lu avec les règles d'une autre banque.
   - [x] `BANK_STATEMENT_SYSTEM_PROMPT` neutre (plus de « Boursorama », plus de « SOLDE AU »/« Nouveau solde »). `BANK_PROMPT_NOTES.boursorama` porte la note déplacée ; `BANK_PROMPT_NOTES.credit_mutuel = ''`.
   - [x] `buildBankStatementSystemPrompt(bank)` = commun + note. `BANK_STATEMENT_PROMPT_VERSION` → 4.
   - [x] `llm-categorizer.categorizeStatement(rawText, categories, bank)` utilise ce prompt.
-- [x] **Tâche 5 — Orchestrateur et endpoint (partiel — AC 2, 4, 9 ; AC 3 hors périmètre)**
-  - [x] `IngestStatementArgs` gagne `bank?: Bank` **défaultant à `'boursorama'`, sans persistance** (périmètre explicitement réduit pour cette passe — `bank_statements.bank` n'existe pas encore, 27.1 non fusionnée ici). Appel `extractStatement(pdfBuffer, bank)` ; `BankMismatchError` → `domainError(BankMismatch, { expected, detected }, 400)`, vérifié AVANT le `catch` générique ; `credit_mutuel_not_supported_yet` → `PdfParseFailed` 400 (catch générique existant, comportement déjà correct).
-  - [ ] **Insertion `bank` dans `bankStatements.values(...)` — NON FAITE.** La colonne n'existe pas (schema/migration hors périmètre de cette passe, cf. consigne).
-  - [ ] **`server/api/statements/index.post.ts` : champ multipart `bank` — NON FAIT** (explicitement hors périmètre ; pas de `requireProfile`/27.2 disponible). Docblock neutralisé (ne cite plus « relevé Boursorama ») pour ne pas laisser une doc fausse.
-  - [ ] **`server/api/statements/index.get.ts` : `bank` dans `StatementListItem` — NON FAIT** (rien à exposer tant que la colonne n'existe pas).
-- [ ] **Tâche 6 — Front (AC 1, 3) — NON FAITE, explicitement hors périmètre de cette passe.**
-  - [ ] `useStatements.uploadStatement` / `useIngestionQueue` : champ `bank`.
-  - [ ] `app/pages/import.vue` : sélecteur « Banque », préremplissage `useProfiles()` (27.3 indisponible ici).
-  - [ ] Liste des relevés : affichage de la banque.
+- [x] **Tâche 5 — Orchestrateur et endpoint (AC 2, 3, 4, 9)**
+  - [x] `IngestStatementArgs.bank?: Bank` — absent → `requireCurrentProfile(event).defaultBank` (27.1/27.2 désormais fusionnées) plutôt qu'une constante fixe. `server/utils/current-profile.ts` gagne `requireCurrentProfile` (renvoie le `Profile` complet), dont `requireProfile` n'est plus qu'un enrobage — un seul point de lecture du cookie, une seule requête DB par appel, pas de duplication.
+  - [x] `tx.insert(bankStatements).values({ ..., bank, ... })` — la banque résolue (explicite ou défaut du profil) est désormais persistée, plus de valeur en dur.
+  - [x] `server/api/statements/index.post.ts` : champ multipart `bank` lu, `trim()`é, validé via `isBank` contre `BANKS` → `422 validation_failed` sinon ; absent ou vide → `undefined` transmis à `ingestStatement`, qui retombe sur le profil.
+  - [x] `server/api/statements/index.get.ts` : `bank` ajouté à la sélection Drizzle et à `StatementListItem`.
+- [x] **Tâche 6 — Front (AC 1, 3)**
+  - [x] `useStatements.uploadStatement` accepte `opts.bank?: Bank`, ajouté au `FormData` si fourni. `StatementListItem` (les deux définitions, `useStatements.ts` et `index.get.ts`) gagne `bank: Bank`.
+  - [x] `useIngestionQueue` : `QueueItem.bank` figé au moment de `enqueue(files, bank)` — une relance (`retry`) réutilise cette même valeur, la file ne relit jamais le sélecteur de la page.
+  - [x] `app/pages/import.vue` : sélecteur « Banque » (natif, classe `.select`, cohérent avec `regles.vue`), préremplissage réactif depuis `useCurrentProfile().currentProfile.defaultBank` (`watch`, le fetch du profil étant asynchrone), modifiable. Colonne « Banque » ajoutée à la liste des relevés (`BANK_LABELS[stmt.bank]`).
 - [x] **Tâche 7 — Fixture et tests (AC 4, 6, 7, 9)** — refondue le 2026-09-22 suite au verdict BLOQUER de `pr-reviewer` (voir Debug Log References). Fixture `tests/fixtures/statements/boursorama-2026-03.json` **entièrement synthétique** (géométrie réaliste, contenu inventé) générée par `generate-synthetic-fixture.test.ts` et écrite dans le worktree — elle n'est PAS committée par l'agent (aucun commit n'a été créé, cf. consigne du chantier) ; aucun identifiant réel n'y figure, structurellement (rien n'est dérivé d'un PDF réel), vérifié par grep direct sur les anciennes valeurs réelles.
 
 ## Dev Notes
@@ -165,11 +165,22 @@ Les valeurs `expected` sont celles déjà verrouillées dans `BOURSOBANK_FIXTURE
 - [Source: shared/constants/bank-statement-llm-prompt.ts — règle 8]
 - [Source: app/composables/useStatements.ts, useIngestionQueue.ts, app/pages/import.vue]
 
+### Question ouverte (hors AC, signalée en revue `pr-reviewer`)
+
+`useIngestionQueue.QueueItem.bank` est figé par élément (AC 1), mais **`IngestionQueue.vue`
+n'affiche cette banque nulle part** dans la file (une ligne montre le nom du fichier et son
+statut, pas la banque avec laquelle il a été déposé). Ce n'est pas un manquement à un AC de
+cette story — aucun AC ne demande cet affichage — mais si un utilisateur dépose des relevés de
+deux banques dans la même file (mixte Boursorama + Crédit Mutuel), rien à l'écran ne le
+distingue avant le résultat. À trancher : afficher la banque par ligne de file (feature
+minuscule) ou l'assumer comme non nécessaire tant qu'un seul profil n'a qu'une banque
+courante. Ne pas coder sans validation explicite (scope verrouillé, CLAUDE.md).
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
-Claude Sonnet 5.
+Agent de développement du chantier.
 
 ### Debug Log References
 
@@ -204,14 +215,40 @@ Claude Sonnet 5.
 
 ### Completion Notes List
 
-- **Écart de périmètre découvert en cours de route et assumé, signalé au demandeur** : les
-  stories 27.1/27.2/27.3 (profils, `bank_statements.bank`, `requireProfile`, `useProfiles`)
-  n'existent pas dans ce worktree. Conformément au brief reçu, seule la **partie extracteur**
-  a été implémentée : `shared/types/bank.ts` posé ici par anticipation (à réconcilier avec
-  27.1 au merge — conflit probable), aucune modification de `server/db/schema.ts` ni des
-  migrations, aucune persistance de `bank`, aucun champ multipart, aucun préremplissage front,
-  aucun affichage dans la liste des relevés. `IngestStatementArgs.bank` défaute à
-  `'boursorama'` en interne.
+- **Reprise après pivot de périmètre.** Ce worktree a été relancé sur la pointe de `master`,
+  où 27.1/27.2/27.3 sont déjà fusionnées (`shared/types/bank.ts`, `profiles.default_bank`,
+  `bank_statements.bank`, `requireProfile`, `useCurrentProfile`/`useProfiles`). Le travail de
+  cette passe complète donc la partie restée non faite de 28.1 : persistance de `bank`, champ
+  multipart, préremplissage front, affichage liste — sans toucher à l'extracteur (Tâches 1-4,
+  7, déjà closes et vérifiées inchangées par `yarn test:run`).
+- **`requireCurrentProfile` ajouté à `server/utils/current-profile.ts`** plutôt que de refaire
+  une lecture DB séparée dans l'orchestrateur : `requireProfile` (utilisé par 23 endpoints)
+  n'est plus qu'un enrobage qui en extrait l'id. Un seul point de lecture du cookie reste vrai
+  (AR35), et `ingestStatement` a accès à `defaultBank` sans requête supplémentaire.
+- **Défaut de banque non trivial** : `bank = requestedBank ?? currentProfile.defaultBank` — le
+  test `bank absent → défaut LA BANQUE DU PROFIL COURANT` seme un profil temporaire avec
+  `default_bank = 'credit_mutuel'` pour prouver que ce n'est pas une constante déguisée
+  (régression possible si quelqu'un réintroduit `'boursorama'` en dur).
+- **Validation du champ multipart `bank`** : `422 validation_failed` avec `data: { reason,
+  value, allowed }` si hors de `BANKS` — cohérent avec le contrat d'erreur du projet
+  (`createError` + `statusMessage` stable). Absent ou chaîne vide → `undefined`, jamais une
+  chaîne vide envoyée à l'orchestrateur.
+- **Préremplissage front réactif** (`app/pages/import.vue`) : `selectedBank` initialisé depuis
+  `currentProfile.value?.defaultBank` PUIS synchronisé par un `watch`, parce que
+  `useCurrentProfile` est un `useFetch` asynchrone qui répond généralement après le montage de
+  la page — une seule initialisation aurait figé le sélecteur sur `BANKS[0]`
+  (`'boursorama'`) jusqu'à une interaction manuelle.
+- **Banque figée par élément de file** (`useIngestionQueue.QueueItem.bank`), pas relue depuis
+  la page au moment du traitement : un `retry` après que l'utilisateur a changé le sélecteur
+  renvoie donc la MÊME banque que le dépôt initial (AC 1, dernière phrase).
+- **Tests E2E `import-bank.spec.ts`** : Playwright ne restitue pas le corps d'une requête
+  `multipart/form-data` envoyée par `fetch` (`postData()`/`postDataBuffer()` vides sous
+  Chromium) — contournement par interception de `window.fetch` via `page.addInitScript` pour
+  lire le `FormData` avant l'envoi. Découvert en cours de rédaction, documenté dans le test.
+- **Vérification visuelle (`yarn dev`) : NON FAITE par cet agent.** Cet agent ne dispose pas
+  d'outil navigateur (Playwright MCP) — seule la suite E2E Playwright (Chromium réel, headless)
+  a exercé le préremplissage, le changement de banque et la validation serveur. La comparaison
+  à l'écran proprement dite reste à faire par `pr-reviewer`, qui a accès au MCP Playwright.
 - **AC 6 (zéro changement de comportement) vérifié empiriquement**, pas seulement par
   relecture : comparaison octet-à-octet de `extractStatement` avant/après sur les 22 PDF
   réels disponibles, deux fois (avant et après le correctif de lint). Zéro différence.
@@ -239,7 +276,7 @@ Claude Sonnet 5.
 ### File List
 
 **Créés**
-- `shared/types/bank.ts`
+- `shared/types/bank.ts` (déjà présent, posé par 27.1 sur `master` — non recréé)
 - `server/services/bank-formats/types.ts`
 - `server/services/bank-formats/fr-parsing.ts`
 - `server/services/bank-formats/fr-parsing.test.ts`
@@ -254,15 +291,28 @@ Claude Sonnet 5.
 - `server/services/bank-formats/generate-synthetic-fixture.test.ts` (remplace `capture-statement-fixture.test.ts`, supprimé — cf. Debug Log References)
 - `server/services/bank-formats/__snapshots__/boursorama.test.ts.snap`
 - `tests/fixtures/statements/boursorama-2026-03.json` (contenu entièrement synthétique)
+- `tests/e2e/import-bank.spec.ts` (préremplissage, banque figée par dépôt, validation 422/défaut)
 
-**Modifiés**
+**Modifiés (cette passe — persistance, endpoint, front, story 28.1)**
+- `server/utils/current-profile.ts` — ajout `requireCurrentProfile`
+- `server/utils/current-profile.test.ts` — tests `requireCurrentProfile`
+- `server/services/statement-ingestion-orchestrator.ts` — défaut de banque sur le profil, persistance `bank`
+- `server/services/statement-ingestion-orchestrator.test.ts` — tests défaut profil / persistance
+- `server/api/statements/index.post.ts` — champ multipart `bank`, validation `BANKS`
+- `server/api/statements/index.get.ts` — `bank` exposé dans `StatementListItem`
+- `server/api/statements/index.get.test.ts` — assertions sur `bank`
+- `app/composables/useStatements.ts` — `StatementListItem.bank`, `uploadStatement(..., { bank })`
+- `app/composables/useStatements.test.ts` — tests du champ `bank`
+- `app/composables/useIngestionQueue.ts` — `QueueItem.bank`, `enqueue(files, bank)`
+- `app/composables/useIngestionQueue.test.ts` — **créé** en correctif de revue (item MINEUR 6) : banque transmise à `uploadStatement`, réutilisée par `retry`, deux dépôts consécutifs gardent chacun la leur
+- `app/pages/import.vue` — sélecteur « Banque », préremplissage, colonne liste ; correctif de revue (IMPORTANT 1) : `watch` sur `currentProfile.value?.id` plutôt que sur l'objet entier
+- `app/components/ingestion/PdfDropZone.vue` — correctif de revue (IMPORTANT 2) : texte neutre (« relevés PDF », sans mention de banque)
+
+**Modifiés (passe précédente — extracteur)**
 - `server/services/pdf-extractor.ts`
 - `server/services/pdf-extractor.test.ts`
 - `server/services/llm-categorizer.ts`
 - `server/services/llm-categorizer.test.ts`
-- `server/services/statement-ingestion-orchestrator.ts`
-- `server/services/statement-ingestion-orchestrator.test.ts`
-- `server/api/statements/index.post.ts` (docblock uniquement)
 - `shared/constants/bank-statement-llm-prompt.ts`
 - `shared/constants/bank-statement-llm-prompt.test.ts`
 - `shared/schemas/api-errors.ts`
@@ -274,3 +324,23 @@ Claude Sonnet 5.
 - 2026-09-22 : implémentation de la partie extracteur (Tâches 1-5 partielle, 7) ; Tâche 6 et
   le reste de la Tâche 5 (persistance, endpoint, front) explicitement reportés après 27.1/27.3.
   Statut laissé en `in-progress`.
+- 2026-09-24 : worktree relancé sur `master` (27.1/27.2/27.3 fusionnées). Complété la Tâche 5
+  (persistance de `bank`, champ multipart validé, exposition dans `GET /api/statements`) et la
+  Tâche 6 (sélecteur « Banque » préremplissable sur `/import`, banque figée par élément de
+  file, colonne « Banque » dans la liste des relevés). Tests unitaires et E2E ajoutés. `yarn
+  test:run`, `yarn lint`, `yarn typecheck` verts ; suite E2E complète verte (42 passés, 7
+  auto-skippés sans `MISTRAL_API_KEY`/fixture PDF, comme avant cette passe). Statut passé à
+  `review`.
+- 2026-09-24 (revue `pr-reviewer`, aucun BLOQUANT, CHANGEMENTS REQUIS) : corrigé un bug réel
+  trouvé par validation visuelle — le `watch(currentProfile, ...)` de `import.vue` réécrasait
+  le choix de banque de l'utilisateur à chaque fin de file (`invalidateAnalysis()` recharge
+  aussi `current-profile` sans clé) ; passage à `watch(() => currentProfile.value?.id, ...)`.
+  Texte de `PdfDropZone.vue` neutralisé (ne mentionne plus Boursorama). Test de préremplissage
+  E2E réécrit contre un profil `credit_mutuel` créé à la volée (`marceau`/`boursorama`
+  coïncidait avec le repli `BANKS[0]`, ne prouvant rien). Assertion `not.toBe(422)` resserrée
+  en `400 pdf_parse_failed` précis. Interception `window.fetch` remplacée par
+  `page.route(...).request().postDataBuffer()`, qui restitue bien le corps multipart
+  (l'hypothèse initiale d'un corps vide sous Chromium était fausse). Ajout d'un cas E2E dédié
+  au bug du `watch` et d'un test unitaire `useIngestionQueue.test.ts` (banque transmise et
+  réutilisée par `retry`). Question ouverte notée : la file n'affiche la banque figée d'aucun
+  élément.

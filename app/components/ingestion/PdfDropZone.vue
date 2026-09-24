@@ -103,7 +103,7 @@ function onInput(e: Event) {
       @click="onClick"
     >
       <p class="dropzone__title">
-        Dépose tes relevés PDF Boursorama ici
+        Dépose tes relevés PDF ici
       </p>
       <p class="dropzone__hint">
         <small>un ou plusieurs à la fois — ou clique pour les sélectionner (max 10 Mo par fichier)</small>

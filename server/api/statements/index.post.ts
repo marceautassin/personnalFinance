@@ -1,19 +1,20 @@
 /**
  * POST /api/statements — ingestion d'un PDF de relevé bancaire (Story 2.6).
  *
- * Handler thin : valide le multipart (présence + taille du fichier), lit le header
- * `X-Confirm-Replace`, puis délègue toute la logique pipeline à
+ * Handler thin : valide le multipart (présence + taille du fichier, champ `bank` optionnel),
+ * lit le header `X-Confirm-Replace`, puis délègue toute la logique pipeline à
  * `ingestStatement` (server/services/statement-ingestion-orchestrator.ts).
  *
- * La banque du relevé (D41) n'est pas encore lue ici : le champ multipart `bank`, son
- * préremplissage depuis le profil et sa persistance en base arrivent avec les stories
- * 27.1/27.3 — `ingestStatement` défaute sur `'boursorama'` en leur absence (story 28.1).
+ * Champ multipart `bank` (D41, AR37) : optionnel, validé contre `BANKS`. Absent →
+ * `ingestStatement` retombe sur la banque par défaut du profil courant. Présent mais hors de
+ * `BANKS` → `422 validation_failed`.
  */
 import { defineEventHandler, readMultipartFormData, getHeader } from 'h3'
 import { domainError } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { ingestStatement } from '~~/server/services/statement-ingestion-orchestrator'
 import { requireProfile } from '~~/server/utils/current-profile'
+import { BANKS, isBank, type Bank } from '~~/shared/types/bank'
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 
@@ -63,5 +64,21 @@ export default defineEventHandler(async (event) => {
   const confirmReplaceHeader = (getHeader(event, 'x-confirm-replace') ?? '').trim().toLowerCase()
   const confirmReplace = confirmReplaceHeader === 'true' || confirmReplaceHeader === '1'
 
-  return ingestStatement({ event, pdfBuffer, confirmReplace })
+  let bank: Bank | undefined
+  const bankPart = form?.find(p => p.name === 'bank')
+  if (bankPart?.data) {
+    const raw = bankPart.data.toString('utf-8').trim()
+    if (raw.length > 0) {
+      if (!isBank(raw)) {
+        throw domainError(
+          ApiErrorCode.ValidationFailed,
+          { reason: 'invalid bank', value: raw, allowed: BANKS },
+          422,
+        )
+      }
+      bank = raw
+    }
+  }
+
+  return ingestStatement({ event, pdfBuffer, confirmReplace, bank })
 })

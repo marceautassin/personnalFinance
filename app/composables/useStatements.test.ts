@@ -57,6 +57,36 @@ describe('useStatements.uploadStatement', () => {
     expect(opts.headers).toBeUndefined()
   })
 
+  it('ajoute le champ multipart bank quand fourni (AC 2, story 28.1)', async () => {
+    fetchMock.mockResolvedValueOnce({
+      hash: 'd'.repeat(64),
+      periodStart: '2026-03-01',
+      periodEnd: '2026-03-31',
+      transactionCount: 0,
+      isBalanced: true,
+      gapCents: 0,
+    })
+    await useStatements().uploadStatement(fakeFile, { bank: 'credit_mutuel' })
+    const [, opts] = fetchMock.mock.calls[0]!
+    const form = opts.body as FormData
+    expect(form.get('bank')).toBe('credit_mutuel')
+  })
+
+  it('n\'ajoute aucun champ bank quand absent — le serveur retombe sur le défaut du profil', async () => {
+    fetchMock.mockResolvedValueOnce({
+      hash: 'e'.repeat(64),
+      periodStart: '2026-03-01',
+      periodEnd: '2026-03-31',
+      transactionCount: 0,
+      isBalanced: true,
+      gapCents: 0,
+    })
+    await useStatements().uploadStatement(fakeFile)
+    const [, opts] = fetchMock.mock.calls[0]!
+    const form = opts.body as FormData
+    expect(form.get('bank')).toBeNull()
+  })
+
   it('ajoute le header X-Confirm-Replace quand confirmReplace = true', async () => {
     fetchMock.mockResolvedValueOnce({
       hash: 'b'.repeat(64),

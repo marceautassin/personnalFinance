@@ -78,12 +78,29 @@ describe('GET /api/statements', () => {
     ]).run()
 
     const result = (await handler(makeEvent())) as {
-      statements: Array<{ hash: string, periodStart: string, reliability: string, transactionCount: number }>
+      statements: Array<{ hash: string, bank: string, periodStart: string, reliability: string, transactionCount: number }>
     }
     expect(result.statements).toHaveLength(1)
     expect(result.statements[0]!.hash).toBe(HASH_A)
+    expect(result.statements[0]!.bank).toBe('boursorama')
     expect(result.statements[0]!.reliability).toBe('reliable')
     expect(Number(result.statements[0]!.transactionCount)).toBe(2)
+  })
+
+  it('expose la banque du relevé (AC 3, story 28.1)', async () => {
+    dbMod.db.insert(schema.bankStatements).values({
+      hashSha256: HASH_A,
+      profileId: 1,
+      bank: 'credit_mutuel',
+      periodStart: '2026-04-01',
+      periodEnd: '2026-04-30',
+      openingBalanceCents: 0,
+      closingBalanceCents: 0,
+      gapAccepted: false,
+    }).run()
+
+    const result = (await handler(makeEvent())) as { statements: Array<{ bank: string }> }
+    expect(result.statements[0]!.bank).toBe('credit_mutuel')
   })
 
   it('trie par periodStart DESC et expose la fiabilité dérivée', async () => {

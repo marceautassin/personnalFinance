@@ -48,15 +48,26 @@ export function findCurrentProfile(event: H3Event): Profile | null {
 }
 
 /**
- * Enrobage de `findCurrentProfile` pour les 23 endpoints filtrés par profil (story 27.2) :
- * lève plutôt que de rendre `null`, comme eux exigent un profil pour répondre. Même erreur,
- * sans détail distinguant « pas de cookie » de « cookie invalide » (revue de la story 27.2,
- * esprit de D38 : jamais confirmer l'existence d'une ressource par la forme de l'erreur).
+ * Enrobage de `findCurrentProfile` : lève plutôt que de rendre `null`. Même erreur, sans
+ * détail distinguant « pas de cookie » de « cookie invalide » (revue de la story 27.2, esprit
+ * de D38 : jamais confirmer l'existence d'une ressource par la forme de l'erreur).
+ *
+ * Rend le `Profile` complet — et pas seulement son id — pour les appelants qui ont aussi
+ * besoin d'un de ses champs (ex : `defaultBank` à l'ingestion, story 28.1) sans relire la
+ * table une seconde fois.
  */
-export function requireProfile(event: H3Event): ProfileId {
+export function requireCurrentProfile(event: H3Event): Profile {
   const profile = findCurrentProfile(event)
   if (profile === null) {
     throw badRequest(ApiErrorCode.ProfileRequired)
   }
-  return profileId(profile.id)
+  return profile
+}
+
+/**
+ * Enrobage de `requireCurrentProfile` pour les 23 endpoints filtrés par profil (story 27.2)
+ * qui n'ont besoin que de l'identifiant.
+ */
+export function requireProfile(event: H3Event): ProfileId {
+  return profileId(requireCurrentProfile(event).id)
 }

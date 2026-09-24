@@ -17,11 +17,13 @@ import { ACCEPT_GAP_ITEM_CODE } from '~~/shared/constants/default-referential'
 import { bankStatements, transactions } from '~~/server/db/schema'
 import { ratio, type Ratio } from '~~/shared/types/ratio'
 import type { StatementReliability } from '~~/shared/types/statement-reliability'
+import type { Bank } from '~~/shared/types/bank'
 import { reliabilityByStatement } from '~~/server/utils/statement-reliability'
 import { requireProfile } from '~~/server/utils/current-profile'
 
 export interface StatementListItem {
   hash: string
+  bank: Bank
   periodStart: string
   periodEnd: string
   reliability: StatementReliability
@@ -70,6 +72,7 @@ export default defineEventHandler(async (event): Promise<{ statements: Statement
   const rows = await db
     .select({
       hash: bankStatements.hashSha256,
+      bank: bankStatements.bank,
       periodStart: bankStatements.periodStart,
       periodEnd: bankStatements.periodEnd,
       ingestedAt: bankStatements.ingestedAt,

@@ -1,4 +1,5 @@
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
+import type { Bank } from '~~/shared/types/bank'
 import { useInvalidate } from '~/composables/useInvalidate'
 import { useStatements, useStatementsList, type OverlapInfo } from './useStatements'
 
@@ -31,6 +32,12 @@ export interface QueueItem {
   file: File
   name: string
   status: QueueItemStatus
+  /**
+   * Banque choisie au moment du DÉPÔT (AC 1) — figée sur l'élément, pas relue depuis le
+   * sélecteur de la page au moment du traitement. Une relance (`retry`) réutilise donc
+   * cette même valeur, même si l'utilisateur a changé le sélecteur entre-temps.
+   */
+  bank: Bank
   result?: IngestionResult
   error?: string
   errorCode?: string
@@ -74,7 +81,7 @@ export function useIngestionQueue() {
   async function process(item: QueueItem, confirmReplace: boolean): Promise<boolean> {
     set(item, { status: 'running', error: undefined, errorCode: undefined, overlap: undefined })
     abortCtrl = new AbortController()
-    const out = await uploadStatement(item.file, { confirmReplace, signal: abortCtrl.signal })
+    const out = await uploadStatement(item.file, { confirmReplace, signal: abortCtrl.signal, bank: item.bank })
     abortCtrl = null
 
     if (out.aborted) {
@@ -132,12 +139,13 @@ export function useIngestionQueue() {
     }
   }
 
-  function enqueue(files: readonly File[]) {
+  function enqueue(files: readonly File[], bank: Bank) {
     const added = files.map(file => ({
       id: nextId++,
       file,
       name: file.name,
       status: 'pending' as QueueItemStatus,
+      bank,
     }))
     items.value = [...items.value, ...added]
     void drain()

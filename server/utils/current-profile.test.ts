@@ -12,9 +12,11 @@ process.env.DATABASE_URL = join(tmpDir, 'test.db')
 
 type DbModule = typeof import('~~/server/db/client')
 type RequireProfile = (event: H3Event) => number
+type RequireCurrentProfile = (event: H3Event) => { id: number, name: string, defaultBank: string }
 
 let dbMod: DbModule
 let requireProfile: RequireProfile
+let requireCurrentProfile: RequireCurrentProfile
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sqlite: any
 
@@ -26,7 +28,9 @@ beforeAll(async () => {
   sqlite.exec(TEST_SCHEMA_DDL)
   sqlite.exec(TEST_REFERENTIAL_DDL)
 
-  requireProfile = (await import('./current-profile')).requireProfile as unknown as RequireProfile
+  const mod = await import('./current-profile')
+  requireProfile = mod.requireProfile as unknown as RequireProfile
+  requireCurrentProfile = mod.requireCurrentProfile as unknown as RequireCurrentProfile
 })
 
 afterAll(() => {
@@ -96,6 +100,19 @@ describe('requireProfile', () => {
       expect.objectContaining({ statusCode: 400, statusMessage: ApiErrorCode.ProfileRequired }),
     )
     expect(() => requireProfile(makeEvent('-1'))).toThrowError(
+      expect.objectContaining({ statusCode: 400, statusMessage: ApiErrorCode.ProfileRequired }),
+    )
+  })
+})
+
+describe('requireCurrentProfile', () => {
+  it('cookie valide : renvoie le profil complet, avec sa banque par défaut (story 28.1)', () => {
+    const profile = requireCurrentProfile(makeEvent('1'))
+    expect(profile).toMatchObject({ id: 1, name: 'marceau', defaultBank: 'boursorama' })
+  })
+
+  it('cookie invalide : 400 profile_required, comme requireProfile', () => {
+    expect(() => requireCurrentProfile(makeEvent('999'))).toThrowError(
       expect.objectContaining({ statusCode: 400, statusMessage: ApiErrorCode.ProfileRequired }),
     )
   })
