@@ -98,7 +98,12 @@ export default defineEventHandler(async (event) => {
     return {
       isBalanced: reconciliation.isBalanced,
       gapCents: reconciliation.gapCents,
-      reliability: deriveReliability(reconciliation.gapCents, statement.gapAccepted),
+      reliability: deriveReliability({
+        gapCents: reconciliation.gapCents,
+        gapAccepted: statement.gapAccepted,
+        source: statement.source,
+        continuityGapCents: statement.continuityGapCents,
+      }),
     }
   }
 

@@ -58,7 +58,10 @@ export const TEST_SCHEMA_DDL = `
     opening_balance_cents INTEGER NOT NULL,
     closing_balance_cents INTEGER NOT NULL,
     gap_accepted INTEGER NOT NULL DEFAULT 0,
-    ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    source TEXT NOT NULL DEFAULT 'pdf',
+    continuity_gap_cents INTEGER,
+    card_detail_missing INTEGER NOT NULL DEFAULT 0
   );
   CREATE TABLE settlement_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,5 +135,7 @@ export const TEST_REFERENTIAL_DDL = `
     -- même chose que la migration 0009/0010, sinon les tests passeraient là où la production
     -- ignore silencieusement la moitié coupée (leçon de la migration 0007, epic 19).
     (1, 'internes-virement-joint', (SELECT id FROM category_groups WHERE code = 'internes' AND profile_id = 1), 'Virement du compte joint', 'internal_transfer', 2),
-    (1, 'compte-joint-part-remboursee', (SELECT id FROM category_groups WHERE code = 'compte-joint' AND profile_id = 1), 'Part remboursée', 'expense', 0);
+    (1, 'compte-joint-part-remboursee', (SELECT id FROM category_groups WHERE code = 'compte-joint' AND profile_id = 1), 'Part remboursée', 'expense', 0),
+    -- Story 28.4 : agrégat carte des exports Crédit Mutuel, rangé par le code, jamais soumis au modèle.
+    (1, 'divers-carte-non-detaillee', (SELECT id FROM category_groups WHERE code = 'divers' AND profile_id = 1), 'Carte (non détaillée)', 'expense', 1);
 `

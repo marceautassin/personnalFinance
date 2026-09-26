@@ -31,7 +31,10 @@ function migrationFiles(): string[] {
 function buildSchema0009(db: Database.Database): void {
   db.pragma('foreign_keys = ON')
   for (const file of migrationFiles()) {
-    if (file.startsWith('0010')) continue
+    // Exclut 0010 (dont ce fichier vérifie l'application) ET toute migration ULTÉRIEURE —
+    // 0011 (story 28.4) suppose déjà le schéma 0010 (profile_id, group_id) : la laisser passer
+    // ici casserait ce test sans lien avec le sujet qu'il vérifie.
+    if (Number(file.slice(0, 4)) >= 10) continue
     const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8')
     for (const stmt of statementsOf(sql)) db.exec(stmt)
   }

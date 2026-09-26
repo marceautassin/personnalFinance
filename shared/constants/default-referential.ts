@@ -1,5 +1,5 @@
 /**
- * Référentiel initial — 14 rubriques / 51 postes (D17, AR3).
+ * Référentiel initial — 14 rubriques / 52 postes (D17, AR3).
  *
  * Dérivé du tableur `Dépenses 2022.xlsx` que l'utilisateur tenait à la main, lu le
  * 2026-09-04 : c'est sa propre taxonomie, dépersonnalisée (marques et prénoms retirés,
@@ -77,6 +77,15 @@ export const JOINT_GROUP_CODE = 'compte-joint'
  * les agrégats de l'historique : c'est une décision, pas un réglage.
  */
 export const JOINT_SHARE_BASIS_POINTS = 5000
+
+/**
+ * Agrégat carte non détaillé (story 28.4, FR84) — les lignes `RELEVE CARTE` d'un export Crédit
+ * Mutuel n'exposent pas le détail des achats carte du mois : elles sont rangées ICI, par le
+ * code, jamais soumises au modèle (il ne verrait qu'un libellé identique douze fois). Protégé
+ * et non supprimable (comme les autres postes système) : le supprimer casserait l'ingestion
+ * d'export tant qu'un profil en dépend.
+ */
+export const CARD_UNDETAILED_ITEM_CODE = 'divers-carte-non-detaillee'
 
 export const DEFAULT_REFERENTIAL: ReadonlyArray<DefaultCategoryGroup> = [
   {
@@ -159,6 +168,7 @@ export const DEFAULT_REFERENTIAL: ReadonlyArray<DefaultCategoryGroup> = [
       { code: 'divers-cadeaux', label: 'Cadeaux', nature: 'expense' },
       { code: 'divers-soirees', label: 'Soirées', nature: 'expense' },
       { code: FALLBACK_ITEM_CODE, label: 'Non catégorisé', nature: 'expense' },
+      { code: CARD_UNDETAILED_ITEM_CODE, label: 'Carte (non détaillée)', nature: 'expense' },
     ],
   },
   {

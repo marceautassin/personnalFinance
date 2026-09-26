@@ -1,6 +1,6 @@
 # Story 28.4: Importer une année d'historique Crédit Mutuel depuis l'export Excel
 
-Status: ready-for-dev
+Status: review
 
 <!-- Validation optionnelle : lancer validate-create-story avant dev-story. -->
 
@@ -58,122 +58,122 @@ afin d'avoir un an d'historique à analyser sans attendre douze relevés.
 
 ## Tasks / Subtasks
 
-- [ ] **T1 — Schéma, migration 0011, référentiel** (AC 3, 4, 5)
-  - [ ] `shared/types/statement-source.ts` : `STATEMENT_SOURCES = ['pdf', 'export'] as const`,
+- [x] **T1 — Schéma, migration 0011, référentiel** (AC 3, 4, 5)
+  - [x] `shared/types/statement-source.ts` : `STATEMENT_SOURCES = ['pdf', 'export'] as const`,
         type `StatementSource`.
-  - [ ] `server/db/schema.ts` › `bankStatements` : `source` (`text`, enum, `NOT NULL DEFAULT 'pdf'`),
+  - [x] `server/db/schema.ts` › `bankStatements` : `source` (`text`, enum, `NOT NULL DEFAULT 'pdf'`),
         `continuityGapCents` (`integer('continuity_gap_cents')`, **nullable**),
         `cardDetailMissing` (`integer('card_detail_missing', { mode: 'boolean' })`,
         `NOT NULL DEFAULT false`). Docblock : pourquoi ces deux derniers sont des **faits**
         stockés et non des états dérivés (D42, D44).
-  - [ ] `yarn db:generate` → `0011_*.sql` + snapshot ; puis **ajouter à la main** en fin de fichier,
+  - [x] `yarn db:generate` → `0011_*.sql` + snapshot ; puis **ajouter à la main** en fin de fichier,
         après un `--> statement-breakpoint`, l'insertion conditionnelle du poste (voir Dev Notes).
         Jamais de `drizzle push`.
-  - [ ] `shared/constants/default-referential.ts` : `CARD_UNDETAILED_ITEM_CODE =
+  - [x] `shared/constants/default-referential.ts` : `CARD_UNDETAILED_ITEM_CODE =
         'divers-carte-non-detaillee'`, poste `{ label: 'Carte (non détaillée)', nature: 'expense' }`
         dans la rubrique `divers` ; mettre à jour le compte du docblock (14 rubriques / 52 postes).
-  - [ ] `shared/constants/protected-categories.ts` : ajouter le code à `PROTECTED_ITEM_CODES` (avec
+  - [x] `shared/constants/protected-categories.ts` : ajouter le code à `PROTECTED_ITEM_CODES` (avec
         sa raison dans le commentaire).
-  - [ ] `tests/fixtures/test-schema.ts` : miroir des trois colonnes.
-  - [ ] `server/middleware/0.bootstrap.ts` : marqueur de schéma « colonne `bank_statements.source`
+  - [x] `tests/fixtures/test-schema.ts` : miroir des trois colonnes.
+  - [x] `server/middleware/0.bootstrap.ts` : marqueur de schéma « colonne `bank_statements.source`
         (D44) », sur le modèle des marqueurs existants.
-  - [ ] Test de migration `server/db/migrations/0011-*.test.ts` (modèle : `0010-…test.ts`) : base
+  - [x] Test de migration `server/db/migrations/0011-*.test.ts` (modèle : `0010-…test.ts`) : base
         peuplée → poste créé sur **chaque** profil, dans `divers`, nature `expense` ; base vierge →
         aucune insertion ; rejouée → idempotente ; relevés existants → `source = 'pdf'`,
         `card_detail_missing = 0`, `continuity_gap_cents IS NULL`.
-- [ ] **T2 — Fiabilité : nouvel état `unverified`** (AC 3)
-  - [ ] `shared/types/statement-reliability.ts` : `'unverified'` dans `STATEMENT_RELIABILITIES` ;
+- [x] **T2 — Fiabilité : nouvel état `unverified`** (AC 3)
+  - [x] `shared/types/statement-reliability.ts` : `'unverified'` dans `STATEMENT_RELIABILITIES` ;
         `deriveReliability` passe à **un objet** `{ gapCents, gapAccepted, source,
         continuityGapCents }` (le typecheck force alors chaque appelant) ; ordre de priorité et
         `worstReliability` : voir Dev Notes ; `RELIABILITY_LABELS.unverified = 'Non vérifié'`.
-  - [ ] `statement-reliability.test.ts` : nominal + deux cas limites (NFR3) pour `unverified` —
+  - [x] `statement-reliability.test.ts` : nominal + deux cas limites (NFR3) pour `unverified` —
         export `null` → `unverified` ; export `0` → `reliable` ; export `≠ 0` → `gap_unreviewed` ;
         export avec écart interne non nul (ligne manuelle) → `gap_unreviewed` ; `gapAccepted`
         prime ; PDF inchangé. `worstReliability` avec `unverified`.
-  - [ ] Appelants à mettre à jour : `server/utils/statement-reliability.ts` (`baseSelection` lit
+  - [x] Appelants à mettre à jour : `server/utils/statement-reliability.ts` (`baseSelection` lit
         `source` et `continuityGapCents`), `server/api/statements/[hash].get.ts` (+ exposer
         `source`), `server/api/reconciliation/[hash].post.ts` (branche `add_transaction`).
-  - [ ] Front : `ReliabilityBadge.vue` (`ICONS.unverified = '?'`, `BADGE_CLASS.unverified =
+  - [x] Front : `ReliabilityBadge.vue` (`ICONS.unverified = '?'`, `BADGE_CLASS.unverified =
         'badge--warn'`, docblock « quatre états ») ; textes d'alerte de `app/pages/analyse.vue` et
         `app/pages/transactions/[period].vue` — un message propre à `unverified` (« repose sur un
         export non encore confirmé par un relevé PDF »), `role="status"` (pas `alert`) ;
         `reconciliation/[hash].vue` affiche déjà le badge via `isDegraded` (vérifier).
-- [ ] **T3 — Lecteur de classeur et format d'export** (AC 1, 2, 6, 8, 10)
-  - [ ] `yarn add exceljs` (4.4.0, MIT). Seul importateur : `server/services/spreadsheet-extractor.ts`.
-  - [ ] `spreadsheet-extractor.ts` : `readWorkbook(buffer)` → grilles neutres (voir Dev Notes,
+- [x] **T3 — Lecteur de classeur et format d'export** (AC 1, 2, 6, 8, 10)
+  - [x] `yarn add exceljs` (4.4.0, MIT). Seul importateur : `server/services/spreadsheet-extractor.ts`.
+  - [x] `spreadsheet-extractor.ts` : `readWorkbook(buffer)` → grilles neutres (voir Dev Notes,
         « Normalisation des cellules ») et `extractExport(buffer, bank): Promise<RawExport>`.
-  - [ ] `server/services/bank-formats/credit-mutuel-export.ts` : **fonction pure** sur les grilles —
+  - [x] `server/services/bank-formats/credit-mutuel-export.ts` : **fonction pure** sur les grilles —
         reconnaissance, choix de la feuille du compte courant, lecture des opérations, de la ligne
         `Solde au`, collecte des identifiants, `ignoredSheets`. Lève `ExportFormatError(reason)` (à
         déclarer dans `bank-formats/types.ts`) ou `BankMismatchError`.
-  - [ ] `server/services/bank-formats/identity.ts` : `maskAccountNumbers(text, knownNumbers)` —
+  - [x] `server/services/bank-formats/identity.ts` : `maskAccountNumbers(text, knownNumbers)` —
         remplacement exact des numéros connus, puis motif « ≥ 10 chiffres » (D42 couches 2 et 3) ;
         les suites de 7 chiffres (chèques) restent lisibles. Pure, réutilisable par 28.2.
-  - [ ] Tests purs `credit-mutuel-export.test.ts` (grilles construites en mémoire, sans `exceljs`) et
+  - [x] Tests purs `credit-mutuel-export.test.ts` (grilles construites en mémoire, sans `exceljs`) et
         `identity.test.ts` (voir Tests).
-- [ ] **T4 — `categorizeLabels` sans dupliquer validation ni relance** (AC 1, 6)
-  - [ ] `server/services/llm-categorizer.ts` : extraire la boucle de conformité (MAX_ATTEMPTS, message
+- [x] **T4 — `categorizeLabels` sans dupliquer validation ni relance** (AC 1, 6)
+  - [x] `server/services/llm-categorizer.ts` : extraire la boucle de conformité (MAX_ATTEMPTS, message
         de rejet renvoyé au modèle) en une fonction interne générique paramétrée par
         `systemPrompt`, `userMessage`, `schema`, `schemaName`, `validate` ; `callProvider` reçoit
         `schemaName` (garder `'bank_statement_transactions'` pour `categorizeStatement`).
         `categorizeStatement` : **comportement et tests inchangés**.
-  - [ ] `categorizeLabels(labels, availableCategories): Promise<string[]>` — codes alignés par
+  - [x] `categorizeLabels(labels, availableCategories): Promise<string[]>` — codes alignés par
         index ; `labels` vide → `[]` **sans appel** ; schéma `{ labels: [{ index, categoryItemCode }] }` ;
         validation : chaque index de `0..n-1` présent **exactement une fois**, chaque code dans le
         référentiel fourni ; repli `FALLBACK_ITEM_CODE` nommé comme pour les relevés.
-  - [ ] `shared/constants/bank-statement-llm-prompt.ts` : `LABELS_PROMPT_VERSION = 1`,
+  - [x] `shared/constants/bank-statement-llm-prompt.ts` : `LABELS_PROMPT_VERSION = 1`,
         `LABELS_CATEGORIZATION_SYSTEM_PROMPT`, `buildLabelsUserMessage(labels, categories,
         fallbackCode)` réutilisant `renderReferential` (même fichier) et reprenant les règles 3
         (mouvement interne) et 4 (repli) ; aucune règle d'extraction, de montant ni de date.
-  - [ ] Tests `llm-categorizer.test.ts` : nominal ; index manquant / dupliqué → relance puis
+  - [x] Tests `llm-categorizer.test.ts` : nominal ; index manquant / dupliqué → relance puis
         `LlmExtractionError` ; code inconnu → relance ; liste vide → aucun appel ; relance
         passagère réutilisée (5xx puis succès) ; tests de `categorizeStatement` inchangés et verts.
-- [ ] **T5 — Orchestration `ingestExport`** (AC 1 à 8)
-  - [ ] Dans `server/services/statement-ingestion-orchestrator.ts` : extraire en helpers **privés**
+- [x] **T5 — Orchestration `ingestExport`** (AC 1 à 8)
+  - [x] Dans `server/services/statement-ingestion-orchestrator.ts` : extraire en helpers **privés**
         ce que les deux chemins partagent (dédup par hash, chargement des postes proposés au
         modèle, traduction des erreurs LLM, chargement des règles, recherche de chevauchement, table
         code → id) ; `ingestStatement` garde **exactement** son comportement (sa suite de tests est
         le filet). Exporter `ingestExport(args)` — pipeline dans Dev Notes.
-  - [ ] Exclure `CARD_UNDETAILED_ITEM_CODE` des postes proposés au modèle, **dans les deux
+  - [x] Exclure `CARD_UNDETAILED_ITEM_CODE` des postes proposés au modèle, **dans les deux
         chemins** (même raison que `JOINT_REIMBURSEMENT_ITEM_CODE`).
-  - [ ] `server/utils/file-storage.ts` : sauvegarde sous `{hash}.xlsx` (paramètre d'extension) ;
+  - [x] `server/utils/file-storage.ts` : sauvegarde sous `{hash}.xlsx` (paramètre d'extension) ;
         la suppression par hash retire `.pdf` **et** `.xlsx` (le remplacement FR6 d'un export par un
         PDF, ou l'inverse, ne doit pas laisser d'orphelin).
-  - [ ] `shared/schemas/api-errors.ts` : `StatementFormatUnrecognized:
+  - [x] `shared/schemas/api-errors.ts` : `StatementFormatUnrecognized:
         'statement_format_unrecognized'` (nom d'AR39, que 28.2 réutilisera) ;
         `app/composables/useApiError.ts` : message FR (le `Record` l'impose au typecheck).
-  - [ ] `shared/schemas/ingestion-result.schema.ts` : `source` (requis, `'pdf'` renvoyé par
+  - [x] `shared/schemas/ingestion-result.schema.ts` : `source` (requis, `'pdf'` renvoyé par
         `ingestStatement`), `ignoredSheets` et `cardAggregateMonths` optionnels.
-  - [ ] `statement-ingestion-orchestrator.test.ts` : le `vi.mock` de `llm-categorizer` doit exposer
+  - [x] `statement-ingestion-orchestrator.test.ts` : le `vi.mock` de `llm-categorizer` doit exposer
         `categorizeLabels` ; tests listés dans Tests.
-- [ ] **T6 — Endpoint : accepter un `.xlsx`** (AC 1, 7, 8)
-  - [ ] `server/api/statements/index.post.ts` : détection par **octets magiques** — `%PDF-` →
+- [x] **T6 — Endpoint : accepter un `.xlsx`** (AC 1, 7, 8)
+  - [x] `server/api/statements/index.post.ts` : détection par **octets magiques** — `%PDF-` →
         `ingestStatement` ; `PK\x03\x04` (zip OOXML) → `ingestExport` ; `D0 CF 11 E0` (`.xls`
         ancien format) → `400 validation_failed` « format .xls non pris en charge » ; autre →
         `400 validation_failed`. `MAX_PDF_BYTES` → `MAX_FILE_BYTES` (10 Mo inchangé). `bank`,
         `X-Confirm-Replace` et `requireProfile` inchangés.
-- [ ] **T7 — Front** (AC 2, 3, 4)
-  - [ ] `app/components/ingestion/PdfDropZone.vue` : accepter `.xlsx` (type
+- [x] **T7 — Front** (AC 2, 3, 4)
+  - [x] `app/components/ingestion/PdfDropZone.vue` : accepter `.xlsx` (type
         `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, ou type vide /
         `application/octet-stream` + extension) ; `accept="application/pdf,.xlsx,…"` ; textes
         neutres : « relevés PDF ou export Excel » (aria-label, titre, motif de rejet « n'est ni un PDF
         ni un export Excel »). Garder le nom du composant (pas de renommage gratuit).
-  - [ ] `app/components/ingestion/IngestionQueue.vue` : pour `result.source === 'export'`, badge
+  - [x] `app/components/ingestion/IngestionQueue.vue` : pour `result.source === 'export'`, badge
         « Non vérifié », feuilles ignorées, mois d'achats carte non détaillés (libellés « octobre
         2025 », pas `2025-10`).
-  - [ ] `app/composables/useStatements.ts` : types à jour ; `statement_format_unrecognized` **non**
+  - [x] `app/composables/useStatements.ts` : types à jour ; `statement_format_unrecognized` **non**
         relançable.
-- [ ] **T8 — Fixture synthétique, test de bout en bout, garde de frontière** (AC 9, 10)
-  - [ ] `server/services/generate-synthetic-export.test.ts` (gardé par `GENERATE_FIXTURE`, comme
+- [x] **T8 — Fixture synthétique, test de bout en bout, garde de frontière** (AC 9, 10)
+  - [x] `server/services/generate-synthetic-export.test.ts` (gardé par `GENERATE_FIXTURE`, comme
         `bank-formats/generate-synthetic-fixture.test.ts`) → `tests/fixtures/statements/credit-mutuel-export.xlsx`.
-  - [ ] `server/services/spreadsheet-extractor.test.ts` : `extractExport` sur la fixture — opérations,
+  - [x] `server/services/spreadsheet-extractor.test.ts` : `extractExport` sur la fixture — opérations,
         signes, solde, période, `ignoredSheets`, lignes carte, identifiants collectés ; et
         `extractExport(fixture, 'boursorama')` → `BankMismatchError`.
-  - [ ] Test d'architecture des frontières d'import (voir Dev Notes) — **il n'existe pas encore**.
-  - [ ] E2E `tests/e2e/import-export.spec.ts` : la zone de dépôt accepte le `.xlsx` ; dépôt sous
+  - [x] Test d'architecture des frontières d'import (voir Dev Notes) — **il n'existe pas encore**.
+  - [x] E2E `tests/e2e/import-export.spec.ts` : la zone de dépôt accepte le `.xlsx` ; dépôt sous
         Boursorama → message `bank_mismatch` affiché, rien dans la liste. L'import complet ne tourne
         qu'avec `MISTRAL_API_KEY` (`test.skip`, comme les autres specs).
-- [ ] **T9 — Clôture** : `yarn test:run`, `yarn lint`, `yarn typecheck`, `yarn test:e2e` verts ;
+- [x] **T9 — Clôture** : `yarn test:run`, `yarn lint`, `yarn typecheck`, `yarn test:e2e` verts ;
       import réel du fichier de `_data/raw/` sur une **copie** de la base de dev (après
       `yarn db:migrate-safe`) : nombre de lignes, solde final égal à la cellule `Solde au`, badge
       « Non vérifié », mois carte listés. Consigner les **comptes** (jamais les valeurs) dans le
@@ -505,10 +505,161 @@ le committer, ne pas le régénérer sans raison.
 
 ### Agent Model Used
 
+Agent de développement.
+
 ### Debug Log References
+
+- T9, vérification manuelle sur le vrai fichier `_data/raw/comptes.xlsx` (lecture seule, jamais
+  copié, base et vérification jetables, `extractExport` avec `readWorkbook`, aucun appel LLM) :
+  4 feuilles (2 masquées), 353 opérations, 3 feuilles ignorées, 19 identifiants connus collectés,
+  250 lignes débit / 103 crédit (somme = total des opérations), 11 lignes `RELEVE CARTE` (une
+  par mois environ, cohérent avec la description du fichier réel dans les Dev Notes), solde
+  déduit fini, toutes les dates dans `[periodStart, periodEnd]`. Aucune valeur (libellé, montant,
+  date, numéro) n'a été consignée ici ni ailleurs — seuls des comptes.
+- `yarn test:run` : 808 passés, 9 skippés (générateurs de fixtures gardés par `GENERATE_FIXTURE`,
+  et l'E2E LLM-dépendant côté Vitest n'existe pas — les 9 skips sont les deux fichiers de fixture
+  gardés `describe.skipIf`, comptés en tests).
+- `yarn lint`, `yarn typecheck` : verts.
+- `yarn test:e2e` : 47 passés, 8 skippés (tous LLM-dépendants, `MISTRAL_API_KEY` absent de cet
+  environnement) — aucun échec, aucune régression sur la suite existante.
 
 ### Completion Notes List
 
 - Analyse de contexte terminée — guide de développement complet rédigé.
+- T1 : colonnes `source`/`continuity_gap_cents`/`card_detail_missing` posées sur `bank_statements`
+  (Drizzle + migration 0011 générée puis complétée à la main par l'insertion conditionnelle du
+  poste « Carte (non détaillée) »), `CARD_UNDETAILED_ITEM_CODE` ajouté au référentiel par défaut
+  (divers, 14e poste) et protégé. Test de migration dédié (5 cas : ajout de colonnes, poste créé
+  sur chaque profil peuplé, base vierge non touchée, idempotence, relevés existants inchangés).
+- T2 : `deriveReliability` prend désormais un objet `{ gapCents, gapAccepted, source,
+  continuityGapCents }` — typecheck en a forcé la mise à jour des trois appelants
+  (`server/utils/statement-reliability.ts`, `[hash].get.ts`, `reconciliation/[hash].post.ts`).
+  Nouvel état `unverified` (badge `?`, `badge--warn`), priorité dans `worstReliability` entre
+  `gap_unreviewed` et `gap_accepted`.
+- T3 : `spreadsheet-extractor.ts` (seul importateur d'`exceljs`) produit des grilles neutres
+  (`SheetGrid`/`GridCell`, déclarées dans `bank-formats/types.ts` pour rester partageables sans
+  dépendance à `exceljs`) ; `bank-formats/credit-mutuel-export.ts` est une fonction PURE dessus
+  (n'implémente pas `BankFormat`, Rule of Three) ; `bank-formats/identity.ts` porte
+  `maskAccountNumbers`, réutilisable par 28.2.
+- T4 : boucle de conformité extraite en `categorizeWithConformity` (générique), réutilisée par
+  `categorizeStatement` (comportement et tests inchangés — 40/40 verts) et la nouvelle
+  `categorizeLabels`. Prompt dédié `LABELS_CATEGORIZATION_SYSTEM_PROMPT` reprenant les règles 3
+  (mouvement interne) et 4 (repli) uniquement. **Décision architecte du 2026-09-26 appliquée** :
+  chaque libellé part avec son sens `[DÉBIT]`/`[CRÉDIT]`, jamais son montant.
+- T5 : helpers partagés extraits (`guardAgainstDuplicate`, `loadAvailableCategories`,
+  `guardNonEmptyCategories`, `translateLlmError`, `loadRules`, `findOverlapping`, `guardOverlap`,
+  `loadItemIdByCode`) — `ingestStatement` garde exactement son comportement (sa suite de tests,
+  25 cas, sert de filet et reste verte sans modification d'assertion). `ingestExport` suit le
+  pipeline des Dev Notes : dédup → extraction → chevauchement (avant le modèle) → postes
+  proposés (sans `JOINT_REIMBURSEMENT` ni `CARD_UNDETAILED`) → partition carte/autres → libellés
+  masqués et dédoublonnés → `categorizeLabels` → règles (sur les seules lignes non-carte) →
+  solde de départ déduit → sauvegarde → réconciliation (nulle par construction) → transaction
+  DB → nettoyage FS. `file-storage.ts` prend un paramètre d'extension (`pdf`/`xlsx`) ;
+  `deletePdfByHash` supprime les deux extensions (remplacement export ↔ PDF, FR6).
+- T6 : détection par octets magiques (`%PDF-`, `PK\x03\x04`, `D0 CF 11 E0` pour l'ancien `.xls`
+  explicitement refusé) — jamais par extension de nom de fichier ni Content-Type déclaré.
+- T7 : `PdfDropZone.vue` accepte `.xlsx` (type MIME ou repli sur l'extension) ; `IngestionQueue.vue`
+  affiche badge « Non vérifié », feuilles ignorées et mois carte (`formatMonth` : « octobre
+  2025 », jamais `2025-10`) pour `result.source === 'export'` ; `useApiError.ts` porte le message
+  FR de `statement_format_unrecognized` (non listé dans `RETRYABLE_ERROR_CODES`, donc non
+  relançable par construction).
+- T8 : fixture `tests/fixtures/statements/credit-mutuel-export.xlsx` générée par
+  `generate-synthetic-export.test.ts` (gardé `GENERATE_FIXTURE`, contenu entièrement inventé :
+  RIB, titre, 15 opérations sur 3 mois, 2 `RELEVE CARTE` sur 2 mois distincts, un numéro de
+  compte planté dans un libellé `VIR PEL`, une référence à 15 chiffres, un chèque à 7 chiffres,
+  un remboursement au crédit). `import-boundaries.test.ts` garde `unpdf`/SDK Mistral/`exceljs`
+  chacun à son seul fichier autorisé (+ tests qui les mockent). E2E `import-export.spec.ts` :
+  dépôt `.xlsx` accepté côté client, refus `bank_mismatch` sous Boursorama, refus explicite
+  `.xls`/fichier non reconnu, scénario complet skippé sans `MISTRAL_API_KEY` (comme les specs
+  PDF existantes).
+- T9 : suite complète verte (unitaires, lint, typecheck, E2E) ; vérification manuelle du vrai
+  fichier via un test temporaire jamais committé (supprimé après exécution) — voir Debug Log.
+
+### Revue `pr-reviewer` — corrections appliquées
+
+Retour « CHANGEMENTS REQUIS » (1 BLOQUANT). Tous les points corrigés dans ce worktree, sans commit :
+
+- **BLOQUANT** — `ingestStatement` n'excluait que `JOINT_REIMBURSEMENT_ITEM_CODE` des postes
+  proposés au modèle : `CARD_UNDETAILED_ITEM_CODE` y était encore, en contradiction avec l'AC 5.
+  Corrigé (`loadAvailableCategories(profileId, [JOINT_REIMBURSEMENT_ITEM_CODE,
+  CARD_UNDETAILED_ITEM_CODE])`) ; test existant (« passe au LLM les postes lus en base ») mis à
+  jour pour exclure aussi ce code et l'assertion `not.toContain` ajoutée ; commentaire faux de
+  `protected-categories.ts` corrigé.
+- **IMPORTANT** — `ingestExport` faisait retomber silencieusement tout code inconnu sur
+  `cardItemId` (`?? cardItemId`) : remplacé par le `throw domainError(LlmExtractionFailed, …)`
+  du chemin PDF, à l'identique.
+- **IMPORTANT** — `maskAccountNumbers` ne masquait pas un IBAN écrit par groupes (`FR76 XXXX
+  XXXX …`), invisible à la couche « ≥10 chiffres consécutifs ». `maskIban` extrait dans
+  `bank-formats/identity.ts`, RÉUTILISÉ par `pdf-extractor.ts::redactIdentity` (DRY, motif
+  auparavant dupliqué) ; tests ajoutés (`identity.test.ts`).
+- **IMPORTANT** — `ReconciliationGap.vue` affichait « ✅ Soldes équilibrés » sur un export,
+  équilibre vrai par construction qui ne prouve rien (D44). Nouveau prop `source` ; message
+  dédié « Export non vérifié » quand `isBalanced && source === 'export'`. `source` propagé de
+  bout en bout : `[hash].get.ts` → `StatementDetailResponse` (`useReconciliation.ts`) →
+  `reconciliation/[hash].vue`.
+- **MINEUR** — reconstruction de l'ordre d'origine des transactions d'export : remplacé le
+  `.find()` O(n²) par une repartition à deux pointeurs sur `cardOps`/`ruled.transactions`
+  (sous-suites de `raw.operations` qui préservent l'ordre par construction).
+- **MINEUR** — `import-boundaries.test.ts` : motif élargi à `import(` dynamique, `require(` et
+  import nu (`import 'x'`), en plus de `from 'x'`.
+- **MINEUR** — `Cents` au lieu de `number` sur `WithCategory.amountCents` et la signature de
+  `keyOf` dans l'orchestrateur.
+- **MINEUR** — `buildLabelsUserMessage` neutralise désormais les caractères de contrôle des
+  libellés d'export (`cleanLabel`), comme pour les libellés de poste.
+
+Suites relancées après corrections : `yarn test:run` (812 passés, 9 skippés), `yarn lint` (0
+erreur), `yarn typecheck` (0 erreur), `yarn test:e2e` (47 passés, 8 skippés LLM-dépendants — 0
+échec, aucune régression).
 
 ### File List
+
+**Nouveaux**
+- `shared/types/statement-source.ts`
+- `server/db/migrations/0011_violet_invisible_woman.sql`
+- `server/db/migrations/0011-violet-invisible-woman.test.ts`
+- `server/db/migrations/meta/0011_snapshot.json`
+- `server/services/spreadsheet-extractor.ts`
+- `server/services/spreadsheet-extractor.test.ts`
+- `server/services/bank-formats/credit-mutuel-export.ts`
+- `server/services/bank-formats/credit-mutuel-export.test.ts`
+- `server/services/bank-formats/identity.ts`
+- `server/services/bank-formats/identity.test.ts`
+- `server/services/generate-synthetic-export.test.ts`
+- `server/services/import-boundaries.test.ts`
+- `tests/e2e/import-export.spec.ts`
+- `tests/fixtures/statements/credit-mutuel-export.xlsx` (binaire, synthétique)
+
+**Modifiés**
+- `package.json`, `yarn.lock` (`exceljs` 4.4.0)
+- `server/db/schema.ts`
+- `server/db/migrations/meta/_journal.json`
+- `server/db/migrations/0010-profiles-and-category-ids.test.ts` (garde contre les migrations
+  ultérieures dans `buildSchema0009`, sans lien fonctionnel avec 28.4)
+- `server/middleware/0.bootstrap.ts`
+- `server/services/bank-formats/types.ts`
+- `server/services/llm-categorizer.ts`, `server/services/llm-categorizer.test.ts`
+- `server/services/statement-ingestion-orchestrator.ts`, `.test.ts`
+- `server/utils/file-storage.ts`
+- `server/utils/statement-reliability.ts`
+- `server/api/statements/index.post.ts`
+- `server/api/statements/[hash].get.ts`
+- `server/api/reconciliation/[hash].post.ts`
+- `shared/types/statement-reliability.ts`, `.test.ts`
+- `shared/constants/default-referential.ts`
+- `shared/constants/protected-categories.ts`
+- `shared/constants/bank-statement-llm-prompt.ts`
+- `shared/schemas/api-errors.ts`
+- `shared/schemas/ingestion-result.schema.ts`
+- `tests/fixtures/test-schema.ts`
+- `app/components/ingestion/PdfDropZone.vue`
+- `app/components/ingestion/IngestionQueue.vue`
+- `app/components/shared/ReliabilityBadge.vue`
+- `app/composables/useApiError.ts`
+- `app/pages/analyse.vue`
+- `app/pages/transactions/[period].vue`
+
+**Modifiés (corrections de revue `pr-reviewer`)**
+- `server/services/pdf-extractor.ts` (`redactIdentity` réutilise `maskIban`)
+- `app/components/reconciliation/ReconciliationGap.vue` (prop `source`, message export non vérifié)
+- `app/composables/useReconciliation.ts` (`StatementDetailResponse.source`)
+- `app/pages/reconciliation/[hash].vue` (passe `source` au composant)

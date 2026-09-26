@@ -1,14 +1,28 @@
 <script setup lang="ts">
 import { formatEuros, type Cents } from '~~/shared/types/money'
+import type { StatementSource } from '~~/shared/types/statement-source'
 
-defineProps<{
+const props = defineProps<{
   expectedCents: Cents
   foundCents: Cents
   gapCents: Cents
   isBalanced: boolean
+  /**
+   * Origine du relevé (D44, story 28.4). Sur un export, l'équilibre est vrai PAR CONSTRUCTION
+   * (le solde de départ est déduit du solde final et de la somme des lignes) : il ne prouve
+   * rien, contrairement au PDF où les deux soldes sont lus indépendamment sur le document.
+   */
+  source: StatementSource
 }>()
 
 defineEmits<{ addTransaction: [], acceptGap: [] }>()
+
+/**
+ * Un export « équilibré » ne l'est pas au même titre qu'un PDF réconcilié : afficher
+ * « ✅ Soldes équilibrés » à côté de « Non vérifié » laisserait croire à une vérification qui
+ * n'a pas eu lieu (revue pr-reviewer de la story 28.4, IMPORTANT 4).
+ */
+const exportUnverified = computed(() => props.isBalanced && props.source === 'export')
 </script>
 
 <template>
@@ -18,7 +32,14 @@ defineEmits<{ addTransaction: [], acceptGap: [] }>()
         Réconciliation
       </h3>
       <p
-        v-if="isBalanced"
+        v-if="exportUnverified"
+        class="rec-gap__status rec-gap__status--warn"
+        role="status"
+      >
+        ⚠️ Export non vérifié — le solde de départ est déduit, pas lu sur un relevé PDF
+      </p>
+      <p
+        v-else-if="isBalanced"
         class="rec-gap__status rec-gap__status--ok"
         role="status"
       >
@@ -87,6 +108,7 @@ defineEmits<{ addTransaction: [], acceptGap: [] }>()
 .rec-gap__status { margin: 0; font-weight: 500; }
 .rec-gap__status--ok { color: var(--color-success); }
 .rec-gap__status--gap { color: var(--color-warning); }
+.rec-gap__status--warn { color: var(--color-warning); }
 .rec-gap__balances {
   display: grid;
   grid-template-columns: 1fr 1fr;

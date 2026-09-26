@@ -1,6 +1,7 @@
 import { computed, type Ref } from 'vue'
 import type { Cents } from '~~/shared/types/money'
 import type { StatementReliability } from '~~/shared/types/statement-reliability'
+import type { StatementSource } from '~~/shared/types/statement-source'
 import type { TransactionListItem } from './useTransactions'
 import type { AddManualTransactionInput } from '~~/shared/schemas/reconciliation.schema'
 import type { MutationOutcome } from './useApiError'
@@ -12,6 +13,8 @@ export interface StatementDetailResponse {
   openingBalanceCents: Cents
   closingBalanceCents: Cents
   reliability: StatementReliability
+  /** Origine du relevé (D44, story 28.4) — un export « équilibré » ne le prouve pas. */
+  source: StatementSource
   transactions: TransactionListItem[]
   reconciliation: { isBalanced: boolean, gapCents: Cents }
 }
@@ -29,6 +32,7 @@ function emptyStatementDetail(): StatementDetailResponse {
     openingBalanceCents: 0 as Cents,
     closingBalanceCents: 0 as Cents,
     reliability: 'reliable',
+    source: 'pdf',
     transactions: [],
     reconciliation: { isBalanced: true, gapCents: 0 as Cents },
   }

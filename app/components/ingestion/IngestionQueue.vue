@@ -30,6 +30,14 @@ const STATUS_LABELS: Record<QueueItem['status'], string> = {
   'failed': 'Échec',
   'skipped': 'Ignoré',
 }
+
+const MONTH_FORMATTER = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
+
+/** « 2025-10 » → « octobre 2025 » (story 28.4, AC 4) — jamais le format brut à l'écran. */
+function formatMonth(yyyyMm: string): string {
+  const [year, month] = yyyyMm.split('-').map(Number)
+  return MONTH_FORMATTER.format(new Date(Date.UTC(year!, month! - 1, 1)))
+}
 </script>
 
 <template>
@@ -97,6 +105,15 @@ const STATUS_LABELS: Record<QueueItem['status'], string> = {
             · <NuxtLink :to="`/reconciliation/${item.result.hash}`">
               écart {{ formatEuros(item.result.gapCents as Cents) }}
             </NuxtLink>
+          </template>
+          <template v-if="item.result.source === 'export'">
+            · <span class="badge badge--warn">Non vérifié</span>
+            <template v-if="item.result.ignoredSheets?.length">
+              · feuilles ignorées : {{ item.result.ignoredSheets.join(', ') }}
+            </template>
+            <template v-if="item.result.cardAggregateMonths?.length">
+              · achats carte non détaillés : {{ item.result.cardAggregateMonths.map(formatMonth).join(', ') }}
+            </template>
           </template>
         </span>
 

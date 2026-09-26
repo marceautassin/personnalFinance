@@ -3,9 +3,12 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { H3Event } from 'h3'
+import { eq } from 'drizzle-orm'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { sha256 } from '~~/server/utils/hash'
 import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
+import { BankMismatchError, ExportFormatError } from '~~/server/services/bank-formats/types'
+import { CARD_UNDETAILED_ITEM_CODE } from '~~/shared/constants/default-referential'
 
 /**
  * `event` est obligatoire dans `IngestStatementArgs` (revue de la story 27.1). Depuis la story
@@ -17,6 +20,17 @@ const FAKE_EVENT = {
   path: '/api/statements',
   method: 'POST',
   node: { req: { headers: {} }, res: {} },
+} as unknown as H3Event
+
+/**
+ * Événement avec cookie EXPLICITE sur le profil 1 (`marceau`) — nécessaire dès qu'un test
+ * antérieur du fichier a créé un second profil, ce qui fait disparaître le repli « exactement
+ * un profil » dont `FAKE_EVENT` dépend (AC 10).
+ */
+const PROFILE_1_EVENT = {
+  path: '/api/statements',
+  method: 'POST',
+  node: { req: { headers: { cookie: 'pf_profile=1' } }, res: {} },
 } as unknown as H3Event
 
 // Setup tmpdirs AVANT tout import du singleton db/client (qui ouvre la DB à l'import).
@@ -53,23 +67,30 @@ vi.mock('~~/server/services/llm-categorizer', () => {
   }
   return {
     categorizeStatement: vi.fn(),
+    categorizeLabels: vi.fn(),
     LlmConfigError,
     LlmExtractionError,
     LlmUnavailableError,
   }
 })
 
+vi.mock('~~/server/services/spreadsheet-extractor', () => ({
+  extractExport: vi.fn(),
+}))
+
 type DbModule = typeof import('~~/server/db/client')
 type SchemaModule = typeof import('~~/server/db/schema')
 type OrchModule = typeof import('./statement-ingestion-orchestrator')
 type PdfMod = typeof import('~~/server/services/pdf-extractor')
 type LlmMod = typeof import('~~/server/services/llm-categorizer')
+type SpreadsheetMod = typeof import('~~/server/services/spreadsheet-extractor')
 
 let dbMod: DbModule
 let schema: SchemaModule
 let orch: OrchModule
 let pdfMod: PdfMod
 let llmMod: LlmMod
+let spreadsheetMod: SpreadsheetMod
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sqlite: any
 
@@ -78,6 +99,7 @@ beforeAll(async () => {
   schema = await import('~~/server/db/schema')
   pdfMod = await import('~~/server/services/pdf-extractor')
   llmMod = await import('~~/server/services/llm-categorizer')
+  spreadsheetMod = await import('~~/server/services/spreadsheet-extractor')
 
   // @ts-expect-error -- propriété interne drizzle (better-sqlite3)
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
@@ -101,6 +123,8 @@ beforeEach(() => {
   dbMod.db.delete(schema.bankStatements).run()
   vi.mocked(pdfMod.extractStatement).mockReset()
   vi.mocked(llmMod.categorizeStatement).mockReset()
+  vi.mocked(llmMod.categorizeLabels).mockReset()
+  vi.mocked(spreadsheetMod.extractExport).mockReset()
 })
 
 function pdf(content: string): Buffer {
@@ -109,6 +133,10 @@ function pdf(content: string): Buffer {
 
 function pdfPathFor(buf: Buffer): string {
   return join(process.env.PDF_STORAGE_DIR!, `${sha256(buf)}.pdf`)
+}
+
+function xlsxPathFor(buf: Buffer): string {
+  return join(process.env.PDF_STORAGE_DIR!, `${sha256(buf)}.xlsx`)
 }
 
 function mockExtract(opts: {
@@ -175,17 +203,20 @@ describe('ingestStatement (orchestrator)', () => {
 
     const passed = vi.mocked(llmMod.categorizeStatement).mock.calls[0]![1] as ReadonlyArray<{ code: string }>
     // Exactement les postes seedés en base — un sous-ensemble strict de DEFAULT_REFERENTIAL
-    // (48 postes) — ce qui prouve la lecture DB et non le repli sur la constante. Un poste
+    // (52 postes) — ce qui prouve la lecture DB et non le repli sur la constante. Un poste
     // créé par l'utilisateur doit être proposé au modèle dès l'ingestion suivante.
     const seeded = dbMod.db.select({ code: schema.categoryItems.code }).from(schema.categoryItems).all()
-    // Tous les postes de la base SAUF « Part remboursée » : ce poste est CALCULÉ, alimenté par
-    // la coupe du compte joint et par rien d'autre. Le proposer au modèle l'inviterait à y
-    // ranger de vraies lignes, qui compteraient EN PLUS de la moitié coupée (story 21.1).
-    const attendus = seeded.map(r => r.code).filter(c => c !== 'compte-joint-part-remboursee')
+    // Tous les postes de la base SAUF « Part remboursée » (compte joint, story 21.1) ET « Carte
+    // (non détaillée) » (story 28.4, AC 5) : deux postes CALCULÉS, jamais alimentés par le
+    // modèle. Le compte joint est rempli par la coupe ; l'agrégat carte par le code sur un
+    // export — le proposer sur un relevé PDF Boursorama l'inviterait à y ranger de vrais achats
+    // `CARTE … SUPERMARCHE`, indiscernables ensuite d'un authentique agrégat d'export.
+    const attendus = seeded.map(r => r.code).filter(c => c !== 'compte-joint-part-remboursee' && c !== CARD_UNDETAILED_ITEM_CODE)
     expect(passed.map(c => c.code).sort()).toEqual(attendus.sort())
     expect(passed.map(c => c.code)).not.toContain('compte-joint-part-remboursee')
+    expect(passed.map(c => c.code)).not.toContain(CARD_UNDETAILED_ITEM_CODE)
     expect(passed.map(c => c.code)).toContain('internes-virement-joint')
-    expect(passed.length).toBeLessThan(48)
+    expect(passed.length).toBeLessThan(52)
   })
 
   it('dédup : 2e POST avec même PDF → pdf_already_ingested', async () => {
@@ -596,5 +627,215 @@ describe('ingestStatement (orchestrator)', () => {
     expect(statements).toHaveLength(2)
     expect(statements.find(s => s.profileId === 1)!.periodStart).toBe('2026-04-15')
     expect(statements.find(s => s.profileId === otherProfileId)!.periodStart).toBe('2026-04-01')
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// ingestExport — Excel (story 28.4, D44)
+// ---------------------------------------------------------------------------------------------
+
+function xlsx(content: string): Buffer {
+  return Buffer.from(content, 'utf8')
+}
+
+interface MockOp { transactionDate: string, label: string, amountCents: number }
+
+function mockExportExtract(opts: {
+  operations?: MockOp[]
+  closingBalanceCents?: number
+  periodStart?: string
+  periodEnd?: string
+  knownNumbers?: string[]
+  ignoredSheets?: string[]
+} = {}) {
+  const operations = opts.operations ?? [
+    { transactionDate: '2026-04-05', label: 'CARTE ACHAT SUPERMARCHE FICTIF', amountCents: -8_750 },
+    { transactionDate: '2026-04-10', label: 'VIR RECU AMI FICTIF', amountCents: 5_000 },
+  ]
+  vi.mocked(spreadsheetMod.extractExport).mockResolvedValue({
+    operations,
+    closingBalanceCents: opts.closingBalanceCents ?? 96_250,
+    periodStart: opts.periodStart ?? '2026-04-05',
+    periodEnd: opts.periodEnd ?? '2026-04-11',
+    knownNumbers: opts.knownNumbers ?? [],
+    ignoredSheets: opts.ignoredSheets ?? ['Vos comptes'],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any)
+}
+
+/** Retourne un code de poste identique pour chaque libellé reçu, dans l'ordre. */
+function mockCategorizeLabelsWith(codeFor: (label: string) => string) {
+  vi.mocked(llmMod.categorizeLabels).mockImplementation(async labels => labels.map(l => codeFor(l.label)))
+}
+
+/** Code de poste effectivement persisté pour une transaction, par jointure sur son id. */
+function categoryCodeOf(itemId: number): string {
+  const found = dbMod.db.select({ code: schema.categoryItems.code, id: schema.categoryItems.id })
+    .from(schema.categoryItems)
+    .all()
+    .find(c => c.id === itemId)
+  if (!found) throw new Error(`unknown item id ${itemId}`)
+  return found.code
+}
+
+describe('ingestExport (orchestrator, story 28.4)', () => {
+  it('happy path : source = export, opening déduit, continuity_gap_cents NULL, card_detail_missing', async () => {
+    mockExportExtract({
+      operations: [
+        { transactionDate: '2026-04-05', label: 'CARTE ACHAT SUPERMARCHE FICTIF', amountCents: -8_750 },
+        { transactionDate: '2026-04-10', label: 'RELEVE CARTE', amountCents: -32_000 },
+        { transactionDate: '2026-05-10', label: 'RELEVE CARTE', amountCents: -41_000 },
+      ],
+      closingBalanceCents: 100_000,
+      periodStart: '2026-04-05',
+      periodEnd: '2026-05-11',
+    })
+    mockCategorizeLabelsWith(() => 'alimentation-courses')
+
+    const buf = xlsx('happy-path-export')
+    const result = await orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: buf, confirmReplace: false })
+
+    expect(result.source).toBe('export')
+    expect(result.transactionCount).toBe(3)
+    expect(result.isBalanced).toBe(true)
+    expect(result.gapCents).toBe(0)
+    expect(result.ignoredSheets).toEqual(['Vos comptes'])
+    expect(result.cardAggregateMonths).toEqual(['2026-04', '2026-05'])
+
+    const [stmt] = dbMod.db.select().from(schema.bankStatements).all()
+    expect(stmt!.source).toBe('export')
+    expect(stmt!.continuityGapCents).toBeNull()
+    expect(stmt!.cardDetailMissing).toBe(true)
+    expect(stmt!.closingBalanceCents).toBe(100_000)
+    expect(stmt!.openingBalanceCents).toBe(100_000 - (-8_750 - 32_000 - 41_000))
+    expect(existsSync(xlsxPathFor(buf))).toBe(true)
+  })
+
+  it('les lignes RELEVE CARTE sont rangées sur le poste dédié, hors modèle', async () => {
+    mockExportExtract({
+      operations: [
+        { transactionDate: '2026-04-05', label: 'CARTE ACHAT SUPERMARCHE FICTIF', amountCents: -8_750 },
+        { transactionDate: '2026-04-28', label: 'RELEVE CARTE', amountCents: -32_000 },
+      ],
+    })
+    mockCategorizeLabelsWith(() => 'alimentation-courses')
+
+    await orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: xlsx('card-lines'), confirmReplace: false })
+
+    // Le modèle ne reçoit PAS la ligne carte.
+    const [labels] = vi.mocked(llmMod.categorizeLabels).mock.calls
+    expect(labels![0].map(l => l.label)).not.toContain('RELEVE CARTE')
+    expect(labels![0]).toHaveLength(1)
+
+    const rows = dbMod.db
+      .select({ label: schema.transactions.label, itemId: schema.transactions.categoryItemId })
+      .from(schema.transactions)
+      .all()
+    const cardRow = rows.find(r => r.label === 'RELEVE CARTE')!
+    expect(categoryCodeOf(cardRow.itemId)).toBe(CARD_UNDETAILED_ITEM_CODE)
+  })
+
+  it('texte transmis au modèle : aucun identifiant, montant, titre de feuille ni « Solde »/« R.I.B. »', async () => {
+    mockExportExtract({
+      operations: [
+        { transactionDate: '2026-04-05', label: 'VIR PEL 00012345678', amountCents: -20_000 },
+      ],
+      knownNumbers: ['00012345678'],
+    })
+    mockCategorizeLabelsWith(() => 'alimentation-courses')
+
+    await orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: xlsx('masking'), confirmReplace: false })
+
+    const [labels] = vi.mocked(llmMod.categorizeLabels).mock.calls
+    const transmitted = labels![0].map(l => l.label).join(' ')
+    expect(transmitted).not.toContain('00012345678')
+    expect(transmitted).not.toMatch(/\d+[.,]\d{2}/)
+    expect(transmitted).not.toMatch(/Solde/i)
+    expect(transmitted).not.toMatch(/R\.I\.B\./i)
+  })
+
+  it('libellés dédoublonnés avant l\'appel au modèle', async () => {
+    mockExportExtract({
+      operations: [
+        { transactionDate: '2026-04-05', label: 'CARTE ACHAT SUPERMARCHE FICTIF', amountCents: -8_750 },
+        { transactionDate: '2026-04-06', label: 'CARTE ACHAT SUPERMARCHE FICTIF', amountCents: -1_200 },
+      ],
+    })
+    mockCategorizeLabelsWith(() => 'alimentation-courses')
+
+    await orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: xlsx('dedup'), confirmReplace: false })
+
+    const [labels] = vi.mocked(llmMod.categorizeLabels).mock.calls
+    expect(labels![0]).toHaveLength(1)
+    const rows = dbMod.db.select().from(schema.transactions).all()
+    expect(rows).toHaveLength(2)
+  })
+
+  it('dédup fichier : 2e dépôt du même fichier → pdf_already_ingested, modèle non appelé', async () => {
+    mockExportExtract()
+    mockCategorizeLabelsWith(() => 'alimentation-courses')
+    const buf = xlsx('same-export-twice')
+    await orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: buf, confirmReplace: false })
+
+    vi.mocked(llmMod.categorizeLabels).mockClear()
+    await expect(orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: buf, confirmReplace: false }))
+      .rejects.toMatchObject({ statusCode: 400, statusMessage: ApiErrorCode.PdfAlreadyIngested })
+    expect(llmMod.categorizeLabels).not.toHaveBeenCalled()
+  })
+
+  it('export reconnu sous une autre banque → bank_mismatch, aucun fichier, aucune ligne', async () => {
+    vi.mocked(spreadsheetMod.extractExport).mockRejectedValue(new BankMismatchError('boursorama', 'credit_mutuel'))
+    const buf = xlsx('wrong-bank')
+
+    await expect(orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: buf, confirmReplace: false, bank: 'boursorama' }))
+      .rejects.toMatchObject({ statusCode: 400, statusMessage: ApiErrorCode.BankMismatch })
+    expect(llmMod.categorizeLabels).not.toHaveBeenCalled()
+    expect(existsSync(xlsxPathFor(buf))).toBe(false)
+    expect(dbMod.db.select().from(schema.bankStatements).all()).toHaveLength(0)
+  })
+
+  it('.xlsx non reconnu → statement_format_unrecognized, aucun fichier, aucune ligne', async () => {
+    vi.mocked(spreadsheetMod.extractExport).mockRejectedValue(new ExportFormatError('no_recognized_account_sheet'))
+    const buf = xlsx('unrecognized')
+
+    await expect(orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: buf, confirmReplace: false }))
+      .rejects.toMatchObject({ statusCode: 400, statusMessage: ApiErrorCode.StatementFormatUnrecognized })
+    expect(llmMod.categorizeLabels).not.toHaveBeenCalled()
+    expect(existsSync(xlsxPathFor(buf))).toBe(false)
+    expect(dbMod.db.select().from(schema.bankStatements).all()).toHaveLength(0)
+  })
+
+  it('poste carte non détaillée absent du profil → 500 categories_not_seeded', async () => {
+    mockExportExtract()
+    mockCategorizeLabelsWith(() => 'alimentation-courses')
+    dbMod.db.delete(schema.categoryItems).where(eq(schema.categoryItems.code, CARD_UNDETAILED_ITEM_CODE)).run()
+
+    await expect(orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: xlsx('missing-card-item'), confirmReplace: false }))
+      .rejects.toMatchObject({ statusCode: 500, statusMessage: ApiErrorCode.CategoriesNotSeeded })
+    expect(llmMod.categorizeLabels).not.toHaveBeenCalled()
+
+    // Remet le poste en place pour ne pas polluer les tests suivants.
+    const divers = dbMod.db.select({ id: schema.categoryGroups.id }).from(schema.categoryGroups)
+      .where(eq(schema.categoryGroups.code, 'divers')).all()[0]!
+    dbMod.db.insert(schema.categoryItems).values({
+      profileId: 1,
+      code: CARD_UNDETAILED_ITEM_CODE,
+      groupId: divers.id,
+      label: 'Carte (non détaillée)',
+      nature: 'expense',
+      position: 99,
+    }).run()
+  })
+
+  it('chevauchement de période sans confirmation → 409, SANS appel au modèle', async () => {
+    mockExportExtract({ periodStart: '2026-06-01', periodEnd: '2026-06-30' })
+    mockCategorizeLabelsWith(() => 'alimentation-courses')
+    await orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: xlsx('overlap-1'), confirmReplace: false })
+
+    vi.mocked(llmMod.categorizeLabels).mockClear()
+    mockExportExtract({ periodStart: '2026-06-15', periodEnd: '2026-07-15' })
+    await expect(orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: xlsx('overlap-2'), confirmReplace: false }))
+      .rejects.toMatchObject({ statusCode: 409, statusMessage: ApiErrorCode.PeriodOverlap })
+    expect(llmMod.categorizeLabels).not.toHaveBeenCalled()
   })
 })

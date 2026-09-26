@@ -34,6 +34,7 @@
     "@pinia/nuxt": "^0.11.3",
     "better-sqlite3": "^12.9.0",
     "drizzle-orm": "^0.45.2",
+    "exceljs": "^4.4.0",
     "nuxt": "^4.4.2",
     "pinia": "^3.0.4",
     "unpdf": "^1.6.2",

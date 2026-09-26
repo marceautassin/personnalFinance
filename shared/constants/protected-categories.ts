@@ -19,6 +19,7 @@ import {
   JOINT_TRANSFER_ITEM_CODE,
   JOINT_REIMBURSEMENT_ITEM_CODE,
   JOINT_GROUP_CODE,
+  CARD_UNDETAILED_ITEM_CODE,
 } from './default-referential'
 
 /*
@@ -35,6 +36,11 @@ export const PROTECTED_ITEM_CODES: ReadonlySet<string> = new Set([
   ACCEPT_GAP_ITEM_CODE,
   JOINT_TRANSFER_ITEM_CODE,
   JOINT_REIMBURSEMENT_ITEM_CODE,
+  // Agrégat carte des exports Crédit Mutuel (story 28.4, FR84) : le supprimer casserait
+  // l'ingestion d'export tant qu'un profil en dépend — le poste est rempli PAR LE CODE, sur les
+  // DEUX chemins d'ingestion (`ingestStatement` ET `ingestExport` l'excluent explicitement des
+  // postes proposés au modèle), qui ne peut donc jamais le proposer comme alternative.
+  CARD_UNDETAILED_ITEM_CODE,
 ])
 
 export function isProtectedItem(code: string): boolean {

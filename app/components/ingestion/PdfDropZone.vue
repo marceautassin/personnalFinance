@@ -7,6 +7,7 @@ const inputRef = ref<HTMLInputElement | null>(null)
 let dragDepth = 0
 
 const MAX_BYTES = 10 * 1024 * 1024
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 function isPdfFile(file: File): boolean {
   // Certains OS (Windows en drag-drop notamment) livrent file.type vide pour des PDF valides.
@@ -18,9 +19,18 @@ function isPdfFile(file: File): boolean {
   return false
 }
 
+/** Export Excel Crédit Mutuel (story 28.4) — même tolérance de type MIME vide que pour le PDF. */
+function isXlsxFile(file: File): boolean {
+  if (file.type === XLSX_MIME) return true
+  if (file.type === '' || file.type === 'application/octet-stream') {
+    return file.name.toLowerCase().endsWith('.xlsx')
+  }
+  return false
+}
+
 /** Motif de rejet d'un fichier, ou `null` s'il est acceptable. */
 function rejectionReason(file: File): string | null {
-  if (!isPdfFile(file)) return 'n\'est pas un PDF'
+  if (!isPdfFile(file) && !isXlsxFile(file)) return 'n\'est ni un PDF ni un export Excel'
   if (file.size === 0) return 'est vide'
   if (file.size > MAX_BYTES) {
     const mb = Math.round((file.size / 1024 / 1024) * 10) / 10
@@ -95,7 +105,7 @@ function onInput(e: Event) {
       type="button"
       class="dropzone"
       :class="{ 'dropzone--dragging': isDragging }"
-      :aria-label="'Déposer un ou plusieurs relevés PDF'"
+      :aria-label="'Déposer un ou plusieurs relevés PDF ou exports Excel'"
       @drop="onDrop"
       @dragover="onDragOver"
       @dragenter="onDragEnter"
@@ -103,7 +113,7 @@ function onInput(e: Event) {
       @click="onClick"
     >
       <p class="dropzone__title">
-        Dépose tes relevés PDF ici
+        Dépose tes relevés PDF ou exports Excel ici
       </p>
       <p class="dropzone__hint">
         <small>un ou plusieurs à la fois — ou clique pour les sélectionner (max 10 Mo par fichier)</small>
@@ -113,7 +123,7 @@ function onInput(e: Event) {
       ref="inputRef"
       type="file"
       multiple
-      accept="application/pdf"
+      accept="application/pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       class="dropzone__input"
       @change="onInput"
     >

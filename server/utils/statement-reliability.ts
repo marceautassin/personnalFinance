@@ -40,6 +40,8 @@ const baseSelection = {
   periodEnd: bankStatements.periodEnd,
   gapAccepted: bankStatements.gapAccepted,
   gapCents: gapExpression,
+  source: bankStatements.source,
+  continuityGapCents: bankStatements.continuityGapCents,
 }
 
 function toRow(r: {
@@ -48,6 +50,8 @@ function toRow(r: {
   periodEnd: string
   gapAccepted: boolean
   gapCents: number
+  source: 'pdf' | 'export'
+  continuityGapCents: number | null
 }): StatementReliabilityRow {
   const gapCents = Number(r.gapCents)
   return {
@@ -56,7 +60,12 @@ function toRow(r: {
     periodEnd: r.periodEnd,
     gapCents,
     gapAccepted: r.gapAccepted,
-    reliability: deriveReliability(gapCents, r.gapAccepted),
+    reliability: deriveReliability({
+      gapCents,
+      gapAccepted: r.gapAccepted,
+      source: r.source,
+      continuityGapCents: r.continuityGapCents,
+    }),
   }
 }
 

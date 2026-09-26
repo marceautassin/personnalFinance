@@ -57,7 +57,12 @@ export default defineEventHandler(async (event) => {
 
   // La fiabilité est dérivée de l'écart courant et de la décision de l'utilisateur, jamais
   // lue dans une colonne d'état — cf. `shared/types/statement-reliability.ts`.
-  const reliability = deriveReliability(reconciliation.gapCents, statement.gapAccepted)
+  const reliability = deriveReliability({
+    gapCents: reconciliation.gapCents,
+    gapAccepted: statement.gapAccepted,
+    source: statement.source,
+    continuityGapCents: statement.continuityGapCents,
+  })
 
   return {
     hash: statement.hashSha256,
@@ -67,6 +72,7 @@ export default defineEventHandler(async (event) => {
     closingBalanceCents: statement.closingBalanceCents,
     reliability,
     gapAccepted: statement.gapAccepted,
+    source: statement.source,
     transactions: txRows,
     reconciliation,
   }

@@ -20,6 +20,11 @@ export const ApiErrorCode = {
   PeriodOverlap: 'period_overlap',
   /** Le relevé déposé n'est pas de la banque sélectionnée (FR78, AR38). */
   BankMismatch: 'bank_mismatch',
+  /**
+   * Fichier non reconnu comme un relevé PDF ni comme un export Excel supporté (AR39, story
+   * 28.4). Réutilisé par 28.2 pour le même refus côté export.
+   */
+  StatementFormatUnrecognized: 'statement_format_unrecognized',
   LlmExtractionFailed: 'llm_extraction_failed',
   LlmUnavailable: 'llm_unavailable',
   /**

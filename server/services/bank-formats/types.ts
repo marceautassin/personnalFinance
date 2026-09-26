@@ -56,3 +56,47 @@ export class BankMismatchError extends Error {
     this.name = 'BankMismatchError'
   }
 }
+
+/**
+ * Grille neutre d'une feuille de classeur (story 28.4, D44) — produite par
+ * `spreadsheet-extractor.ts` (seul importateur d'`exceljs`), consommée par les formats de
+ * banque qui savent lire un export (`credit-mutuel-export.ts`), sans jamais toucher `exceljs`.
+ */
+export type GridCell
+  = | null
+    | { kind: 'text', value: string }
+    | { kind: 'number', value: number }
+    | { kind: 'date', iso: string }
+    | { kind: 'formula' }
+
+export interface SheetGrid {
+  name: string
+  hidden: boolean
+  rows: GridCell[][]
+}
+
+/** Résultat pur de la lecture d'un export de banque en ligne (story 28.4, FR82 à FR84). */
+export interface RawExport {
+  operations: { transactionDate: string, label: string, amountCents: import('~~/shared/types/money').Cents }[]
+  closingBalanceCents: import('~~/shared/types/money').Cents
+  periodStart: string
+  periodEnd: string
+  /** Identifiants (numéros de compte/RIB) à masquer dans les libellés transmis au modèle (D42). */
+  knownNumbers: string[]
+  /** Noms des feuilles ignorées, chiffres masqués, feuilles masquées suffixées « (masquée) ». */
+  ignoredSheets: string[]
+}
+
+/**
+ * Levée par `extractExport` (story 28.4, D44) quand le classeur déposé n'est pas reconnu comme
+ * un export de banque en ligne supporté — traduite en `400 statement_format_unrecognized`.
+ *
+ * `reason` ne porte JAMAIS de valeur lue dans le fichier (un numéro de ligne au plus, jamais un
+ * libellé ni un montant) — c'est un message technique de diagnostic, pas un extrait de données.
+ */
+export class ExportFormatError extends Error {
+  constructor(readonly reason: string) {
+    super(`export_format_unrecognized: ${reason}`)
+    this.name = 'ExportFormatError'
+  }
+}
