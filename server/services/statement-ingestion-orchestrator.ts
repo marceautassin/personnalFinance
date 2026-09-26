@@ -170,6 +170,12 @@ function guardNonEmptyCategories(categories: readonly LlmCategoryItem[]): void {
  * « Réessayer » sur un problème que retenter ne résout pas.
  */
 function translateLlmError(err: unknown): never {
+  // Sans cette trace, un échec du fournisseur n'était visible que dans la réponse HTTP :
+  // impossible de savoir, côté serveur, pourquoi un import avait échoué (constaté le
+  // 2026-09-26 sur le premier import d'export réel). Le message ne porte ni clé ni montant.
+  if (err instanceof Error) {
+    console.warn(`[ingest] llm-failed`, { kind: err.name, reason: err.message.slice(0, 500) })
+  }
   if (err instanceof LlmConfigError) {
     throw domainError(ApiErrorCode.LlmConfigError, {}, 503)
   }
