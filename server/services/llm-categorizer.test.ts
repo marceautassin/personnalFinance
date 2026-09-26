@@ -396,3 +396,77 @@ describe('categorizeLabels — conformité vérifiée (AR17)', () => {
     expect(mockComplete).toHaveBeenCalledTimes(2)
   })
 })
+
+/**
+ * Correctif du 2026-09-26 — découpage en lots (story 28.4). Un export réel de 186 libellés
+ * distincts envoyés en un seul appel a fait déborder MAX_TOKENS côté réponse et rejeter
+ * l'extraction comme tronquée. `categorizeLabels` découpe désormais en lots de
+ * `LABELS_BATCH_SIZE` (40), appelés séquentiellement, chacun passant par la même boucle de
+ * conformité/relance.
+ */
+describe('categorizeLabels — découpage en lots (correctif 2026-09-26)', () => {
+  /** Construit N libellés distincts, tous alignés sur un même code de poste valide. */
+  function makeLabels(n: number): { label: string, direction: 'debit' | 'credit' }[] {
+    return Array.from({ length: n }, (_, i) => ({ label: `LIBELLE ${i}`, direction: 'debit' as const }))
+  }
+
+  /** Réponse conforme pour un lot : chaque libellé reçoit `code`, index local 0..n-1. */
+  function batchReply(n: number, code = 'alimentation-courses') {
+    return reply({ labels: Array.from({ length: n }, (_, i) => ({ index: i, categoryItemCode: code })) })
+  }
+
+  it('découpe 90 libellés en 3 lots (40 + 40 + 10) et reconstitue ordre et index d\'origine', async () => {
+    const labels = makeLabels(90)
+    mockComplete
+      .mockResolvedValueOnce(batchReply(40, 'alimentation-courses'))
+      .mockResolvedValueOnce(batchReply(40, 'alimentation-restaurant'))
+      .mockResolvedValueOnce(batchReply(10, 'internes-virement-epargne'))
+
+    const out = await categorizeLabels(labels, AVAILABLE_ITEMS)
+
+    expect(mockComplete).toHaveBeenCalledTimes(3)
+    expect(out).toHaveLength(90)
+    expect(out.slice(0, 40)).toEqual(Array(40).fill('alimentation-courses'))
+    expect(out.slice(40, 80)).toEqual(Array(40).fill('alimentation-restaurant'))
+    expect(out.slice(80, 90)).toEqual(Array(10).fill('internes-virement-epargne'))
+  })
+
+  it('le dernier lot incomplet contient exactement le reliquat', async () => {
+    const labels = makeLabels(45)
+    mockComplete
+      .mockResolvedValueOnce(batchReply(40))
+      .mockResolvedValueOnce(batchReply(5))
+
+    await categorizeLabels(labels, AVAILABLE_ITEMS)
+
+    const secondBatchMessage = (mockComplete.mock.calls[1]![0] as { messages: { content: string }[] }).messages[1]!.content
+    expect(secondBatchMessage).toContain('LIBELLE 40')
+    expect(secondBatchMessage).not.toContain('LIBELLE 45')
+  })
+
+  it('un lot non conforme fait échouer l\'ensemble — pas de résultat partiel', async () => {
+    const labels = makeLabels(45)
+    mockComplete
+      .mockResolvedValueOnce(batchReply(40))
+      // Deuxième lot : réponse non conforme, y compris après la relance (MAX_ATTEMPTS = 2).
+      .mockResolvedValue(reply({ labels: [{ index: 0, categoryItemCode: 'INVENTE' }] }))
+
+    await expect(categorizeLabels(labels, AVAILABLE_ITEMS)).rejects.toBeInstanceOf(LlmExtractionError)
+    // 1 appel pour le premier lot conforme + 2 (essai + relance) pour le second en échec.
+    expect(mockComplete).toHaveBeenCalledTimes(3)
+  })
+
+  it('0 libellé → aucun appel au fournisseur', async () => {
+    const out = await categorizeLabels([], AVAILABLE_ITEMS)
+    expect(out).toEqual([])
+    expect(mockComplete).not.toHaveBeenCalled()
+  })
+
+  it('un lot pile égal à la taille de lot ne produit qu\'un seul appel', async () => {
+    const labels = makeLabels(40)
+    mockComplete.mockResolvedValueOnce(batchReply(40))
+    const out = await categorizeLabels(labels, AVAILABLE_ITEMS)
+    expect(mockComplete).toHaveBeenCalledTimes(1)
+    expect(out).toHaveLength(40)
+  })
+})
