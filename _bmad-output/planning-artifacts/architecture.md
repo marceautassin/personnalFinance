@@ -22,7 +22,7 @@ user_name: 'Marceau'
 date: '2026-04-30'
 status: 'amended — NOT READY (structure et contexte à décrire après suppression)'
 completedAt: '2026-04-30'
-amendedAt: '2026-09-22'
+amendedAt: '2026-09-26'
 amendmentNote: >-
   Amendement lourd suite à la réécriture du PRD. D11-D16 retirées, D4 remplacée,
   D5/D8/D9 amendées, D17 à D27 ajoutées. Statut de préparation NOT READY : les
@@ -30,6 +30,7 @@ amendmentNote: >-
   reprises après la suppression du périmètre mort.
   Amendement du 2026-09-12 : D30 à D36 (foyer, agent). Amendement du 2026-09-22 :
   D37 à D43 (profils et banques) ; D30 amendée par D37, D31 corrigée par D38.
+  Amendement du 2026-09-26 : D44 (export Excel comme source d'historique).
 ---
 
 # Architecture Decision Document — personnalFinance
@@ -1716,3 +1717,78 @@ en parallèle une fois la migration passée.
 **Le point de coût reste celui de D30** — cinq tables reconstruites sur des données dont la perte
 n'est pas acceptable. Il ne grossit pas : ne pas porter le profil sur `transactions` et garder le
 hash comme clé en retirent chacun une part.
+
+---
+
+## Décision d'architecture — amendement du 2026-09-26 : l'export Excel comme source d'historique
+
+Traduit FR82 à FR84 du PRD amendé le 2026-09-26. Constat de départ, lu dans le fichier réel
+(structure seulement, aucune valeur reportée) : l'export « Vos comptes » de la banque en ligne
+Crédit Mutuel est un classeur de quatre feuilles — une situation des comptes (RIB et soldes), une
+feuille par compte courant (`Date | Valeur | Libellé | Débit | Crédit | Solde | Dev`, une ligne
+d'en-tête avec le RIB, une ligne finale `Solde au jj/mm/aaaa`), et deux feuilles techniques
+masquées. Le solde initial y est **vide**. Les dépenses carte n'y figurent qu'en agrégats
+`RELEVE CARTE`, sans détail.
+
+### D44 — Un export est un relevé dont on ne connaît qu'un bout
+
+**Lecture confinée.** `exceljs` (MIT, maintenu, choix « boring technology ») est consommé
+**exclusivement** par `server/services/spreadsheet-extractor.ts`, frontière du même type que
+`unpdf` dans `pdf-extractor.ts`. Aucun autre module ne l'importe ; la règle d'architecture est
+ajoutée au test qui garde déjà `unpdf` et le SDK du fournisseur.
+
+**Pas d'extraction par le modèle.** Les montants sont lus dans les cellules Débit / Crédit et
+convertis en `Cents` par le code (NFR1). Le modèle ne reçoit que des **libellés** à catégoriser :
+`llm-categorizer` gagne une fonction `categorizeLabels(labels, categories)` qui réutilise schéma,
+validation et relance bornée de D20, sans la partie extraction. C'est strictement moins exposé
+que le chemin PDF (NFR6) : ni solde, ni RIB, ni en-tête ne partent.
+
+**Identité.** Seule la feuille du compte courant est lue, à partir de la ligne d'en-tête de
+colonnes. Les numéros lus dans le RIB et les titres de feuilles sont collectés puis masqués par
+correspondance exacte dans les libellés, plus le motif « ≥ 10 chiffres » de D42 — même défense
+que pour le PDF Crédit Mutuel.
+
+**Stockage — aucune table nouvelle.** Un import d'export est une ligne de `bank_statements` :
+
+- `source` (`'pdf' | 'export'`, énumération anglaise, `'pdf'` pour l'existant par migration) ;
+- `period_start` = première date d'opération, `period_end` = date du solde final de l'export ;
+- `closing_balance_cents` = solde final lu ; `opening_balance_cents` = **déduit** (solde final
+  moins la somme des opérations). L'écart calculé par la réconciliation vaut donc zéro par
+  construction : il ne prouve rien, d'où la colonne suivante ;
+- `continuity_gap_cents`, **nullable** : `null` tant qu'aucun relevé PDF n'a chevauché l'export,
+  puis l'écart constaté. C'est un **fait issu d'un second document**, pas un état dérivable des
+  lignes de l'export — le stocker ne contredit pas « seule la décision est persistée ».
+
+`deriveReliability` reçoit la source et `continuity_gap_cents` et rend un nouvel état
+**`unverified`** pour un export non encore confirmé ; `0` → `reliable` ; autre valeur →
+`gap_unreviewed` avec cet écart. `unverified` est un état **dégradé au sens de l'affichage**
+(badge, mention dans l'analyse) : il ne se présente jamais comme fiable (FR83).
+
+**Raccord avec le premier relevé PDF (FR83).** Réalisé par l'orchestrateur quand un relevé PDF
+chevauche un export **du même profil** — ce n'est pas le « remplacer ou annuler » de FR6, qui
+reste réservé au chevauchement entre deux relevés PDF :
+
+1. les lignes du PDF datées **≤ `period_end` de l'export** ne sont pas persistées ;
+2. `solde_ouverture_pdf + Σ(lignes écartées)` est comparé à `closing_balance_cents` de l'export,
+   et la différence est écrite dans `continuity_gap_cents` de l'export ;
+3. le relevé PDF est persisté avec `period_start` = lendemain de `period_end` de l'export et
+   `opening_balance_cents` = le solde ainsi calculé, si bien que **sa propre réconciliation reste
+   exacte** sur les lignes qu'il porte.
+
+Ce raccord relève de la story qui lit le PDF Crédit Mutuel (28.2) ; l'import d'export (28.4) ne
+livre que la colonne, l'état `unverified` et son affichage.
+
+**Agrégats carte (FR84).** Une ligne dont le libellé commence par `RELEVE CARTE` est rangée par
+le **code**, sans passer par le modèle, dans le poste « Carte (non détaillée) », ajouté au
+référentiel initial (`DEFAULT_REFERENTIAL`) — donc présent dans tout profil créé après la
+migration, et ajouté par migration conditionnelle aux profils existants, sur le modèle de 0009.
+`card_detail_missing` (D42) passe à vrai sur l'import. La colonne est donc introduite par 28.4 et
+réutilisée par 28.3.
+
+**Déduplication.** Le hash du fichier reste la clé (D37) : réimporter le même export est refusé.
+Deux exports différents qui se chevauchent tombent sous FR6 (remplacer ou annuler) ; l'import
+incrémental d'exports successifs est **hors périmètre**.
+
+**Fixture (NFR36).** Un classeur **synthétique** généré par un test gardé (comme la fixture
+Boursorama de 28.1) : feuilles, en-têtes, ligne RIB, ligne `Solde au`, lignes inventées dont
+deux `RELEVE CARTE`. Aucune donnée réelle — le dépôt est public.

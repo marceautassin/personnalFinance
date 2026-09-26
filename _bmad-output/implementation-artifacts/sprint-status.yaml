@@ -1,5 +1,5 @@
 # generated: 2026-04-30
-# last_updated: 2026-09-22
+# last_updated: 2026-09-26
 # project: personnalFinance
 # project_key: NOKEY
 # tracking_system: file-system
@@ -520,6 +520,11 @@ development_status:
   28-1-choisir-la-banque-d-un-releve: done
   28-2-lire-le-compte-courant-credit-mutuel: ready-for-dev
   28-3-voir-mes-achats-par-carte-un-par-un: ready-for-dev
+  # 28-4 ajoutee le 2026-09-26 : aucun releve PDF CM pour l'annee ecoulee, seul
+  # l'export Excel de la banque en ligne existe. Passe AVANT 28-2 : le premier
+  # releve PDF d'octobre servira d'echantillon a 28-2 ET de preuve de continuite
+  # pour l'historique importe (FR83, D44).
+  28-4-importer-l-historique-credit-mutuel-depuis-l-export: backlog
   epic-28-retrospective: optional
 
   # --- Epic 26 — L'agent conversationnel. DEUXIEME CHANTIER (rang 1 jusqu'au 2026-09-22). ---

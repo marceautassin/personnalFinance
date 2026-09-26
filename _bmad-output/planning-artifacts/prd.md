@@ -47,8 +47,15 @@ classification:
     La complexité passe de `medium` à `high` : l'application cesse d'être
     mono-utilisateur et mono-machine.
 date: '2026-09-04'
-lastEdited: '2026-09-22'
+lastEdited: '2026-09-26'
 editHistory:
+  - date: '2026-09-26'
+    changes: >-
+      Import de l'historique Crédit Mutuel depuis l'export Excel de la banque
+      en ligne : aucun relevé PDF n'existe pour l'année écoulée. FR82 à FR84
+      ajoutées. L'export couvre l'historique, les relevés PDF prennent le
+      relais chaque mois ; leur premier relevé vérifie la continuité au centime.
+      NFR36 étendue aux exports. Ordre des chantiers inchangé.
   - date: '2026-09-22'
     changes: >-
       Chantier « Profils et banques » inscrit au rang 1, devant l'agent.
@@ -585,7 +592,7 @@ Les graphiques sont produits en **SVG inline, sans bibliothèque tierce** — pr
 
 | Rang | Chantier | Où il est décrit | État |
 |---|---|---|---|
-| **1** | **Profils et banques** | Journey 9, FR73 à FR81, NFR35, NFR36 | cadré le 2026-09-22, à découper |
+| **1** | **Profils et banques** | Journey 9, FR73 à FR84, NFR35, NFR36 | cadré le 2026-09-22, à découper |
 | **2** | **L'agent conversationnel** | Journey 8, FR65 à FR72, NFR31 à NFR33 | découpé en epic 26 |
 | **3** | **Le foyer** | « Phase 1 bis », Journeys 5 à 7, FR44 à FR64 | découpé en epics 22 à 25, story 22.2 absorbée par le rang 1 |
 | **4** | **Le forecast** | non cadré | hors de ce document à ce jour |
@@ -767,7 +774,7 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 
 ## Functional Requirements
 
-> **Contrat de capacités.** Ce qui ne figure pas ici n'existera pas dans le produit. Le PRD v1 comptait 71 FRs pour un périmètre qui s'est révélé faux ; celui-ci en compte 81 : 21 pour le foyer et 8 pour l'agent conversationnel, ajoutées le 2026-09-12, 9 pour les profils et banques, ajoutées le 2026-09-22, plus 2 restées en Phase 2 (FR38 et FR39, FR37 ayant été absorbée par l'agent).
+> **Contrat de capacités.** Ce qui ne figure pas ici n'existera pas dans le produit. Le PRD v1 comptait 71 FRs pour un périmètre qui s'est révélé faux ; celui-ci en compte 84 : 21 pour le foyer et 8 pour l’agent conversationnel, ajoutées le 2026-09-12, 12 pour les profils et banques, ajoutées les 2026-09-22 et 26, plus 2 restées en Phase 2 (FR38 et FR39, FR37 ayant été absorbée par l'agent).
 
 ### Ingestion des relevés
 
@@ -854,6 +861,9 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 - **FR79** — Pour un relevé Crédit Mutuel, seule la section du **compte courant** est ingérée et réconciliée contre ses propres soldes. Les autres sections — livrets, épargne, crédits, situation des autres comptes — sont ignorées, et le système indique lesquelles.
 - **FR80** — Lorsqu'un relevé porte un débit différé de carte accompagné de son détail, la ligne agrégée est **remplacée** par les achats qui la composent, chacun catégorisé et **daté de son jour d'achat**. Si la somme du détail diffère de la ligne agrégée d'au moins un centime, le relevé est marqué « non fiable » et l'écart est exposé. Si l'agrégat se présente **sans** son détail, il est conservé tel quel et le relevé est marqué « non fiable », avec cette cause.
 - **FR81** — La déduplication (FR5), la détection de chevauchement de période (FR6) et la réconciliation (FR10, FR11) s'appliquent quelle que soit la banque, et **par profil** : deux profils peuvent ingérer chacun leur relevé du même mois.
+- **FR82** — L'utilisateur peut importer l'**historique** d'un compte courant Crédit Mutuel depuis l'export Excel de la banque en ligne. Chaque ligne datée de l'export devient une transaction : date d'opération, libellé, montant signé lu dans les colonnes Débit ou Crédit. Seule la feuille du compte courant est lue ; les autres feuilles sont ignorées et nommées. *(Ajoutée le 2026-09-26.)*
+- **FR83** — Un import d'export ne porte qu'un solde, celui de fin. Le solde de départ en est **déduit**, et l'import est affiché **« non vérifié »** — ni fiable, ni non fiable — tant qu'aucun relevé PDF ne l'a confirmé. Quand un relevé PDF du même profil chevauche l'import, ses opérations antérieures ou égales à la date du solde de l'export ne sont pas réimportées ; son solde d'ouverture augmenté de ces opérations doit égaler le solde de l'export **au centime**. Égalité : l'import passe fiable. Écart : il passe non fiable, l'écart exposé. *(Ajoutée le 2026-09-26.)*
+- **FR84** — Une ligne `RELEVE CARTE` d'un export, dont le détail n'existe pas dans le fichier, est rangée dans un poste « Carte (non détaillée) » et l'import signale les mois concernés. *(Ajoutée le 2026-09-26. Même principe que l'agrégat sans détail de FR80, appliqué à une source qui ne porte jamais le détail.)*
 
 *Le chantier livre le **cloisonnement** sans l'**identité**. FR76 n'est pas une protection contre une personne — FR74 laisse quiconque basculer — mais la séparation serveur que la connexion (FR44) réutilisera sans rouvrir les endpoints. Son risque est borné par NFR35, pas par le code.*
 
@@ -866,6 +876,8 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 *La **date d'achat** est retenue parce que l'analyse répond à « quand l'argent a-t-il été dépensé ». Conséquence assumée : un achat de fin de mois peut tomber dans une période antérieure à celle du relevé qui le porte, et le dernier mois reste incomplet jusqu'au relevé suivant. La réconciliation n'en est pas affectée — elle porte sur le relevé, pas sur la période d'analyse. Un agrégat sans détail est **gardé plutôt que refusé** : il laisse la réconciliation juste et ne bloque pas un relevé réel, et l'état « non fiable » dit pourquoi ses achats ne sont pas ventilés.* *(Tranché le 2026-09-22, validation.)*
 
 ***FR78** n'apparaît dans aucun parcours, comme FR9 et pour la même raison : c'est une capacité de rattrapage. La banque étant préremplie, un dépôt sous la mauvaise banque arrivera ; sans FR78, il produirait un import partiel ou faux. Déclarée orpheline plutôt que masquée.*
+
+*FR82 à FR84 naissent d'un fait constaté le 2026-09-26 : **aucun relevé PDF Crédit Mutuel n'existe pour l'année écoulée**, seul l'export Excel de la banque en ligne. L'export est **plus sûr** qu'un PDF sur un point — les montants sont lus dans des cellules, le modèle ne fait que catégoriser — et **moins sûr** sur un autre : il ne porte qu'un solde. FR83 ne renonce pas à la réconciliation, il la **diffère** au premier relevé PDF, qui la rend exacte sur la période commune. Un import non encore vérifié est dit tel quel, jamais présenté comme fiable.*
 
 *La banque est portée par le **relevé**, pas par le profil (FR77). La banque par défaut n'est qu'un préremplissage : le jour où un profil change de banque, son historique reste lisible.*
 
@@ -961,7 +973,7 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 
 **FR9** n'apparaît dans aucun parcours utilisateur. Elle est retenue malgré tout : sur 24 fichiers déposés d'un coup, un mauvais PDF finira par passer, et sans elle la seule issue serait de vider la base.
 
-**Hors périmètre, explicitement** : export de données, budgets, objectifs par catégorie, alertes, plusieurs comptes pour un même profil — y compris les sections livret et épargne d'un relevé Crédit Mutuel —, banques autres que Boursorama et Crédit Mutuel, détection automatique de la banque d'un relevé, suppression et renommage d'un profil, parts inégales entre membres du foyer, application installable sur téléphone, foyer de plus de deux membres, gestion de comptes utilisateurs interne à l'application, sort des données d'un membre retiré, sauvegarde hors site, **agent capable d'agir sur les données** (reclasser, créer une règle, marquer une dépense).
+**Hors périmètre, explicitement** : export de données, budgets, objectifs par catégorie, alertes, plusieurs comptes pour un même profil — y compris les sections livret et épargne d'un relevé Crédit Mutuel —, banques autres que Boursorama et Crédit Mutuel, exports d'autres banques que le Crédit Mutuel, import incrémental d'exports successifs, détection automatique de la banque d'un relevé, suppression et renommage d'un profil, parts inégales entre membres du foyer, application installable sur téléphone, foyer de plus de deux membres, gestion de comptes utilisateurs interne à l'application, sort des données d'un membre retiré, sauvegarde hors site, **agent capable d'agir sur les données** (reclasser, créer une règle, marquer une dépense).
 
 *« Projections » quitte cette liste le 2026-09-12 sans pour autant entrer au périmètre : le forecast est le **troisième chantier** de la séquence et fera l'objet d'un amendement propre. Tant qu'il n'est pas écrit ici, il n'existe pas.*
 
@@ -1059,7 +1071,7 @@ Deux capacités restent à juger à l'usage, sans test automatique possible : la
 ### Maintenabilité
 
 - **NFR21** — L'extraction de texte PDF est confinée à un module unique. Aucun autre fichier n'importe la bibliothèque d'extraction.
-- **NFR36** — *(Ajoutée le 2026-09-22.)* Chaque banque supportée dispose d'un test d'extraction sur un **relevé réel anonymisé**, qui vérifie, dans le texte transmis au fournisseur : l'absence de tout IBAN, numéro de compte et numéro de carte, **y compris à l'intérieur des libellés d'opération** ; l'absence du nom et de l'adresse du titulaire **hors libellés** — seul résidu admis par NFR6 ; la réconciliation au centime ; et, pour le Crédit Mutuel, l'ingestion du seul compte courant (FR79) et l'égalité détail carte / agrégat (FR80). La fixture ne contient **aucun identifiant réel** — le relevé source reste dans le répertoire de données non versionné.
+- **NFR36** — *(Ajoutée le 2026-09-22.)* Chaque banque **et chaque format de source** (relevé PDF, export Excel) dispose d'un test d'extraction sur une fixture à la **structure réelle et au contenu entièrement inventé** *(précisé le 2026-09-26 : le dépôt est public, aucune donnée réelle même anonymisée)*, qui vérifie, dans le texte transmis au fournisseur : l'absence de tout IBAN, numéro de compte et numéro de carte, **y compris à l'intérieur des libellés d'opération** ; l'absence du nom et de l'adresse du titulaire **hors libellés** — seul résidu admis par NFR6 ; la réconciliation au centime ; et, pour le Crédit Mutuel, l'ingestion du seul compte courant (FR79) et l'égalité détail carte / agrégat (FR80). La fixture ne contient **aucun identifiant réel** — le relevé source reste dans le répertoire de données non versionné.
 - **NFR22** — Aucune constante métier structurante — natures, seuils, référentiel initial — n'est codée en dur dans une fonction de calcul.
 - **NFR34** — L'identifiant du modèle et ses paramètres d'appel sont lus depuis la configuration d'environnement, avec une **valeur distincte par usage** : catégorisation d'un côté, agent conversationnel de l'autre. Aucun module ne les code en dur. La clé d'API reste soumise à NFR8 et ne figure dans aucune interface. *(Ajoutée le 2026-09-12.)*
 

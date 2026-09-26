@@ -11,6 +11,11 @@ inputDocuments:
   - CLAUDE.md
 supersedes: _bmad-output/planning-artifacts/epics-v1-forecast.md
 amendments:
+  - date: '2026-09-26'
+    scope: >-
+      Historique Crédit Mutuel depuis l'export Excel (aucun relevé PDF pour
+      l'année écoulée). FR82 à FR84, AR42 (D44). Story 28.4 ajoutée ; 28.2
+      reçoit le raccord de continuité avec l'export.
   - date: '2026-09-22'
     scope: >-
       Chantier « Profils et banques » (rang 1). FR73 à FR81, NFR35, NFR36,
@@ -167,7 +172,9 @@ Il n'existe pas de spécification UX pour ce projet et il n'y en aura pas : mono
 - **FR78** — Le système extrait les relevés Boursorama et Crédit Mutuel. Un relevé qui ne correspond pas à la banque choisie est refusé avec sa cause, aucune transaction enregistrée.
 - **FR79** — Relevé Crédit Mutuel : seule la section du compte courant est ingérée et réconciliée sur ses propres soldes ; les autres sections sont ignorées et nommées.
 - **FR80** — Débit différé de carte : l'agrégat est remplacé par les achats du détail, datés du jour d'achat. Écart ≥ 1 centime → relevé non fiable, écart exposé. Agrégat sans détail → conservé, relevé non fiable avec cette cause.
-- **FR81** — Déduplication, chevauchement de période et réconciliation s'appliquent quelle que soit la banque, et par profil.
+- **FR81** — Déduplication, chevauchement de période et réconciliation s'appliquent quelle que soit la banque, et par profil.- **FR82** — Import de l'historique d'un compte courant Crédit Mutuel depuis l'export Excel de la banque en ligne ; montants lus dans les cellules, seule la feuille du compte courant lue. *(2026-09-26)*
+- **FR83** — Solde de départ déduit, import « non vérifié » jusqu'au premier relevé PDF qui le chevauche ; raccord au centime sur la période commune, sans réimporter ses lignes. *(2026-09-26)*
+- **FR84** — Ligne `RELEVE CARTE` d'un export rangée dans « Carte (non détaillée) », mois signalés. *(2026-09-26)*
 - *(Amendées le 2026-09-22 : **FR46** — référentiel de départ = référentiel initial, rattachement à un profil existant ; **FR49** — s'applique entre profils dès FR76 ; **FR72** — profil courant, puis utilisateur connecté.)*
 
 **FR mises à jour le 2026-09-12**
@@ -313,7 +320,7 @@ Ces exigences ne sortent pas d'un amendement d'architecture déjà écrit : **l'
 - **AR38 (D41)** — `server/services/bank-formats/` : un `BankFormat` par banque (`recognizes`, `operationsText`, `balancesAndPeriod`, `cardDebits`), aucun n'importe `unpdf`. `recognizes` court **avant** l'appel au fournisseur (`400 bank_mismatch`). Boursorama **déplacé sans changement de comportement**. Un seul prompt, paragraphe propre à la banque.
 - **AR39 (D42)** — Crédit Mutuel : découpage en sections sur les titres `€ …` (une section peut courir sur deux pages) ; compte courant seul, 0 ou ≥ 2 candidats → `400 statement_format_unrecognized` ; `ignoredSections` dans la réponse, sans numéros ; soldes `CREDITEUR`/`DEBITEUR` de la section retenue ; **période = lendemain du solde d'ouverture**. Détail carte : total lu par le code, lignes par un appel distinct, remplacement déterministe avant réconciliation ; `bank_statements.card_detail_missing` et état `card_detail_missing` dans `deriveReliability`. Identité en trois couches : construction, correspondance exacte des numéros lus, motif ≥ 10 chiffres.
 - **AR40 (D43)** — Fixtures JSON de pages `PositionedItem` sous `tests/fixtures/statements/`, identifiants substitués par des faux de même forme, **Boursorama compris** (ses tests actuels sont sautés faute de PDF versionné).
-- **AR41 (D42, points ouverts)** — ⚠️ **Bloquant pour les stories Crédit Mutuel** : trois à cinq relevés supplémentaires, couvrant solde débiteur, remboursement carte, deux cartes, détail prélevé hors période.
+- **AR41 (D42, points ouverts)** — ⚠️ **Bloquant pour les stories Crédit Mutuel** : trois à cinq relevés supplémentaires, couvrant solde débiteur, remboursement carte, deux cartes, détail prélevé hors période.- **AR42 (D44)** — `exceljs` confiné à `server/services/spreadsheet-extractor.ts`. Montants lus par le code, le modèle ne catégorise que des libellés (`categorizeLabels`). Un export = une ligne `bank_statements` avec `source = 'export'`, solde de départ déduit, `continuity_gap_cents` nullable ; nouvel état `unverified` dans `deriveReliability`. Raccord avec le premier PDF chevauchant (lignes ≤ fin de l'export non persistées, écart écrit sur l'export) porté par 28.2. `RELEVE CARTE` rangé par le code dans « Carte (non détaillée) », `card_detail_missing` introduit par 28.4. Fixture classeur synthétique.
 
 ### UX Design Requirements
 
@@ -429,7 +436,11 @@ Ces exigences ne sortent pas d'un amendement d'architecture déjà écrit : **l'
 | FR81 | 27 + 28 | neuf | Chevauchement de période par profil (27.2) ; toutes banques (28.1, 28.2) |
 | FR46, FR49, FR72 | 22, 26 | amendées | FR49 est **tenue dès 27.2** entre profils ; FR72 par construction via 27.2 |
 
-**Couverture du chantier : 9/9. Couverture totale : 81/81.**
+| FR82 | 28 | neuf | Export Excel Crédit Mutuel, montants lus par le code (28.4) |
+| FR83 | 28 | neuf | État « non vérifié » (28.4) ; raccord avec le premier PDF (28.2) |
+| FR84 | 28 | neuf | Agrégats carte d'un export dans « Carte (non détaillée) » (28.4) |
+
+**Couverture du chantier : 12/12. Couverture totale : 84/84.**
 
 ## Epic List
 
@@ -590,8 +601,12 @@ Le second profil dépose ses relevés Crédit Mutuel : seul le compte courant es
 ### Dépendances des epics 27 et 28
 
 ```
-27.1 (migration, colonne bank)  →  27.2  →  27.3  →  28.1  →  28.2  →  28.3
+27.1 (migration, colonne bank)  →  27.2  →  27.3  →  28.1  →  28.4  →  28.2  →  28.3
 ```
+
+*Ajout du 2026-09-26.* **28.4 passe avant 28.2** : l'export existe aujourd'hui, les relevés PDF
+n'arriveront qu'à partir d'octobre 2026 — et le premier d'entre eux servira à la fois
+d'échantillon réel pour 28.2 et de preuve de continuité pour l'historique importé.
 
 *Corrigé le 2026-09-22 à la rédaction des stories.* 28.1 préremplit la banque depuis le profil
 courant : elle a besoin de `requireProfile` (27.2) et de `useProfiles` (27.3), pas seulement de la
@@ -3391,6 +3406,15 @@ numéros lus dans le document, masquage des suites d'au moins dix chiffres
 **Then** chaque relevé Crédit Mutuel de référence a sa fixture JSON anonymisée, qui vérifie soldes,
 période, section retenue, sections ignorées et absence de tout faux identifiant planté (AR40)
 
+**Given** un import d'export Crédit Mutuel du même profil, dont la date de solde tombe dans la
+période du relevé
+**When** le relevé est ingéré
+**Then** ses opérations datées jusqu'à cette date incluse ne sont pas réimportées, son solde
+d'ouverture augmenté de ces opérations est comparé au solde de l'export, et l'écart est écrit
+sur l'export : zéro le fait passer fiable, tout autre écart non fiable (FR83, AR42)
+**And** le relevé commence le lendemain de la date de solde de l'export et se réconcilie au
+centime sur les lignes qu'il porte
+
 **Note d'implémentation.** ⚠️ **Bloquée par AR41.** Dans cette story, la ligne `RELEVE CARTE` reste
 une ligne comme les autres : son remplacement par le détail est l'objet de 28.3. Le bloc de détail
 carte n'est **pas** transmis au fournisseur ici.
@@ -3446,3 +3470,58 @@ ni la ligne de total (NFR36)
 
 **Note d'implémentation.** ⚠️ **Bloquée par AR41.** Le signe d'un remboursement dans le détail
 (colonne unique `Montant euros`) n'est pas connu : il se lit sur un relevé réel, pas se suppose.
+
+### Story 28.4: Importer une année d'historique Crédit Mutuel depuis l'export Excel
+
+*Ajoutée le 2026-09-26.* Aucun relevé PDF n'existe pour l'année écoulée ; l'export de la banque
+en ligne, lui, existe.
+
+En tant que titulaire d'un compte Crédit Mutuel,
+je veux importer l'export Excel de ma banque en ligne,
+afin d'avoir un an d'historique à analyser sans attendre douze relevés.
+
+**Acceptance Criteria:**
+
+**Given** l'écran de dépôt et un export Excel Crédit Mutuel
+**When** je le dépose sur un profil dont la banque est Crédit Mutuel
+**Then** chaque ligne datée de la feuille du compte courant devient une transaction — date
+d'opération, libellé, montant signé lu dans Débit ou Crédit — et **aucun montant ne passe par le
+modèle**, qui ne reçoit que les libellés à catégoriser (FR82, AR42)
+**And** les autres feuilles (situation des comptes, feuilles techniques) sont ignorées et nommées
+
+**Given** l'export ne porte que le solde final
+**When** il est importé
+**Then** le relevé porte `source = 'export'`, le solde final lu, un solde de départ **déduit**, et
+l'état **« non vérifié »**, visible partout où un état de fiabilité s'affiche — jamais « fiable »
+(FR83)
+
+**Given** des lignes dont le libellé commence par `RELEVE CARTE`
+**When** l'export est importé
+**Then** elles sont rangées par le code, sans le modèle, dans « Carte (non détaillée) », et
+l'import signale les mois concernés (FR84)
+**And** le poste existe dans le référentiel initial et, par migration conditionnelle, dans les
+profils déjà créés
+
+**Given** le texte transmis au fournisseur
+**When** on le lit
+**Then** il ne contient que des libellés : ni RIB, ni numéro de compte (y compris dans un
+libellé), ni solde, ni en-tête (NFR6, NFR36)
+
+**Given** le même fichier déposé deux fois
+**When** le second dépôt arrive
+**Then** il est refusé comme déjà ingéré (FR5)
+
+**Given** un fichier Excel qui n'est pas un export Crédit Mutuel, ou déposé sous Boursorama
+**When** il est déposé
+**Then** il est refusé avec sa cause, avant tout appel au fournisseur, sans ligne écrite (FR78)
+
+**Given** la suite de tests
+**When** elle s'exécute
+**Then** un classeur **synthétique** — structure de l'export réel, contenu entièrement inventé —
+vérifie lecture, signes, solde déduit, état « non vérifié », agrégats carte et absence de tout
+identifiant dans le texte transmis (NFR36)
+
+**Note d'implémentation.** `exceljs` n'est importé que par `spreadsheet-extractor.ts`. Le raccord
+avec le premier relevé PDF n'est **pas** dans cette story : 28.4 livre `continuity_gap_cents`
+(toujours `null` ici) et l'état `unverified` ; 28.2 écrira l'écart. Le fichier réel est dans
+`_data/raw/` et ne doit jamais être copié dans `tests/`.
