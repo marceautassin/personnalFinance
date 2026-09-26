@@ -92,6 +92,21 @@ const REQUEST_TIMEOUT_MS = 120_000
 const MAX_TOKENS = 32_000
 
 /**
+ * Taille de lot pour `categorizeLabels` (story 28.4, correctif du 2026-09-26).
+ *
+ * Un export Excel peut porter plusieurs centaines de libellés distincts. Les envoyer en un
+ * seul appel a produit une réponse tronquée (`finishReason === 'length'`) dès 186 libellés
+ * avec `zai-glm-5` (GLM 5.3, plus verbeuse que la génération précédente) — voir le rejet
+ * "Réponse tronquée par la limite de tokens" dans `callProvider`. ~40 libellés par lot reste
+ * largement sous `MAX_TOKENS` même avec une réponse verbeuse par ligne, tout en gardant le
+ * nombre d'appels raisonnable pour un import de quelques centaines de lignes.
+ *
+ * `categorizeStatement` (chemin PDF) n'est PAS concerné : il extrait des transactions
+ * complètes en un seul relevé, pas des libellés à la chaîne.
+ */
+const LABELS_BATCH_SIZE = 40
+
+/**
  * Une seule relance sur non-conformité (AR17) : au-delà, le problème n'est pas passager.
  *
  * ⚠️ Combiné à la relance sur défaillance passagère, le pire cas est de **quatre** appels
@@ -498,16 +513,29 @@ export async function categorizeLabels(
     ? FALLBACK_ITEM_CODE
     : availableCategories[0]!.code
 
-  return categorizeWithConformity({
-    schemaName: 'label_categories',
-    systemPrompt: LABELS_CATEGORIZATION_SYSTEM_PROMPT,
-    userMessage: buildLabelsUserMessage(labels, availableCategories, fallbackCode),
-    schema: buildLabelsOutputSchema(availableCategories),
-    fallbackCode,
-    validate: payload => (
-      (r => (r.ok ? { ok: true, value: r.codes } : r))(validateLabels(payload, validCodes, labels.length))
-    ),
-  })
+  // Découpage en lots séquentiels (correctif du 2026-09-26) : un unique appel avec des
+  // centaines de libellés a fini par dépasser MAX_TOKENS en réponse et se faire rejeter comme
+  // extraction partielle. Chaque lot repasse par la même boucle de conformité/relance que
+  // l'existant (index locaux 0..lot.length-1, cf. `buildLabelsUserMessage`) ; les résultats sont
+  // concaténés dans l'ordre pour reconstituer l'alignement par index d'origine. Un lot en échec
+  // fait échouer `categorizeWithConformity`, qui remonte tel quel : pas de résultat partiel,
+  // l'import reste atomique.
+  const codes: string[] = []
+  for (let start = 0; start < labels.length; start += LABELS_BATCH_SIZE) {
+    const batch = labels.slice(start, start + LABELS_BATCH_SIZE)
+    const batchCodes = await categorizeWithConformity({
+      schemaName: 'label_categories',
+      systemPrompt: LABELS_CATEGORIZATION_SYSTEM_PROMPT,
+      userMessage: buildLabelsUserMessage(batch, availableCategories, fallbackCode),
+      schema: buildLabelsOutputSchema(availableCategories),
+      fallbackCode,
+      validate: payload => (
+        (r => (r.ok ? { ok: true, value: r.codes } : r))(validateLabels(payload, validCodes, batch.length))
+      ),
+    })
+    codes.push(...batchCodes)
+  }
+  return codes
 }
 
 /** Exporte la version du prompt pour audit / debug. */
