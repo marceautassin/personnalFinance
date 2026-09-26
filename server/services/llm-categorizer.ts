@@ -30,6 +30,8 @@ import {
   BANK_STATEMENT_PROMPT_VERSION,
   buildBankStatementSystemPrompt,
   buildBankStatementUserMessage,
+  LABELS_CATEGORIZATION_SYSTEM_PROMPT,
+  buildLabelsUserMessage,
   type LlmCategoryItem,
 } from '~~/shared/constants/bank-statement-llm-prompt'
 import { FALLBACK_ITEM_CODE } from '~~/shared/constants/default-referential'
@@ -179,7 +181,11 @@ function statusOf(err: SDKError): number {
 }
 
 /** Un appel au fournisseur, sans logique de relance. Traduit les erreurs SDK en erreurs domaine. */
-async function callProvider(messages: { role: 'system' | 'user', content: string }[], schema: object): Promise<unknown> {
+async function callProvider(
+  messages: { role: 'system' | 'user', content: string }[],
+  schema: object,
+  schemaName: string,
+): Promise<unknown> {
   const client = getClient()
   let response
   try {
@@ -190,7 +196,7 @@ async function callProvider(messages: { role: 'system' | 'user', content: string
       messages,
       responseFormat: {
         type: 'json_schema',
-        jsonSchema: { name: 'bank_statement_transactions', schemaDefinition: schema, strict: true },
+        jsonSchema: { name: schemaName, schemaDefinition: schema, strict: true },
       },
     })
   }
@@ -256,16 +262,17 @@ class TransientExtractionError extends LlmExtractionError {}
 async function callProviderWithRetry(
   messages: { role: 'system' | 'user', content: string }[],
   schema: object,
+  schemaName: string,
 ): Promise<unknown> {
   try {
-    return await callProvider(messages, schema)
+    return await callProvider(messages, schema, schemaName)
   }
   catch (err) {
     const transient = (err instanceof LlmUnavailableError && !(err instanceof LlmConfigError))
       || err instanceof TransientExtractionError
     if (!transient) throw err
     await new Promise(resolve => setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS))
-    return callProvider(messages, schema)
+    return callProvider(messages, schema, schemaName)
   }
 }
 
@@ -292,6 +299,49 @@ function validate(
     }
   }
   return { ok: true, transactions: parsed.data.transactions }
+}
+
+/**
+ * Boucle générique de conformité (AR17, story 28.4) : un appel, puis UNE relance si le modèle
+ * n'a pas respecté le schéma ou une contrainte de validation métier — extraite de
+ * `categorizeStatement` pour être partagée avec `categorizeLabels`, SANS dupliquer la logique
+ * de relance ni le message de rejet renvoyé au modèle. `categorizeStatement` garde exactement
+ * son comportement et sa suite de tests (Dev Notes de la story).
+ */
+async function categorizeWithConformity<T>(opts: {
+  schemaName: string
+  systemPrompt: string
+  userMessage: string
+  schema: object
+  fallbackCode: string
+  validate: (payload: unknown) => { ok: true, value: T } | { ok: false, reason: string }
+}): Promise<T> {
+  const baseMessages = [
+    { role: 'system' as const, content: opts.systemPrompt },
+    { role: 'user' as const, content: opts.userMessage },
+  ]
+
+  let lastReason = ''
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const messages = attempt === 1
+      ? baseMessages
+      : [
+          ...baseMessages,
+          {
+            role: 'user' as const,
+            content: `Ta réponse précédente a été rejetée : ${lastReason}. Recommence en respectant strictement le schéma et en n'utilisant que des codes de poste de la liste. Si aucun ne convient, utilise ${opts.fallbackCode}.`,
+          },
+        ]
+
+    const payload = await callProviderWithRetry(messages, opts.schema, opts.schemaName)
+    const result = opts.validate(payload)
+    if (result.ok) return result.value
+    lastReason = result.reason
+  }
+
+  throw new LlmExtractionError(
+    `Réponse non conforme après ${MAX_ATTEMPTS} tentatives : ${lastReason}`,
+  )
 }
 
 /**
@@ -323,33 +373,124 @@ export async function categorizeStatement(
     ? FALLBACK_ITEM_CODE
     : availableCategories[0]!.code
 
-  const schema = buildOutputSchema(availableCategories)
-  const baseMessages = [
-    { role: 'system' as const, content: buildBankStatementSystemPrompt(bank) },
-    { role: 'user' as const, content: buildBankStatementUserMessage(rawText, availableCategories, fallbackCode) },
-  ]
+  return categorizeWithConformity({
+    schemaName: 'bank_statement_transactions',
+    systemPrompt: buildBankStatementSystemPrompt(bank),
+    userMessage: buildBankStatementUserMessage(rawText, availableCategories, fallbackCode),
+    schema: buildOutputSchema(availableCategories),
+    fallbackCode,
+    validate: payload => (
+      (r => (r.ok ? { ok: true, value: r.transactions } : r))(validate(payload, validCodes))
+    ),
+  })
+}
 
-  let lastReason = ''
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const messages = attempt === 1
-      ? baseMessages
-      : [
-          ...baseMessages,
-          {
-            role: 'user' as const,
-            content: `Ta réponse précédente a été rejetée : ${lastReason}. Recommence en respectant strictement le schéma et en n'utilisant que des codes de poste de la liste. Si aucun ne convient, utilise ${fallbackCode}.`,
+const LabelsResponseSchema = z.object({
+  labels: z.array(z.object({
+    index: z.number().int().nonnegative(),
+    categoryItemCode: z.string().min(1),
+  })),
+})
+
+/** Schéma JSON déclaré au fournisseur pour `categorizeLabels` — un code par index, rien d'autre. */
+function buildLabelsOutputSchema(availableCategories: ReadonlyArray<LlmCategoryItem>) {
+  return {
+    type: 'object',
+    properties: {
+      labels: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            index: { type: 'integer', description: 'Index du libellé dans la liste reçue' },
+            categoryItemCode: {
+              type: 'string',
+              description: 'Code de poste strict — DOIT être l\'une des valeurs listées',
+              enum: availableCategories.map(c => c.code),
+            },
           },
-        ]
+          required: ['index', 'categoryItemCode'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['labels'],
+    additionalProperties: false,
+  }
+}
 
-    const payload = await callProviderWithRetry(messages, schema)
-    const result = validate(payload, validCodes)
-    if (result.ok) return result.transactions
-    lastReason = result.reason
+/**
+ * Valide la réponse de `categorizeLabels` : conformité au schéma, chaque index de `0..n-1`
+ * présent EXACTEMENT une fois, chaque code réellement dans le référentiel fourni.
+ */
+function validateLabels(
+  payload: unknown,
+  validCodes: ReadonlySet<string>,
+  count: number,
+): { ok: true, codes: string[] } | { ok: false, reason: string } {
+  const parsed = LabelsResponseSchema.safeParse(payload)
+  if (!parsed.success) {
+    return { ok: false, reason: `réponse non conforme au schéma : ${parsed.error.message}` }
+  }
+  const byIndex = new Map<number, string>()
+  for (const l of parsed.data.labels) {
+    if (byIndex.has(l.index)) {
+      return { ok: false, reason: `l'index ${l.index} apparaît plusieurs fois dans la réponse` }
+    }
+    if (!validCodes.has(l.categoryItemCode)) {
+      return {
+        ok: false,
+        reason: `le code de poste « ${l.categoryItemCode} » (index ${l.index}) n'existe pas dans le référentiel fourni`,
+      }
+    }
+    byIndex.set(l.index, l.categoryItemCode)
+  }
+  const missing: number[] = []
+  for (let i = 0; i < count; i++) {
+    if (!byIndex.has(i)) missing.push(i)
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: `index manquant(s) dans la réponse : ${missing.join(', ')}` }
+  }
+  return { ok: true, codes: Array.from({ length: count }, (_, i) => byIndex.get(i)!) }
+}
+
+/**
+ * Catégorise une liste de libellés (story 28.4, D44) — AUCUN montant, AUCUNE date : le code
+ * fait l'extraction (export Excel), le modèle ne fait QUE la catégorisation. Chaque libellé
+ * part avec son sens `[DÉBIT]`/`[CRÉDIT]` (tranché le 2026-09-26), jamais avec son montant.
+ *
+ * @param labels Libellés à catégoriser, chacun avec son sens de mouvement, ALIGNÉS PAR INDEX
+ *   avec le retour
+ * @param availableCategories Postes autorisés, lus depuis `category_items` (D17)
+ * @returns les codes de poste, alignés par index avec `labels` — liste vide → `[]` SANS appel
+ * @throws LlmUnavailableError si le fournisseur est injoignable ou en erreur opérationnelle
+ * @throws LlmExtractionError si la réponse reste non conforme après la relance
+ */
+export async function categorizeLabels(
+  labels: ReadonlyArray<{ label: string, direction: 'debit' | 'credit' }>,
+  availableCategories: ReadonlyArray<LlmCategoryItem>,
+): Promise<string[]> {
+  if (labels.length === 0) return []
+  if (availableCategories.length === 0) {
+    throw new LlmExtractionError('availableCategories is empty — cannot categorize')
   }
 
-  throw new LlmExtractionError(
-    `Réponse non conforme après ${MAX_ATTEMPTS} tentatives : ${lastReason}`,
-  )
+  const validCodes = new Set(availableCategories.map(c => c.code))
+  const fallbackCode = validCodes.has(FALLBACK_ITEM_CODE)
+    ? FALLBACK_ITEM_CODE
+    : availableCategories[0]!.code
+
+  return categorizeWithConformity({
+    schemaName: 'label_categories',
+    systemPrompt: LABELS_CATEGORIZATION_SYSTEM_PROMPT,
+    userMessage: buildLabelsUserMessage(labels, availableCategories, fallbackCode),
+    schema: buildLabelsOutputSchema(availableCategories),
+    fallbackCode,
+    validate: payload => (
+      (r => (r.ok ? { ok: true, value: r.codes } : r))(validateLabels(payload, validCodes, labels.length))
+    ),
+  })
 }
 
 /** Exporte la version du prompt pour audit / debug. */

@@ -15,6 +15,7 @@ const FR_MESSAGES: Record<ApiErrorCodeValue, string> = {
   [ApiErrorCode.PdfParseFailed]: 'L\'analyse du PDF a échoué. Vérifie qu\'il s\'agit bien d\'un relevé valide pour la banque sélectionnée.',
   [ApiErrorCode.PeriodOverlap]: 'La période de ce relevé chevauche un relevé déjà ingéré. Confirme le remplacement pour continuer.',
   [ApiErrorCode.BankMismatch]: 'Ce relevé ne correspond pas à la banque sélectionnée.',
+  [ApiErrorCode.StatementFormatUnrecognized]: 'Ce fichier n\'est ni un relevé PDF ni un export Excel reconnu.',
   [ApiErrorCode.LlmExtractionFailed]: 'L\'analyse automatique du relevé a échoué. Réessaie ou ajoute les transactions manuellement.',
   [ApiErrorCode.LlmUnavailable]: 'Le service de catégorisation est indisponible. Réessaie dans quelques instants.',
   [ApiErrorCode.LlmConfigError]: 'Accès au fournisseur refusé : vérifiez la clé MISTRAL_API_KEY dans .env. Réessayer n\'y changera rien.',

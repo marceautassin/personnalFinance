@@ -46,6 +46,10 @@ const SCHEMA_MARKERS: { label: string, exists: () => boolean }[] = [
     exists: () => tableSql('transactions').includes('category_item_id'),
   },
   {
+    label: 'colonne `bank_statements.source` (D44, story 28.4)',
+    exists: () => tableSql('bank_statements').includes('source'),
+  },
+  {
     label: 'table `transactions` sans colonnes de dette (suppression du 2026-09-04)',
     exists: () => !tableSql('transactions').includes('debt_id'),
   },

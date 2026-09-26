@@ -24,7 +24,9 @@ const props = withDefaults(defineProps<{
 const label = computed(() => {
   if (!props.reliability) return null
   const base = RELIABILITY_LABELS[props.reliability]
-  if (props.reliability === 'reliable' || props.gapCents === null || props.gapCents === 0) return base
+  // `unverified` n'a pas d'écart à afficher (il est nul par construction, cf. D44) : lui
+  // adjoindre « — 0,00 € » suggérerait une réconciliation qui n'a pas eu lieu.
+  if (props.reliability === 'reliable' || props.reliability === 'unverified' || props.gapCents === null || props.gapCents === 0) return base
   return `${base} — ${formatEuros(props.gapCents)}`
 })
 
@@ -32,16 +34,20 @@ const ICONS: Record<StatementReliability, string> = {
   reliable: '✓',
   gap_unreviewed: '⚠️',
   gap_accepted: '≈',
+  unverified: '?',
 }
 
 /**
- * Trois états, trois variantes du badge partagé. « Non examiné » est le seul vraiment alarmant
- * — personne n'a encore regardé ; « accepté » est signalé sans crier, l'utilisateur a tranché.
+ * Quatre états (D44), quatre variantes du badge partagé. « Non examiné » est le seul vraiment
+ * alarmant — personne n'a encore regardé ; « accepté » est signalé sans crier, l'utilisateur a
+ * tranché ; « non vérifié » n'est ni l'un ni l'autre — un export qui n'a pas encore été confirmé
+ * par un relevé PDF, ni bon ni mauvais par construction.
  */
 const BADGE_CLASS: Record<StatementReliability, string> = {
   reliable: 'badge--ok',
   gap_unreviewed: 'badge--alert',
   gap_accepted: 'badge--warn',
+  unverified: 'badge--warn',
 }
 </script>
 

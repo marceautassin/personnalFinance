@@ -109,6 +109,7 @@ async function onAcceptConfirm() {
         :found-cents="foundCents"
         :gap-cents="data.reconciliation.gapCents"
         :is-balanced="data.reconciliation.isBalanced"
+        :source="data.source"
         @add-transaction="showAddForm = true"
         @accept-gap="onAcceptClick"
       />

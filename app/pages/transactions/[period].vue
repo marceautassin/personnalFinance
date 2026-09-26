@@ -403,7 +403,9 @@ const periodCorrectionRate = computed(() =>
       {{
         data.reliability === 'gap_accepted'
           ? 'Un écart a été assumé sur cette période.'
-          : 'La réconciliation laisse un écart, encore inexaminé.'
+          : data.reliability === 'unverified'
+            ? 'Cette période repose sur un export non encore confirmé par un relevé PDF.'
+            : 'La réconciliation laisse un écart, encore inexaminé.'
       }}
     </div>
 

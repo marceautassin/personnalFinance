@@ -193,8 +193,14 @@ watch(bounds, newBounds => void itemTransactions.setRange(newBounds))
       >
         <ReliabilityBadge :reliability="data.reliability" />
         <span>
-          {{ data.unreliableStatements.length }} relevé(s) de cette période présentent un écart —
-          les totaux ci-dessous en héritent.
+          <template v-if="data.reliability === 'unverified'">
+            {{ data.unreliableStatements.length }} relevé(s) non vérifié(s) de cette période — repose(nt)
+            sur un export non encore confirmé par un relevé PDF, les totaux ci-dessous en héritent.
+          </template>
+          <template v-else>
+            {{ data.unreliableStatements.length }} relevé(s) de cette période présentent un écart —
+            les totaux ci-dessous en héritent.
+          </template>
         </span>
         <NuxtLink
           v-if="data.unreliableStatements[0]"

@@ -22,6 +22,8 @@ import { sqliteTable, integer, text, index, uniqueIndex } from 'drizzle-orm/sqli
 import { MOVEMENT_NATURES } from '../../shared/types/movement-nature'
 // eslint-disable-next-line no-restricted-imports
 import { BANKS } from '../../shared/types/bank'
+// eslint-disable-next-line no-restricted-imports
+import { STATEMENT_SOURCES } from '../../shared/types/statement-source'
 
 /**
  * profiles — le PROPRIÉTAIRE de chaque donnée possédée (D37, story 27.1).
@@ -137,6 +139,24 @@ export const bankStatements = sqliteTable('bank_statements', {
    */
   gapAccepted: integer('gap_accepted', { mode: 'boolean' }).notNull().default(false),
   ingestedAt: integer('ingested_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+  /** Origine du relevé (D44, story 28.4) : `pdf` (défaut, rétrocompatible) ou `export` Excel. */
+  source: text('source', { enum: STATEMENT_SOURCES }).notNull().default('pdf'),
+  /**
+   * Écart de continuité avec le relevé PDF précédent (28.2), en centimes. `null` tant qu'aucun
+   * raccord n'a eu lieu — c'est un FAIT constaté au raccord, pas un état dérivé recalculable :
+   * une fois le premier relevé PDF ingéré après un export, les lignes de l'export ne sont plus
+   * présentes pour recalculer cet écart après coup (D44). Toujours `null` sur un relevé `pdf`.
+   */
+  continuityGapCents: integer('continuity_gap_cents'),
+  /**
+   * Vrai si au moins une ligne `RELEVE CARTE` a été rangée dans l'agrégat carte non détaillé
+   * (FR84, story 28.4) plutôt que d'être passée au modèle. FAIT constaté à l'ingestion, pas un
+   * état dérivé : la ligne d'origine du relevé Crédit Mutuel ne distingue pas un achat détaillé
+   * d'un agrégat mensuel une fois rangée — sans cette colonne, rien ne permettrait de le savoir
+   * plus tard (l'état dérivé `card_detail_missing` de `deriveReliability`, story 28.3, LIT ce
+   * fait, il ne le recalcule pas).
+   */
+  cardDetailMissing: integer('card_detail_missing', { mode: 'boolean' }).notNull().default(false),
 })
 
 export type BankStatement = typeof bankStatements.$inferSelect

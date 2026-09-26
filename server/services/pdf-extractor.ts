@@ -14,6 +14,7 @@ import type { Cents } from '~~/shared/types/money'
 import type { Bank } from '~~/shared/types/bank'
 import { BANK_FORMATS, detectBank } from '~~/server/services/bank-formats'
 import { BankMismatchError, type PositionedItem } from '~~/server/services/bank-formats/types'
+import { maskIban } from '~~/server/services/bank-formats/identity'
 
 export interface RawStatement {
   /** Texte concaténé de toutes les pages du PDF. */
@@ -98,10 +99,9 @@ export async function extractStatement(pdfBuffer: Buffer, bank: Bank): Promise<R
  * transmis. Expurger ici le bloc d'identité, pas les libellés (cf. story 17.1, note de portée).
  */
 export function redactIdentity(text: string): string {
-  return text
-    // IBAN : deux lettres, deux chiffres, puis des groupes alphanumériques éventuellement
-    // espacés. Un libellé bancaire en majuscules ne prend pas cette forme.
-    .replace(/\b[A-Z]{2}\d{2}(?:[ \u00a0\u202f]?[A-Z0-9]{2,4}){3,8}\b/gu, '[IBAN]')
+  // IBAN : motif partagé avec le chemin export (`bank-formats/identity.ts`, story 28.4)
+  // pour ne pas dupliquer la règle sur les deux chemins d'ingestion.
+  return maskIban(text)
     // BIC : ancré sur son intitulé, car huit majuscules isolées peuvent être un marchand.
     .replace(/\b(BIC|SWIFT)\s*:?\s*[A-Z0-9]{8,11}\b/gu, '$1 : [BIC]')
 }

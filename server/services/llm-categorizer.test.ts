@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   categorizeStatement,
+  categorizeLabels,
   LlmExtractionError,
   LlmUnavailableError,
   LlmConfigError,
@@ -284,5 +285,90 @@ describe('categorizeStatement — garde-fous d\'entrée', () => {
     process.env.MISTRAL_API_KEY = ''
     _resetClientForTesting()
     await expect(categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')).rejects.toThrow(/MISTRAL_API_KEY/)
+  })
+})
+
+/**
+ * categorizeLabels — story 28.4, D44. Le code fait l'extraction (export Excel) ; le modèle ne
+ * fait QUE la catégorisation, sur un libellé accompagné de son sens `[DÉBIT]`/`[CRÉDIT]`,
+ * jamais d'un montant.
+ */
+describe('categorizeLabels — cas nominal', () => {
+  it('retourne les codes alignés par index avec les libellés', async () => {
+    mockComplete.mockResolvedValueOnce(reply({
+      labels: [
+        { index: 0, categoryItemCode: 'alimentation-courses' },
+        { index: 1, categoryItemCode: 'internes-virement-epargne' },
+      ],
+    }))
+    const out = await categorizeLabels(
+      [
+        { label: 'CARTE CARREFOUR', direction: 'debit' },
+        { label: 'VIR EPARGNE', direction: 'debit' },
+      ],
+      AVAILABLE_ITEMS,
+    )
+    expect(out).toEqual(['alimentation-courses', 'internes-virement-epargne'])
+  })
+
+  it('liste vide → [] SANS appel au fournisseur', async () => {
+    const out = await categorizeLabels([], AVAILABLE_ITEMS)
+    expect(out).toEqual([])
+    expect(mockComplete).not.toHaveBeenCalled()
+  })
+
+  it('transmet le sens [DÉBIT]/[CRÉDIT] de chaque libellé, jamais de montant', async () => {
+    mockComplete.mockResolvedValueOnce(reply({ labels: [{ index: 0, categoryItemCode: 'alimentation-courses' }] }))
+    await categorizeLabels([{ label: 'CARTE CARREFOUR', direction: 'debit' }], AVAILABLE_ITEMS)
+    const arg = mockComplete.mock.calls[0]![0] as { messages: { content: string }[] }
+    const userMessage = arg.messages[1]!.content
+    expect(userMessage).toContain('[DÉBIT]')
+    expect(userMessage).toContain('CARTE CARREFOUR')
+    expect(userMessage).not.toMatch(/\d+[.,]\d{2}\s*€/)
+  })
+})
+
+describe('categorizeLabels — conformité vérifiée (AR17)', () => {
+  it('relance quand un index est manquant, puis réussit', async () => {
+    mockComplete
+      .mockResolvedValueOnce(reply({ labels: [] }))
+      .mockResolvedValueOnce(reply({ labels: [{ index: 0, categoryItemCode: 'alimentation-courses' }] }))
+    const out = await categorizeLabels([{ label: 'A', direction: 'debit' }], AVAILABLE_ITEMS)
+    expect(out).toEqual(['alimentation-courses'])
+    expect(mockComplete).toHaveBeenCalledTimes(2)
+  })
+
+  it('relance quand un index est dupliqué, puis échoue après deux tentatives', async () => {
+    mockComplete.mockResolvedValue(reply({
+      labels: [
+        { index: 0, categoryItemCode: 'alimentation-courses' },
+        { index: 0, categoryItemCode: 'alimentation-restaurant' },
+      ],
+    }))
+    await expect(categorizeLabels([{ label: 'A', direction: 'debit' }], AVAILABLE_ITEMS))
+      .rejects.toBeInstanceOf(LlmExtractionError)
+    expect(mockComplete).toHaveBeenCalledTimes(2)
+  })
+
+  it('relance sur un code de poste inconnu', async () => {
+    mockComplete
+      .mockResolvedValueOnce(reply({ labels: [{ index: 0, categoryItemCode: 'INVENTE' }] }))
+      .mockResolvedValueOnce(reply({ labels: [{ index: 0, categoryItemCode: 'alimentation-courses' }] }))
+    const out = await categorizeLabels([{ label: 'A', direction: 'debit' }], AVAILABLE_ITEMS)
+    expect(out).toEqual(['alimentation-courses'])
+    expect(mockComplete).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuse une taxonomie vide', async () => {
+    await expect(categorizeLabels([{ label: 'A', direction: 'debit' }], [])).rejects.toBeInstanceOf(LlmExtractionError)
+  })
+
+  it('relance sur défaillance passagère, comme categorizeStatement', async () => {
+    mockComplete
+      .mockRejectedValueOnce(new errors.SDKError(503, 'down'))
+      .mockResolvedValueOnce(reply({ labels: [{ index: 0, categoryItemCode: 'alimentation-courses' }] }))
+    const out = await categorizeLabels([{ label: 'A', direction: 'debit' }], AVAILABLE_ITEMS)
+    expect(out).toEqual(['alimentation-courses'])
+    expect(mockComplete).toHaveBeenCalledTimes(2)
   })
 })
