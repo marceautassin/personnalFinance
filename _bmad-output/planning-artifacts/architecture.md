@@ -1740,7 +1740,10 @@ ajoutée au test qui garde déjà `unpdf` et le SDK du fournisseur.
 **Pas d'extraction par le modèle.** Les montants sont lus dans les cellules Débit / Crédit et
 convertis en `Cents` par le code (NFR1). Le modèle ne reçoit que des **libellés** à catégoriser :
 `llm-categorizer` gagne une fonction `categorizeLabels(labels, categories)` qui réutilise schéma,
-validation et relance bornée de D20, sans la partie extraction. C'est strictement moins exposé
+validation et relance bornée de D20, sans la partie extraction. Chaque libellé est accompagné de son **sens** (`[DÉBIT]` /
+`[CRÉDIT]`, marqueurs déjà utilisés par le chemin PDF), **jamais de son montant** : le sens lève
+l'ambiguïté recette / dépense d'un virement sans rien exposer de plus *(précisé le 2026-09-26, story
+28.4)*. C'est strictement moins exposé
 que le chemin PDF (NFR6) : ni solde, ni RIB, ni en-tête ne partent.
 
 **Identité.** Seule la feuille du compte courant est lue, à partir de la ligne d'en-tête de

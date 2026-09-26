@@ -524,7 +524,7 @@ development_status:
   # l'export Excel de la banque en ligne existe. Passe AVANT 28-2 : le premier
   # releve PDF d'octobre servira d'echantillon a 28-2 ET de preuve de continuite
   # pour l'historique importe (FR83, D44).
-  28-4-importer-l-historique-credit-mutuel-depuis-l-export: backlog
+  28-4-importer-l-historique-credit-mutuel-depuis-l-export: ready-for-dev
   epic-28-retrospective: optional
 
   # --- Epic 26 — L'agent conversationnel. DEUXIEME CHANTIER (rang 1 jusqu'au 2026-09-22). ---
