@@ -117,9 +117,33 @@ describe('categorizeStatement — cas nominal', () => {
     mockComplete.mockResolvedValueOnce(reply({ transactions: [] }))
     await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
     expect(mockComplete).toHaveBeenCalledWith(expect.objectContaining({
-      model: 'zai-glm-5-2',
+      model: 'zai-glm-5',
       temperature: 0,
     }))
+  })
+
+  it('lit le modèle depuis MISTRAL_CATEGORIZER_MODEL (NFR34)', async () => {
+    process.env.MISTRAL_CATEGORIZER_MODEL = 'zai-glm-5-3'
+    try {
+      mockComplete.mockResolvedValueOnce(reply({ transactions: [] }))
+      await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
+      expect(mockComplete).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'zai-glm-5-3' }))
+    }
+    finally {
+      delete process.env.MISTRAL_CATEGORIZER_MODEL
+    }
+  })
+
+  it('retombe sur le modèle par défaut si la variable est vide', async () => {
+    process.env.MISTRAL_CATEGORIZER_MODEL = '  '
+    try {
+      mockComplete.mockResolvedValueOnce(reply({ transactions: [] }))
+      await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
+      expect(mockComplete).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'zai-glm-5' }))
+    }
+    finally {
+      delete process.env.MISTRAL_CATEGORIZER_MODEL
+    }
   })
 
   it('déclare un schéma de sortie strict au fournisseur', async () => {

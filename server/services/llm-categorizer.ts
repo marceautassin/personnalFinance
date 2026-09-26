@@ -1,7 +1,7 @@
 /**
  * llm-categorizer — SEUL POINT D'ENTRÉE vers le SDK du fournisseur LLM (NFR16).
  *
- * Fournisseur : **Mistral**, modèle `zai-glm-5-2`, inférence en **Europe** (D20, NFR7).
+ * Fournisseur : **Mistral**, modèle `zai-glm-5` par défaut, surchargeable par `MISTRAL_CATEGORIZER_MODEL`, inférence en **Europe** (D20, NFR7).
  * Le changement de fournisseur du 2026-09-05 a tenu dans ce seul fichier : c'est le bénéfice
  * direct de la boundary posée en story 2.4, et la raison de ne jamais la percer.
  *
@@ -70,7 +70,24 @@ export class LlmConfigError extends LlmUnavailableError {
   }
 }
 
-const MODEL = 'zai-glm-5-2'
+/**
+ * Modèle de catégorisation, lu depuis `MISTRAL_CATEGORIZER_MODEL` (NFR34), `zai-glm-5` sinon.
+ *
+ * ⚠️ `zai-glm-5` est un ALIAS de Mistral, pas une version figée : il pointe sur la dernière
+ * GLM-5 (5.3 au 2026-09-26) et suivra les suivantes sans que ce code change. Choix de
+ * l'utilisateur du 2026-09-26. Conséquence : une montée de version peut arriver sans commit,
+ * et tout changement de modèle impose de re-mesurer le taux de correction (jalon, NFR34).
+ * Figer une version exacte (`zai-glm-5-3`) se fait par la variable, sans toucher au code.
+ *
+ * Lu à chaque appel et non à l'import : une variable vide retombe sur la valeur par défaut
+ * plutôt que d'envoyer un modèle vide au fournisseur.
+ */
+const DEFAULT_CATEGORIZER_MODEL = 'zai-glm-5'
+
+export function categorizerModel(): string {
+  return process.env.MISTRAL_CATEGORIZER_MODEL?.trim() || DEFAULT_CATEGORIZER_MODEL
+}
+
 const REQUEST_TIMEOUT_MS = 120_000
 const MAX_TOKENS = 32_000
 
@@ -190,7 +207,7 @@ async function callProvider(
   let response
   try {
     response = await client.chat.complete({
-      model: MODEL,
+      model: categorizerModel(),
       temperature: 0,
       maxTokens: MAX_TOKENS,
       messages,

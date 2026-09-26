@@ -34,8 +34,9 @@ Toute fonctionnalité non listée dans le PRD passe en Growth — ne pas l'ajout
 | Framework | Nuxt 4, `ssr: false` (SPA) |
 | Backend | Nitro intégré |
 | DB | SQLite + Drizzle ORM + better-sqlite3 |
-| LLM | Mistral, modèle `zai-glm-5-2`, inférence Europe (D20) |
+| LLM | Mistral, modèle `zai-glm-5` (alias suivant la dernière GLM-5), surchargeable par `MISTRAL_CATEGORIZER_MODEL`, inférence Europe (D20, NFR34) |
 | PDF | `unpdf` |
+| Excel (export Crédit Mutuel) | `exceljs` (D44) |
 | Style | CSS vanilla (SFC `<style scoped>` + custom properties), pas de Tailwind |
 | State UI | Pinia |
 | Validation | Zod |
@@ -104,6 +105,7 @@ Tout montant affiché doit avoir un chemin jusqu'aux lignes qui le composent. C'
 ### Boundaries imperméables
 
 - `unpdf` consommé exclusivement depuis `server/services/pdf-extractor.ts`
+- `exceljs` consommé exclusivement depuis `server/services/spreadsheet-extractor.ts` (D44, gardé par `import-boundaries.test.ts`)
 - le SDK du fournisseur LLM consommé exclusivement depuis `server/services/llm-categorizer.ts`
 - DB Drizzle accédée via instance unique (`server/db/client.ts`)
 - Composants Vue ne font **jamais** `$fetch`/`useFetch` direct — toujours via un composable de `app/composables/`
