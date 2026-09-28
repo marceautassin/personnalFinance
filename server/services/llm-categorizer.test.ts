@@ -117,7 +117,7 @@ describe('categorizeStatement — cas nominal', () => {
     mockComplete.mockResolvedValueOnce(reply({ transactions: [] }))
     await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
     expect(mockComplete).toHaveBeenCalledWith(expect.objectContaining({
-      model: 'zai-glm-5',
+      model: 'zai-glm-5-2',
       temperature: 0,
     }))
   })
@@ -139,7 +139,7 @@ describe('categorizeStatement — cas nominal', () => {
     try {
       mockComplete.mockResolvedValueOnce(reply({ transactions: [] }))
       await categorizeStatement('relevé', AVAILABLE_ITEMS, 'boursorama')
-      expect(mockComplete).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'zai-glm-5' }))
+      expect(mockComplete).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'zai-glm-5-2' }))
     }
     finally {
       delete process.env.MISTRAL_CATEGORIZER_MODEL

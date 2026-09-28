@@ -34,7 +34,7 @@ Toute fonctionnalité non listée dans le PRD passe en Growth — ne pas l'ajout
 | Framework | Nuxt 4, `ssr: false` (SPA) |
 | Backend | Nitro intégré |
 | DB | SQLite + Drizzle ORM + better-sqlite3 |
-| LLM | Mistral, modèle `zai-glm-5` (alias suivant la dernière GLM-5), surchargeable par `MISTRAL_CATEGORIZER_MODEL`, inférence Europe (D20, NFR34) |
+| LLM | Mistral, modèle `zai-glm-5-2` (version figée ; GLM 5.3 écarté, modèle à raisonnement qui ne répond pas dans la limite de tokens), surchargeable par `MISTRAL_CATEGORIZER_MODEL`, inférence Europe (D20, NFR34) |
 | PDF | `unpdf` |
 | Excel (export Crédit Mutuel) | `exceljs` (D44) |
 | Style | CSS vanilla (SFC `<style scoped>` + custom properties), pas de Tailwind |

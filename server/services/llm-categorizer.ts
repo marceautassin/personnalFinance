@@ -1,7 +1,7 @@
 /**
  * llm-categorizer — SEUL POINT D'ENTRÉE vers le SDK du fournisseur LLM (NFR16).
  *
- * Fournisseur : **Mistral**, modèle `zai-glm-5` par défaut, surchargeable par `MISTRAL_CATEGORIZER_MODEL`, inférence en **Europe** (D20, NFR7).
+ * Fournisseur : **Mistral**, modèle `zai-glm-5-2` par défaut, surchargeable par `MISTRAL_CATEGORIZER_MODEL`, inférence en **Europe** (D20, NFR7).
  * Le changement de fournisseur du 2026-09-05 a tenu dans ce seul fichier : c'est le bénéfice
  * direct de la boundary posée en story 2.4, et la raison de ne jamais la percer.
  *
@@ -71,18 +71,20 @@ export class LlmConfigError extends LlmUnavailableError {
 }
 
 /**
- * Modèle de catégorisation, lu depuis `MISTRAL_CATEGORIZER_MODEL` (NFR34), `zai-glm-5` sinon.
+ * Modèle de catégorisation, lu depuis `MISTRAL_CATEGORIZER_MODEL` (NFR34), `zai-glm-5-2` sinon.
  *
- * ⚠️ `zai-glm-5` est un ALIAS de Mistral, pas une version figée : il pointe sur la dernière
- * GLM-5 (5.3 au 2026-09-26) et suivra les suivantes sans que ce code change. Choix de
- * l'utilisateur du 2026-09-26. Conséquence : une montée de version peut arriver sans commit,
- * et tout changement de modèle impose de re-mesurer le taux de correction (jalon, NFR34).
- * Figer une version exacte (`zai-glm-5-3`) se fait par la variable, sans toucher au code.
+ * ⚠️ **Pas `zai-glm-5` (GLM 5.3), constaté le 2026-09-26.** 5.3 est un modèle à raisonnement :
+ * sur 40 libellés, il a produit 32 000 tokens de bloc « thinking » en 203 s et n'a jamais
+ * rendu la réponse (tronquée, `finishReason: 'length'`), là où 5.2 répond en 2,6 s avec
+ * 826 tokens. Sa réponse arrive en outre en blocs (`thinking` puis texte) que ce module ne
+ * lit pas. Passer à 5.3 est un chantier à part : désactiver la réflexion si le fournisseur le
+ * permet, lire le format en blocs, puis re-mesurer le taux de correction (jalon, NFR34).
  *
+ * Version figée, pas un alias : un alias peut changer de modèle sans commit.
  * Lu à chaque appel et non à l'import : une variable vide retombe sur la valeur par défaut
  * plutôt que d'envoyer un modèle vide au fournisseur.
  */
-const DEFAULT_CATEGORIZER_MODEL = 'zai-glm-5'
+const DEFAULT_CATEGORIZER_MODEL = 'zai-glm-5-2'
 
 export function categorizerModel(): string {
   return process.env.MISTRAL_CATEGORIZER_MODEL?.trim() || DEFAULT_CATEGORIZER_MODEL
@@ -96,10 +98,10 @@ const MAX_TOKENS = 32_000
  *
  * Un export Excel peut porter plusieurs centaines de libellés distincts. Les envoyer en un
  * seul appel a produit une réponse tronquée (`finishReason === 'length'`) dès 186 libellés
- * avec `zai-glm-5` (GLM 5.3, plus verbeuse que la génération précédente) — voir le rejet
- * "Réponse tronquée par la limite de tokens" dans `callProvider`. ~40 libellés par lot reste
- * largement sous `MAX_TOKENS` même avec une réponse verbeuse par ligne, tout en gardant le
- * nombre d'appels raisonnable pour un import de quelques centaines de lignes.
+ * avec `zai-glm-5` (GLM 5.3). La cause réelle, diagnostiquée ensuite, était le raisonnement
+ * de 5.3 et non la taille du lot (cf. `DEFAULT_CATEGORIZER_MODEL`) ; le découpage reste
+ * utile : il borne la taille de chaque réponse quel que soit le nombre de libellés, pour un
+ * nombre d'appels raisonnable sur un import de quelques centaines de lignes.
  *
  * `categorizeStatement` (chemin PDF) n'est PAS concerné : il extrait des transactions
  * complètes en un seul relevé, pas des libellés à la chaîne.
