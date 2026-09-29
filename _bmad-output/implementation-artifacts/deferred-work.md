@@ -194,3 +194,26 @@
 - **Dans la trajectoire, les lignes de la cible « Part remboursée » portent le code du poste
   INTERNE** (`useTargetTransactions` les regroupe sous « Virement du compte joint »). Sans
   conséquence sur les montants, mais le libellé du groupe induit en erreur.
+
+## Chantier « Profils et banques » (epics 27-28) — reliquats au 2026-09-29
+
+- **Base E2E partagée** : toutes les specs partagent `_data/e2e.db`. Dès qu'une spec crée un
+  second profil, les suivantes perdent le repli « exactement un profil ». Quatre specs ont été
+  corrigées en épinglant le cookie `pf_profile` ; le remède de fond est une base (ou un profil)
+  par worker. Toute nouvelle spec doit poser le cookie en `beforeEach` d'ici là.
+- **`scripts/migrate-safely.mjs` trop strict** : il signale comme « écart » une migration qui
+  insère volontairement du référentiel (0011 : poste « Carte (non détaillée) », 61 → 62 postes).
+  Il faudrait lui déclarer les écarts attendus. Constaté sur la vraie base le 2026-09-26, sans perte.
+- **GLM 5.3 (`zai-glm-5`) écarté** : modèle à raisonnement, 32 000 tokens de « thinking » sans
+  réponse sur 40 libellés (203 s contre 2,6 s pour 5.2), réponse en blocs non lue par
+  `llm-categorizer`. Y passer suppose : couper le raisonnement si Mistral le permet, lire le
+  format en blocs, re-mesurer le taux de correction (NFR34).
+- **Story 28.4, suggestions de test non faites** : forcer un code inconnu dans `ingestExport`
+  (502 + aucune ligne + fichier supprimé) ; ordre persisté avec des lignes carte intercalées ;
+  test de `cleanLabel` sur un libellé multiligne. Revue 28.4 lot : codes distincts par index dans
+  le test à 90 libellés.
+- **28.2 et 28.3 bloquées** : attendent le premier relevé PDF Crédit Mutuel (octobre 2026), qui
+  servira d'échantillon ET de preuve de continuité de l'export importé (FR83).
+- **`CLAUDE.md`, section « Documents sources »** : décrit encore 39 FR / D17-D29 / 4 epics.
+- **`useApiError` / vocabulaire** : l'erreur `pdf_already_ingested` sert aussi aux exports
+  (le code dit « pdf »).
