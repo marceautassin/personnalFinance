@@ -1,0 +1,513 @@
+{
+  "bank": "credit_mutuel",
+  "source": "synthétique — aucune donnée réelle (story 28.2, dépôt public)",
+  "flatText": "CCM EXEMPLEVILLE 1 RUE DE L'EXEMPLE 99000 EXEMPLEVILLE 00 00 00 00 00 FAX 00 00 00 00 00 agence@creditmutuel.fr BIC : CMCIFR2A 99999 99999 M JEAN EXEMPLE 1 RUE DE L'EXEMPLE ........................................ RELEVE ET INFORMATIONS BANCAIRES Caisse 99999 16 octobre 2030 C/C EUROCOMPTE SERENITE N° 99900000001 en euros (GD) TITULAIRE(S) : M JEAN EXEMPLE Date Date valeur Opération Débit EUROS Crédit EUROS SOLDE CREDITEUR AU 01/10/2030 5.000,00 02/10/2030 02/10/2030 PRLV SEPA FOURNISSEUR GAZ EXEMPLE 80,00 NUMERO DE CLIENT 0000001 03/10/2030 03/10/2030 ASSURANCE EXEMPLE SC0000002 60,50 05/10/2030 05/10/2030 VIR SEPA CAISSE RETRAITE EXEMPLE 1.200,00 HT.20301017.000000.0000.0000.0001 07/10/2030 03/10/2030 FRAIS TENUE DE COMPTE EXEMPLE 18,40 2 09/10/2030 09/10/2030 CHEQUE 0000125 75,00 0 12/10/2030 12/10/2030 PRLV SEPA IMPOTS EXEMPLE 100,00 X ICS : FR00ZZZ000000 RUM : NNFR00ZZZ000000M000000000002 Réf : 019 SOLDE CREDITEUR AU 16/10/2030 5.866,10 QXBAN : QX00 ZZZZ ZZZ ZZZZ 0000 0ZZZ ZZZZ ZZZZ ZZZ IBAN : FR76 3000 0000 0100 0000 0012 345 <<Suite au verso>> Information sur la protection des comptes : ( GE ) : protégé par la Garantie de l'Etat, ( GD ) : protégé par la Garantie des Dépôts Page 1\nRELEVE ET INFORMATIONS BANCAIRES Caisse 99999 Vous disposez d'une carte de paiement : paiements de moins de 10 EUR regroupés. SITUATION DE VOS AUTRES COMPTES en euros au 16 octobre 2030 Numéro Libellé du compte Solde 99900000002 LIVRET BLEU (GE) +1.000,00 99900000006 LIVRET EXEMPLE (GE) +2.000,00 Information sur la protection des comptes : ( GE ) : protégé par la Garantie de l'Etat, ( GD ) : protégé par la Garantie des Dépôts Page 2",
+  "pages": [
+    [
+      {
+        "x": 249,
+        "right": 347,
+        "y": 773,
+        "text": "CCM EXEMPLEVILLE"
+      },
+      {
+        "x": 233,
+        "right": 362,
+        "y": 763,
+        "text": "1 RUE DE L'EXEMPLE 99000 EXEMPLEVILLE"
+      },
+      {
+        "x": 140,
+        "right": 283,
+        "y": 753,
+        "text": "00 00 00 00 00 FAX 00 00 00 00 00"
+      },
+      {
+        "x": 308,
+        "right": 473,
+        "y": 753,
+        "text": "agence@creditmutuel.fr BIC : CMCIFR2A"
+      },
+      {
+        "x": 517,
+        "right": 534,
+        "y": 707,
+        "text": "99999"
+      },
+      {
+        "x": 517,
+        "right": 534,
+        "y": 699,
+        "text": "99999"
+      },
+      {
+        "x": 303,
+        "right": 309,
+        "y": 669,
+        "text": "M"
+      },
+      {
+        "x": 315,
+        "right": 364,
+        "y": 669,
+        "text": "JEAN"
+      },
+      {
+        "x": 370,
+        "right": 406,
+        "y": 669,
+        "text": "EXEMPLE"
+      },
+      {
+        "x": 303,
+        "right": 309,
+        "y": 660,
+        "text": "1"
+      },
+      {
+        "x": 315,
+        "right": 333,
+        "y": 660,
+        "text": "RUE"
+      },
+      {
+        "x": 339,
+        "right": 424,
+        "y": 660,
+        "text": "DE L'EXEMPLE"
+      },
+      {
+        "x": 7,
+        "right": 563,
+        "y": 561,
+        "text": "........................................"
+      },
+      {
+        "x": 48,
+        "right": 285,
+        "y": 542,
+        "text": "RELEVE ET INFORMATIONS BANCAIRES"
+      },
+      {
+        "x": 481,
+        "right": 538,
+        "y": 542,
+        "text": "Caisse 99999"
+      },
+      {
+        "x": 48,
+        "right": 120,
+        "y": 528,
+        "text": "16 octobre 2030"
+      },
+      {
+        "x": 48,
+        "right": 339,
+        "y": 504,
+        "text": "C/C EUROCOMPTE SERENITE N° 99900000001 en euros (GD)"
+      },
+      {
+        "x": 48,
+        "right": 219,
+        "y": 492,
+        "text": "TITULAIRE(S) : M JEAN EXEMPLE"
+      },
+      {
+        "x": 63,
+        "right": 81,
+        "y": 472,
+        "text": "Date"
+      },
+      {
+        "x": 98,
+        "right": 142,
+        "y": 472,
+        "text": "Date valeur"
+      },
+      {
+        "x": 161,
+        "right": 199,
+        "y": 472,
+        "text": "Opération"
+      },
+      {
+        "x": 409,
+        "right": 460,
+        "y": 472,
+        "text": "Débit EUROS"
+      },
+      {
+        "x": 480,
+        "right": 534,
+        "y": 472,
+        "text": "Crédit EUROS"
+      },
+      {
+        "x": 158,
+        "right": 291,
+        "y": 453,
+        "text": "SOLDE CREDITEUR AU 01/10/2030"
+      },
+      {
+        "x": 490.8,
+        "right": 534,
+        "y": 453,
+        "text": "5.000,00"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 436,
+        "text": "02/10/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 436,
+        "text": "02/10/2030"
+      },
+      {
+        "x": 148,
+        "right": 326.20000000000005,
+        "y": 436,
+        "text": "PRLV SEPA FOURNISSEUR GAZ EXEMPLE"
+      },
+      {
+        "x": 433,
+        "right": 460,
+        "y": 436,
+        "text": "80,00"
+      },
+      {
+        "x": 148,
+        "right": 277.6,
+        "y": 425,
+        "text": "NUMERO DE CLIENT 0000001"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 414,
+        "text": "03/10/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 414,
+        "text": "03/10/2030"
+      },
+      {
+        "x": 148,
+        "right": 293.8,
+        "y": 414,
+        "text": "ASSURANCE EXEMPLE SC0000002"
+      },
+      {
+        "x": 433,
+        "right": 460,
+        "y": 414,
+        "text": "60,50"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 403,
+        "text": "05/10/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 403,
+        "text": "05/10/2030"
+      },
+      {
+        "x": 148,
+        "right": 320.8,
+        "y": 403,
+        "text": "VIR SEPA CAISSE RETRAITE EXEMPLE"
+      },
+      {
+        "x": 490.8,
+        "right": 534,
+        "y": 403,
+        "text": "1.200,00"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 392,
+        "text": "07/10/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 392,
+        "text": "03/10/2030"
+      },
+      {
+        "x": 148,
+        "right": 304.6,
+        "y": 392,
+        "text": "FRAIS TENUE DE COMPTE EXEMPLE"
+      },
+      {
+        "x": 433,
+        "right": 460,
+        "y": 392,
+        "text": "18,40"
+      },
+      {
+        "x": 14,
+        "right": 192,
+        "y": 396,
+        "text": "HT.20301017.000000.0000.0000.0001"
+      },
+      {
+        "x": 14,
+        "right": 20,
+        "y": 385,
+        "text": "2"
+      },
+      {
+        "x": 14,
+        "right": 20,
+        "y": 375,
+        "text": "0"
+      },
+      {
+        "x": 14,
+        "right": 20,
+        "y": 364,
+        "text": "X"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 381,
+        "text": "09/10/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 381,
+        "text": "09/10/2030"
+      },
+      {
+        "x": 148,
+        "right": 223.60000000000002,
+        "y": 381,
+        "text": "CHEQUE 0000125"
+      },
+      {
+        "x": 433,
+        "right": 460,
+        "y": 381,
+        "text": "75,00"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 370,
+        "text": "12/10/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 370,
+        "text": "12/10/2030"
+      },
+      {
+        "x": 148,
+        "right": 277.6,
+        "y": 370,
+        "text": "PRLV SEPA IMPOTS EXEMPLE"
+      },
+      {
+        "x": 427.6,
+        "right": 460,
+        "y": 370,
+        "text": "100,00"
+      },
+      {
+        "x": 148,
+        "right": 250.60000000000002,
+        "y": 359,
+        "text": "ICS : FR00ZZZ000000"
+      },
+      {
+        "x": 148,
+        "right": 331.6,
+        "y": 348,
+        "text": "RUM : NNFR00ZZZ000000M000000000002"
+      },
+      {
+        "x": 53,
+        "right": 85,
+        "y": 334,
+        "text": "Réf : 019"
+      },
+      {
+        "x": 158,
+        "right": 291,
+        "y": 334,
+        "text": "SOLDE CREDITEUR AU 16/10/2030"
+      },
+      {
+        "x": 490.8,
+        "right": 534,
+        "y": 334,
+        "text": "5.866,10"
+      },
+      {
+        "x": 48,
+        "right": 287,
+        "y": 317,
+        "text": "QXBAN : QX00 ZZZZ ZZZ ZZZZ 0000 0ZZZ ZZZZ ZZZZ ZZZ"
+      },
+      {
+        "x": 371,
+        "right": 533,
+        "y": 317,
+        "text": "IBAN : FR76 3000 0000 0100 0000 0012 345"
+      },
+      {
+        "x": 460,
+        "right": 547,
+        "y": 107,
+        "text": "<<Suite au verso>>"
+      },
+      {
+        "x": 48,
+        "right": 172,
+        "y": 105,
+        "text": "Information sur la protection des comptes :"
+      },
+      {
+        "x": 48,
+        "right": 266,
+        "y": 98,
+        "text": "( GE ) : protégé par la Garantie de l'Etat, ( GD ) : protégé par la Garantie des Dépôts"
+      },
+      {
+        "x": 501,
+        "right": 533,
+        "y": 62,
+        "text": "Page 1"
+      }
+    ],
+    [
+      {
+        "x": 58,
+        "right": 295,
+        "y": 770,
+        "text": "RELEVE ET INFORMATIONS BANCAIRES"
+      },
+      {
+        "x": 491,
+        "right": 547,
+        "y": 770,
+        "text": "Caisse 99999"
+      },
+      {
+        "x": 58,
+        "right": 547,
+        "y": 742,
+        "text": "Vous disposez d'une carte de paiement : paiements de moins de 10 EUR regroupés."
+      },
+      {
+        "x": 58,
+        "right": 385,
+        "y": 683,
+        "text": "SITUATION DE VOS AUTRES COMPTES en euros au 16 octobre 2030"
+      },
+      {
+        "x": 77,
+        "right": 107,
+        "y": 666,
+        "text": "Numéro"
+      },
+      {
+        "x": 178,
+        "right": 246,
+        "y": 666,
+        "text": "Libellé du compte"
+      },
+      {
+        "x": 522,
+        "right": 544,
+        "y": 666,
+        "text": "Solde"
+      },
+      {
+        "x": 70,
+        "right": 119,
+        "y": 650,
+        "text": "99900000002"
+      },
+      {
+        "x": 134,
+        "right": 205,
+        "y": 650,
+        "text": "LIVRET BLEU (GE)"
+      },
+      {
+        "x": 503,
+        "right": 544,
+        "y": 650,
+        "text": "+1.000,00"
+      },
+      {
+        "x": 70,
+        "right": 119,
+        "y": 639,
+        "text": "99900000006"
+      },
+      {
+        "x": 134,
+        "right": 220,
+        "y": 639,
+        "text": "LIVRET EXEMPLE (GE)"
+      },
+      {
+        "x": 503,
+        "right": 544,
+        "y": 639,
+        "text": "+2.000,00"
+      },
+      {
+        "x": 48,
+        "right": 172,
+        "y": 81,
+        "text": "Information sur la protection des comptes :"
+      },
+      {
+        "x": 48,
+        "right": 266,
+        "y": 74,
+        "text": "( GE ) : protégé par la Garantie de l'Etat, ( GD ) : protégé par la Garantie des Dépôts"
+      },
+      {
+        "x": 501,
+        "right": 533,
+        "y": 38,
+        "text": "Page 2"
+      }
+    ]
+  ],
+  "expected": {
+    "periodStart": "2030-10-02",
+    "periodEnd": "2030-10-16",
+    "openingCents": 500000,
+    "closingCents": 586610,
+    "ignoredSections": [],
+    "operationLineCount": 9,
+    "plantedIdentifiers": [
+      "99900000001",
+      "99900000002",
+      "99900000006",
+      "FR76 3000 0000 0100 0000 0012 345",
+      "QX00 ZZZZ ZZZ ZZZZ 0000 0ZZZ ZZZZ ZZZZ ZZZ",
+      "JEAN EXEMPLE"
+    ]
+  }
+}

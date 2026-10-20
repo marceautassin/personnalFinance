@@ -23,9 +23,27 @@
  * Motif IDENTIQUE à celui de `pdf-extractor.ts` (`redactIdentity`) — un libellé bancaire en
  * majuscules ne prend pas cette forme, extrait ici pour être partagé par les deux chemins
  * d'ingestion (PDF et export) sans dupliquer la règle.
+ *
+ * **Resserré en story 28.2** : tous les groupes sont de QUATRE caractères, seul le dernier peut
+ * être plus court (c'est la forme d'un IBAN réel, espacé ou compact). L'ancien motif acceptait
+ * des groupes de 2 à 4 : sur Crédit Mutuel, `ASSURANCE SANTE SC0000001 55,28` en avalait le
+ * MONTANT (`SC00 000 01 55` lu comme un IBAN) — le relevé perdait des opérations en silence.
  */
 export function maskIban(text: string): string {
-  return text.replace(/\b[A-Z]{2}\d{2}(?:[ \u{a0}\u{202f}]?[A-Z0-9]{2,4}){3,8}\b/gu, '[IBAN]')
+  return text.replace(/\b[A-Z]{2}\d{2}(?:[ \u{a0}\u{202f}]?[A-Z0-9]{4}){2,7}(?:[ \u{a0}\u{202f}]?[A-Z0-9]{1,4})?\b/gu, '[IBAN]')
+}
+
+/**
+ * Identifiant bancaire introduit par son intitulé (`IBAN :`, `QXBAN :`, `RIB :`) : tout ce qui suit,
+ * groupes irréguliers compris (`QX00 ZZZZ ZZ2A XXX …`, RIB `12345 67890 12345678901 23`).
+ * Ancré sur l'intitulé, comme le BIC dans `redactIdentity`. Un groupe suivi d'une virgule ou d'un
+ * point décimal est un MONTANT (`55,28`) : il n'est jamais avalé. Un second intitulé n'est pas absorbé.
+ */
+export function maskLabelledBankId(text: string): string {
+  return text.replace(
+    /\b(QXBAN|IBAN|RIB)(\s*:\s*)[A-Z0-9]{2,}(?:[ \u{a0}\u{202f}]+(?!(?:QXBAN|IBAN|RIB)\b)[A-Z0-9]{1,11}(?![A-Z0-9]|[.,]\d))*/gu,
+    '$1$2[IBAN]',
+  )
 }
 
 /** Un numéro de compte / RIB (avec ou sans espaces) est un « connu ». */

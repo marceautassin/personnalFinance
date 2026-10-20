@@ -32,11 +32,12 @@ export interface LlmCategoryItem {
 }
 
 /**
- * Version 4 (story 28.1) : partie commune neutre vis-à-vis de la banque, complétée par un
+ * Version 5 (story 28.2) : paragraphe Crédit Mutuel (colonnes, date de l'opération). Version 4
+ * (story 28.1) : partie commune neutre vis-à-vis de la banque, complétée par un
  * paragraphe par banque (`BANK_PROMPT_NOTES`). Précédemment, version 3 : référentiel
  * hiérarchique, trois natures (D17) et marqueurs de colonne.
  */
-export const BANK_STATEMENT_PROMPT_VERSION = 4
+export const BANK_STATEMENT_PROMPT_VERSION = 5
 
 const NATURE_FR: Record<MovementNature, string> = {
   income: 'recette',
@@ -81,11 +82,11 @@ Si le texte ne contient aucune transaction identifiable, retourner un tableau vi
 
 /**
  * Paragraphe propre à chaque banque, ajouté à la suite de la partie commune (D41, AC 8).
- * `credit_mutuel` reste vide en story 28.1 : l'extraction Crédit Mutuel arrive en 28.2.
+ * Crédit Mutuel (story 28.2) : colonnes du compte courant et piège de la date de valeur.
  */
 export const BANK_PROMPT_NOTES: Record<Bank, string> = {
   boursorama: `\n\nNote propre à ce relevé Boursorama : les lignes de solde portent les intitulés « SOLDE AU » et « Nouveau solde » — ce sont elles qu'il faut ignorer (règle 8).`,
-  credit_mutuel: '',
+  credit_mutuel: `\n\nNote propre à ce relevé Crédit Mutuel : les colonnes sont « Date », « Date valeur », « Opération », « Débit EUROS » et « Crédit EUROS ». La date de l'opération est la PREMIÈRE colonne, JAMAIS la date de valeur (la deuxième date de la ligne). Une ligne sans date prolonge le libellé de la ligne précédente : ne pas en faire une opération à part. Les références de prélèvement (« ICS : », « RUM : ») font partie du libellé de l'opération qui les précède.`,
 }
 
 /**

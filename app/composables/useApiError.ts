@@ -80,6 +80,34 @@ function bankMismatchMessage(data: unknown): string | null {
   return `Ce relevé semble être un relevé ${BANK_LABELS[detected as Bank]} — sélectionne cette banque et redépose le fichier.`
 }
 
+const STATEMENT_FORMAT_REASONS: Record<string, string> = {
+  no_current_account: 'aucune section de compte courant n\'a été trouvée',
+  multiple_current_accounts: 'plusieurs comptes courants figurent dans ce relevé',
+  current_account_section_repeated: 'la section du compte courant est présentée d\'une façon jamais rencontrée jusqu\'ici',
+  current_account_section_not_closed: 'la section du compte courant n\'est pas close comme d\'habitude',
+  continuation_page_without_header: 'une page de suite n\'a pas son en-tête de colonnes',
+  unexpected_balance_line_count: 'les lignes de solde du compte courant sont inattendues',
+  balance_unreadable: 'un solde n\'a pas pu être lu',
+  positional_reading_unavailable: 'la mise en page du PDF n\'a pas pu être lue',
+}
+
+/**
+ * Message détaillé du 400 `statement_format_unrecognized` d'un relevé PDF (story 28.2) : dit POURQUOI
+ * le relevé est refusé. Les raisons d'un export Excel, ou inconnues, gardent le message générique.
+ */
+function statementFormatMessage(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null
+  const { reason, label } = data as Record<string, unknown>
+  if (typeof reason !== 'string') return null
+  if (reason === 'unsupported_balance_line') {
+    if (typeof label !== 'string' || !/^SOLDE [A-Z ]{1,20} AU$/u.test(label)) return null
+    const kind = /DEBITEUR/u.test(label) ? 'solde débiteur' : 'ligne de solde'
+    return `Relevé Crédit Mutuel non pris en charge : ${kind} (${label}) jamais rencontré jusqu'ici.`
+  }
+  const why = Object.hasOwn(STATEMENT_FORMAT_REASONS, reason) ? STATEMENT_FORMAT_REASONS[reason] : null
+  return why ? `Relevé Crédit Mutuel non pris en charge : ${why}.` : null
+}
+
 /**
  * Composable de mapping erreur API → message utilisateur FR.
  * Accepte n'importe quelle erreur Nuxt/Fetch, extrait `statusMessage`, retourne FR.
@@ -104,6 +132,10 @@ export function useApiError() {
     }
     if (code === ApiErrorCode.GroupNotEmpty) {
       const detailed = groupNotEmptyMessage(e.data?.data)
+      if (detailed) return detailed
+    }
+    if (code === ApiErrorCode.StatementFormatUnrecognized) {
+      const detailed = statementFormatMessage(e.data?.data)
       if (detailed) return detailed
     }
     if (code === ApiErrorCode.BankMismatch) {

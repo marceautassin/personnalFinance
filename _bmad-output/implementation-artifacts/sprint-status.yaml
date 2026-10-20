@@ -525,7 +525,12 @@ development_status:
   # 28-2 et 28-3 portent un bandeau NE PAS DEMARRER tant qu'AR41 n'est pas leve.
   epic-28: in-progress
   28-1-choisir-la-banque-d-un-releve: done
-  28-2-lire-le-compte-courant-credit-mutuel: ready-for-dev
+  # 2026-10-20 : AR41 LEVEE pour 28-2. Corpus de six releves reels (5 mensuels 2021-22,
+  # 1 extrait oct. 2026) dans _data/samples/credit-mutuel/. Regle : on code ce qu'on a vu,
+  # on refuse en statement_format_unrecognized ce qu'on n'a pas vu (solde debiteur...).
+  # Story amendee : raccord avec l'export (AC 12, FR83) ajoute. 28-3 reste bloquee.
+  # Revue pr-reviewer (deux passes, 2026-10-20) : bloquants leves, 871 tests verts.
+  28-2-lire-le-compte-courant-credit-mutuel: done
   28-3-voir-mes-achats-par-carte-un-par-un: ready-for-dev
   # 28-4 ajoutee le 2026-09-26 : aucun releve PDF CM pour l'annee ecoulee, seul
   # l'export Excel de la banque en ligne existe. Passe AVANT 28-2 : le premier

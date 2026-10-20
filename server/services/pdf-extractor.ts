@@ -14,7 +14,7 @@ import type { Cents } from '~~/shared/types/money'
 import type { Bank } from '~~/shared/types/bank'
 import { BANK_FORMATS, detectBank } from '~~/server/services/bank-formats'
 import { BankMismatchError, type PositionedItem } from '~~/server/services/bank-formats/types'
-import { maskIban } from '~~/server/services/bank-formats/identity'
+import { maskIban, maskLabelledBankId } from '~~/server/services/bank-formats/identity'
 
 export interface RawStatement {
   /** Texte concaténé de toutes les pages du PDF. */
@@ -27,6 +27,8 @@ export interface RawStatement {
   openingBalanceCents: Cents | null
   /** Solde de clôture du relevé en Cents, null si non détecté. */
   closingBalanceCents: Cents | null
+  /** Titres (sans numéros) des sections du relevé non importées — vide si la banque n'en a pas (story 28.2). */
+  ignoredSections: string[]
 }
 
 /**
@@ -74,7 +76,7 @@ export async function extractStatement(pdfBuffer: Buffer, bank: Bank): Promise<R
   })
 
   const rawText = redactIdentity(format.operationsText({ pages, flatText }))
-  const { periodStart, periodEnd, openingCents, closingCents } = format.balancesAndPeriod(flatText)
+  const { periodStart, periodEnd, openingCents, closingCents, ignoredSections } = format.balancesAndPeriod(flatText, pages)
 
   return {
     rawText,
@@ -82,6 +84,7 @@ export async function extractStatement(pdfBuffer: Buffer, bank: Bank): Promise<R
     periodEnd,
     openingBalanceCents: openingCents,
     closingBalanceCents: closingCents,
+    ignoredSections: ignoredSections ?? [],
   }
 }
 
@@ -101,7 +104,7 @@ export async function extractStatement(pdfBuffer: Buffer, bank: Bank): Promise<R
 export function redactIdentity(text: string): string {
   // IBAN : motif partagé avec le chemin export (`bank-formats/identity.ts`, story 28.4)
   // pour ne pas dupliquer la règle sur les deux chemins d'ingestion.
-  return maskIban(text)
+  return maskIban(maskLabelledBankId(text))
     // BIC : ancré sur son intitulé, car huit majuscules isolées peuvent être un marchand.
     .replace(/\b(BIC|SWIFT)\s*:?\s*[A-Z0-9]{8,11}\b/gu, '$1 : [BIC]')
 }

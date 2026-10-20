@@ -1,0 +1,1061 @@
+{
+  "bank": "credit_mutuel",
+  "source": "synthétique — aucune donnée réelle (story 28.2, dépôt public)",
+  "flatText": "CCM EXEMPLEVILLE 1 RUE DE L'EXEMPLE 99000 EXEMPLEVILLE 00 00 00 00 00 FAX 00 00 00 00 00 agence@creditmutuel.fr BIC : CMCIFR2A 99999 99999 M JEAN EXEMPLE 1 RUE DE L'EXEMPLE ........................................ RELEVE ET INFORMATIONS BANCAIRES Caisse 99999 04 mars 2030 C/C EUROCOMPTE SERENITE N° 99900000001 en euros (GD) € TITULAIRE(S) : M JEAN EXEMPLE Date Date valeur Opération Débit EUROS Crédit EUROS SOLDE CREDITEUR AU 04/02/2030 1.000,00 05/02/2030 05/02/2030 PRLV SEPA FOURNISSEUR EAU EXEMPLE 40,00 REF CLIENT 0000001 07/02/2030 07/02/2030 ASSURANCE EXEMPLE SC0000001 55,28 08/02/2030 08/02/2030 VIR SEPA EMPLOYEUR EXEMPLE 2.000,00 10/02/2030 10/02/2030 CHEQUE 0000123 120,00 HT.20301017.000000.0000.0000.0001 12/02/2030 12/02/2030 PRLV SEPA IMPOTS EXEMPLE 300,00 2 ICS : FR00ZZZ000000 0 RUM : ++FR00ZZZ000000M000000000001 X 14/02/2030 14/02/2030 VIR PEL 99999 99900000005 50,00 20/02/2030 01/03/2030 VIR EPARGNE EXEMPLE 100,00 <<Suite au verso>> Information sur la protection des comptes : ( GE ) : protégé par la Garantie de l'Etat, ( GD ) : protégé par la Garantie des Dépôts Page 1\nRELEVE ET INFORMATIONS BANCAIRES Caisse 99999 C/C EUROCOMPTE SERENITE N° 99900000001 en euros (GD) € TITULAIRE(S) : M JEAN EXEMPLE Date Date valeur Opération Débit EUROS Crédit EUROS 28/02/2030 28/02/2030 PRLV SEPA OPERATEUR MOBILE EXEMPLE 20,00 VOTRE ABONNEMENT EXEMPLE 28/02/2030 28/02/2030 RELEVE CARTE 100,00 01/03/2030 01/03/2030 VIR RETRAITE EXEMPLE 1.500,00 02/03/2030 02/03/2030 CHEQUE 0000124 250,00 Réf : 002 SOLDE CREDITEUR AU 04/03/2030 3.464,72 IBAN : FR76 3000 0000 0100 0000 0012 345 RELEVE DE VOTRE CARTE Exemple N° ------0000--- Au 21/02/2030 TITULAIRE : M JEAN EXEMPLE Date Commerce Ville Montant euros Montant devises 31/01/2030 COMMERCE EXEMPLE EXEMPLEVILLE 60,00 02/02/2030 AUTRE COMMERCE EXEMPLE EXEMPLEVILLE 40,00 TOTAL PRELEVE SUR VOTRE COMPTE 99999 99999 99900000001 AU 28/02/2030 : 100,00 euros LIVRET BLEU N° 99900000002 en euros (GE) € TITULAIRE(S) : M JEAN EXEMPLE Date Date valeur Opération Débit EUROS Crédit EUROS SOLDE CREDITEUR AU 04/01/2030 500,00 26/02/2030 01/03/2030 VIR DE M JEAN EXEMPLE 100,00 Réf : 098 SOLDE TOTAL AU 04/03/2030 600,00 IBAN : FR76 3000 0000 0100 0000 0099 912 Information sur la protection des comptes : ( GE ) : protégé par la Garantie de l'Etat, ( GD ) : protégé par la Garantie des Dépôts Page 2\nCCM EXEMPLEVILLE agence@creditmutuel.fr BIC : CMCIFR2A RELEVE ET INFORMATIONS BANCAIRES 04 mars 2030 PLAN D'EPARGNE LOGEMENT EXEMPLE N° 99900000005 en euros (GD) TITULAIRE(S) : M JEAN EXEMPLE Date Date valeur Opération Débit EUROS Crédit EUROS SOLDE CREDITEUR AU 04/02/2030 2.000,00 Réf : 021 SOLDE CREDITEUR AU 04/03/2030 2.000,00 TOTAL INTERETS AU 28/02/2030 SITUATION DE VOS AUTRES COMPTES en euros au 04 mars 2030 Numéro Libellé du compte Solde 99900000002 LIVRET BLEU (GE) +600,00 SITUATION DE VOS CREDITS en euros au 04 mars 2030 99900000003 PLAN EXEMPLE +0,00 AUTORISATIONS DE DECOUVERTS 99900000001 DECOUVERT AUTORISE EXEMPLE 800,00 TOTAL MENSUEL DES FRAIS DEBITES SUR PRODUITS ET SERVICES BANCAIRES 99900000001 20,00 Information sur la protection des comptes : ( GE ) : protégé par la Garantie de l'Etat, ( GD ) : protégé par la Garantie des Dépôts Page 3",
+  "pages": [
+    [
+      {
+        "x": 249,
+        "right": 347,
+        "y": 773,
+        "text": "CCM EXEMPLEVILLE"
+      },
+      {
+        "x": 233,
+        "right": 362,
+        "y": 763,
+        "text": "1 RUE DE L'EXEMPLE 99000 EXEMPLEVILLE"
+      },
+      {
+        "x": 140,
+        "right": 283,
+        "y": 753,
+        "text": "00 00 00 00 00 FAX 00 00 00 00 00"
+      },
+      {
+        "x": 308,
+        "right": 473,
+        "y": 753,
+        "text": "agence@creditmutuel.fr BIC : CMCIFR2A"
+      },
+      {
+        "x": 517,
+        "right": 534,
+        "y": 707,
+        "text": "99999"
+      },
+      {
+        "x": 517,
+        "right": 534,
+        "y": 699,
+        "text": "99999"
+      },
+      {
+        "x": 303,
+        "right": 309,
+        "y": 669,
+        "text": "M"
+      },
+      {
+        "x": 315,
+        "right": 364,
+        "y": 669,
+        "text": "JEAN"
+      },
+      {
+        "x": 370,
+        "right": 406,
+        "y": 669,
+        "text": "EXEMPLE"
+      },
+      {
+        "x": 303,
+        "right": 309,
+        "y": 660,
+        "text": "1"
+      },
+      {
+        "x": 315,
+        "right": 333,
+        "y": 660,
+        "text": "RUE"
+      },
+      {
+        "x": 339,
+        "right": 424,
+        "y": 660,
+        "text": "DE L'EXEMPLE"
+      },
+      {
+        "x": 7,
+        "right": 563,
+        "y": 561,
+        "text": "........................................"
+      },
+      {
+        "x": 48,
+        "right": 285,
+        "y": 542,
+        "text": "RELEVE ET INFORMATIONS BANCAIRES"
+      },
+      {
+        "x": 481,
+        "right": 538,
+        "y": 542,
+        "text": "Caisse 99999"
+      },
+      {
+        "x": 48,
+        "right": 109,
+        "y": 528,
+        "text": "04 mars 2030"
+      },
+      {
+        "x": 82,
+        "right": 373,
+        "y": 505,
+        "text": "C/C EUROCOMPTE SERENITE N° 99900000001 en euros (GD)"
+      },
+      {
+        "x": 50,
+        "right": 56,
+        "y": 498,
+        "text": "€"
+      },
+      {
+        "x": 82,
+        "right": 252,
+        "y": 493,
+        "text": "TITULAIRE(S) : M JEAN EXEMPLE"
+      },
+      {
+        "x": 63,
+        "right": 81,
+        "y": 477,
+        "text": "Date"
+      },
+      {
+        "x": 98,
+        "right": 142,
+        "y": 477,
+        "text": "Date valeur"
+      },
+      {
+        "x": 161,
+        "right": 199,
+        "y": 477,
+        "text": "Opération"
+      },
+      {
+        "x": 409,
+        "right": 460,
+        "y": 477,
+        "text": "Débit EUROS"
+      },
+      {
+        "x": 480,
+        "right": 534,
+        "y": 477,
+        "text": "Crédit EUROS"
+      },
+      {
+        "x": 158,
+        "right": 291,
+        "y": 458,
+        "text": "SOLDE CREDITEUR AU 04/02/2030"
+      },
+      {
+        "x": 490.8,
+        "right": 534,
+        "y": 458,
+        "text": "1.000,00"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 441,
+        "text": "05/02/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 441,
+        "text": "05/02/2030"
+      },
+      {
+        "x": 148,
+        "right": 326.20000000000005,
+        "y": 441,
+        "text": "PRLV SEPA FOURNISSEUR EAU EXEMPLE"
+      },
+      {
+        "x": 433,
+        "right": 460,
+        "y": 441,
+        "text": "40,00"
+      },
+      {
+        "x": 148,
+        "right": 245.2,
+        "y": 430,
+        "text": "REF CLIENT 0000001"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 419,
+        "text": "07/02/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 419,
+        "text": "07/02/2030"
+      },
+      {
+        "x": 148,
+        "right": 293.8,
+        "y": 419,
+        "text": "ASSURANCE EXEMPLE SC0000001"
+      },
+      {
+        "x": 433,
+        "right": 460,
+        "y": 419,
+        "text": "55,28"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 408,
+        "text": "08/02/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 408,
+        "text": "08/02/2030"
+      },
+      {
+        "x": 148,
+        "right": 288.4,
+        "y": 408,
+        "text": "VIR SEPA EMPLOYEUR EXEMPLE"
+      },
+      {
+        "x": 490.8,
+        "right": 534,
+        "y": 408,
+        "text": "2.000,00"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 397,
+        "text": "10/02/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 397,
+        "text": "10/02/2030"
+      },
+      {
+        "x": 148,
+        "right": 223.60000000000002,
+        "y": 397,
+        "text": "CHEQUE 0000123"
+      },
+      {
+        "x": 427.6,
+        "right": 460,
+        "y": 397,
+        "text": "120,00"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 386,
+        "text": "12/02/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 386,
+        "text": "12/02/2030"
+      },
+      {
+        "x": 148,
+        "right": 277.6,
+        "y": 386,
+        "text": "PRLV SEPA IMPOTS EXEMPLE"
+      },
+      {
+        "x": 427.6,
+        "right": 460,
+        "y": 386,
+        "text": "300,00"
+      },
+      {
+        "x": 14,
+        "right": 192,
+        "y": 386,
+        "text": "HT.20301017.000000.0000.0000.0001"
+      },
+      {
+        "x": 14,
+        "right": 20,
+        "y": 375,
+        "text": "2"
+      },
+      {
+        "x": 14,
+        "right": 20,
+        "y": 365,
+        "text": "0"
+      },
+      {
+        "x": 14,
+        "right": 20,
+        "y": 354,
+        "text": "X"
+      },
+      {
+        "x": 148,
+        "right": 250.60000000000002,
+        "y": 375,
+        "text": "ICS : FR00ZZZ000000"
+      },
+      {
+        "x": 148,
+        "right": 331.6,
+        "y": 364,
+        "text": "RUM : ++FR00ZZZ000000M000000000001"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 353,
+        "text": "14/02/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 353,
+        "text": "14/02/2030"
+      },
+      {
+        "x": 148,
+        "right": 283,
+        "y": 353,
+        "text": "VIR PEL 99999 99900000005"
+      },
+      {
+        "x": 433,
+        "right": 460,
+        "y": 353,
+        "text": "50,00"
+      },
+      {
+        "x": 52,
+        "right": 92,
+        "y": 342,
+        "text": "20/02/2030"
+      },
+      {
+        "x": 100,
+        "right": 140,
+        "y": 342,
+        "text": "01/03/2030"
+      },
+      {
+        "x": 148,
+        "right": 250.60000000000002,
+        "y": 342,
+        "text": "VIR EPARGNE EXEMPLE"
+      },
+      {
+        "x": 427.6,
+        "right": 460,
+        "y": 342,
+        "text": "100,00"
+      },
+      {
+        "x": 460,
+        "right": 547,
+        "y": 107,
+        "text": "<<Suite au verso>>"
+      },
+      {
+        "x": 48,
+        "right": 172,
+        "y": 105,
+        "text": "Information sur la protection des comptes :"
+      },
+      {
+        "x": 48,
+        "right": 266,
+        "y": 98,
+        "text": "( GE ) : protégé par la Garantie de l'Etat, ( GD ) : protégé par la Garantie des Dépôts"
+      },
+      {
+        "x": 501,
+        "right": 533,
+        "y": 62,
+        "text": "Page 1"
+      }
+    ],
+    [
+      {
+        "x": 58,
+        "right": 295,
+        "y": 770,
+        "text": "RELEVE ET INFORMATIONS BANCAIRES"
+      },
+      {
+        "x": 491,
+        "right": 547,
+        "y": 770,
+        "text": "Caisse 99999"
+      },
+      {
+        "x": 91,
+        "right": 383,
+        "y": 733,
+        "text": "C/C EUROCOMPTE SERENITE N° 99900000001 en euros (GD)"
+      },
+      {
+        "x": 60,
+        "right": 66,
+        "y": 726,
+        "text": "€"
+      },
+      {
+        "x": 91,
+        "right": 262,
+        "y": 721,
+        "text": "TITULAIRE(S) : M JEAN EXEMPLE"
+      },
+      {
+        "x": 73,
+        "right": 91,
+        "y": 705,
+        "text": "Date"
+      },
+      {
+        "x": 108,
+        "right": 152,
+        "y": 705,
+        "text": "Date valeur"
+      },
+      {
+        "x": 171,
+        "right": 209,
+        "y": 705,
+        "text": "Opération"
+      },
+      {
+        "x": 419,
+        "right": 470,
+        "y": 705,
+        "text": "Débit EUROS"
+      },
+      {
+        "x": 490,
+        "right": 544,
+        "y": 705,
+        "text": "Crédit EUROS"
+      },
+      {
+        "x": 62,
+        "right": 102,
+        "y": 689,
+        "text": "28/02/2030"
+      },
+      {
+        "x": 110,
+        "right": 150,
+        "y": 689,
+        "text": "28/02/2030"
+      },
+      {
+        "x": 158,
+        "right": 341.6,
+        "y": 689,
+        "text": "PRLV SEPA OPERATEUR MOBILE EXEMPLE"
+      },
+      {
+        "x": 443,
+        "right": 470,
+        "y": 689,
+        "text": "20,00"
+      },
+      {
+        "x": 158,
+        "right": 287.6,
+        "y": 678,
+        "text": "VOTRE ABONNEMENT EXEMPLE"
+      },
+      {
+        "x": 62,
+        "right": 102,
+        "y": 667,
+        "text": "28/02/2030"
+      },
+      {
+        "x": 110,
+        "right": 150,
+        "y": 667,
+        "text": "28/02/2030"
+      },
+      {
+        "x": 158,
+        "right": 222.8,
+        "y": 667,
+        "text": "RELEVE CARTE"
+      },
+      {
+        "x": 437.6,
+        "right": 470,
+        "y": 667,
+        "text": "100,00"
+      },
+      {
+        "x": 62,
+        "right": 102,
+        "y": 656,
+        "text": "01/03/2030"
+      },
+      {
+        "x": 110,
+        "right": 150,
+        "y": 656,
+        "text": "01/03/2030"
+      },
+      {
+        "x": 158,
+        "right": 266,
+        "y": 656,
+        "text": "VIR RETRAITE EXEMPLE"
+      },
+      {
+        "x": 500.8,
+        "right": 544,
+        "y": 656,
+        "text": "1.500,00"
+      },
+      {
+        "x": 62,
+        "right": 102,
+        "y": 645,
+        "text": "02/03/2030"
+      },
+      {
+        "x": 110,
+        "right": 150,
+        "y": 645,
+        "text": "02/03/2030"
+      },
+      {
+        "x": 158,
+        "right": 233.60000000000002,
+        "y": 645,
+        "text": "CHEQUE 0000124"
+      },
+      {
+        "x": 437.6,
+        "right": 470,
+        "y": 645,
+        "text": "250,00"
+      },
+      {
+        "x": 62,
+        "right": 95,
+        "y": 631,
+        "text": "Réf : 002"
+      },
+      {
+        "x": 168,
+        "right": 300,
+        "y": 631,
+        "text": "SOLDE CREDITEUR AU 04/03/2030"
+      },
+      {
+        "x": 500.8,
+        "right": 544,
+        "y": 631,
+        "text": "3.464,72"
+      },
+      {
+        "x": 380,
+        "right": 542,
+        "y": 614,
+        "text": "IBAN : FR76 3000 0000 0100 0000 0012 345"
+      },
+      {
+        "x": 58,
+        "right": 400,
+        "y": 586,
+        "text": "RELEVE DE VOTRE CARTE Exemple N° ------0000--- Au 21/02/2030"
+      },
+      {
+        "x": 58,
+        "right": 260,
+        "y": 574,
+        "text": "TITULAIRE : M JEAN EXEMPLE"
+      },
+      {
+        "x": 67,
+        "right": 85,
+        "y": 555,
+        "text": "Date"
+      },
+      {
+        "x": 115,
+        "right": 157,
+        "y": 555,
+        "text": "Commerce"
+      },
+      {
+        "x": 274,
+        "right": 290,
+        "y": 555,
+        "text": "Ville"
+      },
+      {
+        "x": 414,
+        "right": 469,
+        "y": 555,
+        "text": "Montant euros"
+      },
+      {
+        "x": 481,
+        "right": 544,
+        "y": 555,
+        "text": "Montant devises"
+      },
+      {
+        "x": 61,
+        "right": 101,
+        "y": 539,
+        "text": "31/01/2030"
+      },
+      {
+        "x": 109,
+        "right": 190,
+        "y": 539,
+        "text": "COMMERCE EXEMPLE"
+      },
+      {
+        "x": 268,
+        "right": 330,
+        "y": 539,
+        "text": "EXEMPLEVILLE"
+      },
+      {
+        "x": 442,
+        "right": 469,
+        "y": 539,
+        "text": "60,00"
+      },
+      {
+        "x": 61,
+        "right": 101,
+        "y": 528,
+        "text": "02/02/2030"
+      },
+      {
+        "x": 109,
+        "right": 210,
+        "y": 528,
+        "text": "AUTRE COMMERCE EXEMPLE"
+      },
+      {
+        "x": 268,
+        "right": 330,
+        "y": 528,
+        "text": "EXEMPLEVILLE"
+      },
+      {
+        "x": 442,
+        "right": 469,
+        "y": 528,
+        "text": "40,00"
+      },
+      {
+        "x": 62,
+        "right": 426,
+        "y": 514,
+        "text": "TOTAL PRELEVE SUR VOTRE COMPTE 99999 99999 99900000001 AU 28/02/2030 : 100,00 euros"
+      },
+      {
+        "x": 91,
+        "right": 303,
+        "y": 486,
+        "text": "LIVRET BLEU N° 99900000002 en euros (GE)"
+      },
+      {
+        "x": 60,
+        "right": 66,
+        "y": 479,
+        "text": "€"
+      },
+      {
+        "x": 91,
+        "right": 262,
+        "y": 474,
+        "text": "TITULAIRE(S) : M JEAN EXEMPLE"
+      },
+      {
+        "x": 73,
+        "right": 91,
+        "y": 458,
+        "text": "Date"
+      },
+      {
+        "x": 108,
+        "right": 152,
+        "y": 458,
+        "text": "Date valeur"
+      },
+      {
+        "x": 171,
+        "right": 209,
+        "y": 458,
+        "text": "Opération"
+      },
+      {
+        "x": 419,
+        "right": 470,
+        "y": 458,
+        "text": "Débit EUROS"
+      },
+      {
+        "x": 490,
+        "right": 544,
+        "y": 458,
+        "text": "Crédit EUROS"
+      },
+      {
+        "x": 162,
+        "right": 294,
+        "y": 439,
+        "text": "SOLDE CREDITEUR AU 04/01/2030"
+      },
+      {
+        "x": 511.6,
+        "right": 544,
+        "y": 439,
+        "text": "500,00"
+      },
+      {
+        "x": 62,
+        "right": 102,
+        "y": 422,
+        "text": "26/02/2030"
+      },
+      {
+        "x": 110,
+        "right": 150,
+        "y": 422,
+        "text": "01/03/2030"
+      },
+      {
+        "x": 157,
+        "right": 262,
+        "y": 422,
+        "text": "VIR DE M JEAN EXEMPLE"
+      },
+      {
+        "x": 511.6,
+        "right": 544,
+        "y": 422,
+        "text": "100,00"
+      },
+      {
+        "x": 62,
+        "right": 95,
+        "y": 408,
+        "text": "Réf : 098"
+      },
+      {
+        "x": 172,
+        "right": 284,
+        "y": 408,
+        "text": "SOLDE TOTAL AU 04/03/2030"
+      },
+      {
+        "x": 511.6,
+        "right": 544,
+        "y": 408,
+        "text": "600,00"
+      },
+      {
+        "x": 380,
+        "right": 542,
+        "y": 372,
+        "text": "IBAN : FR76 3000 0000 0100 0000 0099 912"
+      },
+      {
+        "x": 48,
+        "right": 172,
+        "y": 80,
+        "text": "Information sur la protection des comptes :"
+      },
+      {
+        "x": 48,
+        "right": 266,
+        "y": 73,
+        "text": "( GE ) : protégé par la Garantie de l'Etat, ( GD ) : protégé par la Garantie des Dépôts"
+      },
+      {
+        "x": 501,
+        "right": 533,
+        "y": 37,
+        "text": "Page 2"
+      }
+    ],
+    [
+      {
+        "x": 249,
+        "right": 347,
+        "y": 773,
+        "text": "CCM EXEMPLEVILLE"
+      },
+      {
+        "x": 308,
+        "right": 473,
+        "y": 753,
+        "text": "agence@creditmutuel.fr BIC : CMCIFR2A"
+      },
+      {
+        "x": 48,
+        "right": 285,
+        "y": 722,
+        "text": "RELEVE ET INFORMATIONS BANCAIRES"
+      },
+      {
+        "x": 48,
+        "right": 109,
+        "y": 708,
+        "text": "04 mars 2030"
+      },
+      {
+        "x": 82,
+        "right": 429,
+        "y": 685,
+        "text": "PLAN D'EPARGNE LOGEMENT EXEMPLE N° 99900000005 en euros (GD)"
+      },
+      {
+        "x": 82,
+        "right": 252,
+        "y": 673,
+        "text": "TITULAIRE(S) : M JEAN EXEMPLE"
+      },
+      {
+        "x": 63,
+        "right": 81,
+        "y": 657,
+        "text": "Date"
+      },
+      {
+        "x": 98,
+        "right": 142,
+        "y": 657,
+        "text": "Date valeur"
+      },
+      {
+        "x": 161,
+        "right": 199,
+        "y": 657,
+        "text": "Opération"
+      },
+      {
+        "x": 409,
+        "right": 460,
+        "y": 657,
+        "text": "Débit EUROS"
+      },
+      {
+        "x": 480,
+        "right": 534,
+        "y": 657,
+        "text": "Crédit EUROS"
+      },
+      {
+        "x": 197,
+        "right": 329,
+        "y": 638,
+        "text": "SOLDE CREDITEUR AU 04/02/2030"
+      },
+      {
+        "x": 490.8,
+        "right": 534,
+        "y": 638,
+        "text": "2.000,00"
+      },
+      {
+        "x": 60,
+        "right": 95,
+        "y": 618,
+        "text": "Réf : 021"
+      },
+      {
+        "x": 197,
+        "right": 329,
+        "y": 618,
+        "text": "SOLDE CREDITEUR AU 04/03/2030"
+      },
+      {
+        "x": 490.8,
+        "right": 534,
+        "y": 618,
+        "text": "2.000,00"
+      },
+      {
+        "x": 72,
+        "right": 196,
+        "y": 589,
+        "text": "TOTAL INTERETS AU 28/02/2030"
+      },
+      {
+        "x": 77,
+        "right": 392,
+        "y": 535,
+        "text": "SITUATION DE VOS AUTRES COMPTES en euros au 04 mars 2030"
+      },
+      {
+        "x": 67,
+        "right": 97,
+        "y": 513,
+        "text": "Numéro"
+      },
+      {
+        "x": 168,
+        "right": 236,
+        "y": 513,
+        "text": "Libellé du compte"
+      },
+      {
+        "x": 512,
+        "right": 534,
+        "y": 513,
+        "text": "Solde"
+      },
+      {
+        "x": 60,
+        "right": 109,
+        "y": 497,
+        "text": "99900000002"
+      },
+      {
+        "x": 125,
+        "right": 379,
+        "y": 497,
+        "text": "LIVRET BLEU (GE)"
+      },
+      {
+        "x": 496.2,
+        "right": 534,
+        "y": 497,
+        "text": "+600,00"
+      },
+      {
+        "x": 77,
+        "right": 342,
+        "y": 462,
+        "text": "SITUATION DE VOS CREDITS en euros au 04 mars 2030"
+      },
+      {
+        "x": 60,
+        "right": 109,
+        "y": 423,
+        "text": "99900000003"
+      },
+      {
+        "x": 125,
+        "right": 152,
+        "y": 423,
+        "text": "PLAN EXEMPLE"
+      },
+      {
+        "x": 507,
+        "right": 534,
+        "y": 423,
+        "text": "+0,00"
+      },
+      {
+        "x": 48,
+        "right": 220,
+        "y": 375,
+        "text": "AUTORISATIONS DE DECOUVERTS"
+      },
+      {
+        "x": 60,
+        "right": 108,
+        "y": 342,
+        "text": "99900000001"
+      },
+      {
+        "x": 125,
+        "right": 348,
+        "y": 342,
+        "text": "DECOUVERT AUTORISE EXEMPLE"
+      },
+      {
+        "x": 501.6,
+        "right": 534,
+        "y": 342,
+        "text": "800,00"
+      },
+      {
+        "x": 48,
+        "right": 445,
+        "y": 315,
+        "text": "TOTAL MENSUEL DES FRAIS DEBITES SUR PRODUITS ET SERVICES BANCAIRES"
+      },
+      {
+        "x": 60,
+        "right": 108,
+        "y": 282,
+        "text": "99900000001"
+      },
+      {
+        "x": 507,
+        "right": 534,
+        "y": 282,
+        "text": "20,00"
+      },
+      {
+        "x": 48,
+        "right": 172,
+        "y": 105,
+        "text": "Information sur la protection des comptes :"
+      },
+      {
+        "x": 48,
+        "right": 266,
+        "y": 98,
+        "text": "( GE ) : protégé par la Garantie de l'Etat, ( GD ) : protégé par la Garantie des Dépôts"
+      },
+      {
+        "x": 501,
+        "right": 533,
+        "y": 62,
+        "text": "Page 3"
+      }
+    ]
+  ],
+  "expected": {
+    "periodStart": "2030-02-05",
+    "periodEnd": "2030-03-04",
+    "openingCents": 100000,
+    "closingCents": 346472,
+    "ignoredSections": [
+      "LIVRET BLEU",
+      "PLAN D'EPARGNE LOGEMENT EXEMPLE"
+    ],
+    "operationLineCount": 15,
+    "plantedIdentifiers": [
+      "99900000001",
+      "99900000002",
+      "99900000003",
+      "99900000005",
+      "FR76 3000 0000 0100 0000 0012 345",
+      "FR76 3000 0000 0100 0000 0099 912",
+      "FR7630000000010000000012345",
+      "JEAN EXEMPLE",
+      "------0000---"
+    ]
+  }
+}

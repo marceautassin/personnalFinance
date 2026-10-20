@@ -17,6 +17,11 @@ export const IngestionResultSchema = z.object({
   source: z.enum(STATEMENT_SOURCES),
   /** Feuilles ignorées d'un export (story 28.4) — absent sur un relevé PDF. */
   ignoredSheets: z.array(z.string()).optional(),
+  /**
+   * Titres, sans numéros, des sections d'un relevé PDF qui n'ont pas été importées — livrets,
+   * PEL (story 28.2, FR79). Vide pour Boursorama ; absent sur un export.
+   */
+  ignoredSections: z.array(z.string()).optional(),
   /** Mois `YYYY-MM` dont les achats carte ne sont pas détaillés (FR84) — absent sur un PDF. */
   cardAggregateMonths: z.array(z.string()).optional(),
 })

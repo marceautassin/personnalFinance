@@ -106,6 +106,9 @@ function formatMonth(yyyyMm: string): string {
               écart {{ formatEuros(item.result.gapCents as Cents) }}
             </NuxtLink>
           </template>
+          <template v-if="item.result.ignoredSections?.length">
+            · sections ignorées : {{ item.result.ignoredSections.join(', ') }}
+          </template>
           <template v-if="item.result.source === 'export'">
             · <span class="badge badge--warn">Non vérifié</span>
             <template v-if="item.result.ignoredSheets?.length">

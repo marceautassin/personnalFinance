@@ -7,7 +7,8 @@ import { eq } from 'drizzle-orm'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { sha256 } from '~~/server/utils/hash'
 import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
-import { BankMismatchError, ExportFormatError } from '~~/server/services/bank-formats/types'
+import { BankMismatchError, ExportFormatError, StatementFormatError } from '~~/server/services/bank-formats/types'
+import { deriveReliability } from '~~/shared/types/statement-reliability'
 import { CARD_UNDETAILED_ITEM_CODE } from '~~/shared/constants/default-referential'
 
 /**
@@ -145,6 +146,7 @@ function mockExtract(opts: {
   openingBalanceCents?: number | null
   closingBalanceCents?: number | null
   rawText?: string
+  ignoredSections?: string[]
 } = {}) {
   vi.mocked(pdfMod.extractStatement).mockResolvedValue({
     rawText: opts.rawText ?? 'rawText sample',
@@ -154,6 +156,7 @@ function mockExtract(opts: {
     openingBalanceCents: (opts.openingBalanceCents === undefined ? 100_000 : opts.openingBalanceCents) as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     closingBalanceCents: (opts.closingBalanceCents === undefined ? 50_000 : opts.closingBalanceCents) as any,
+    ignoredSections: opts.ignoredSections ?? [],
   })
 }
 
@@ -403,17 +406,29 @@ describe('ingestStatement (orchestrator)', () => {
     expect(existsSync(pdfPathFor(pdf('bank-mismatch')))).toBe(false)
   })
 
-  it('Crédit Mutuel non supporté (story 28.1) → 400 pdf_parse_failed, avant l\'appel au fournisseur', async () => {
-    vi.mocked(pdfMod.extractStatement).mockRejectedValue(new Error('credit_mutuel_not_supported_yet'))
+  it('structure Crédit Mutuel non reconnue (story 28.2) → 400 statement_format_unrecognized, avant l\'appel au fournisseur', async () => {
+    vi.mocked(pdfMod.extractStatement).mockRejectedValue(
+      new StatementFormatError('unsupported_balance_line', { label: 'SOLDE DEBITEUR AU' }),
+    )
     await expect(
-      orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('cm-not-supported'), confirmReplace: false, bank: 'credit_mutuel' }),
+      orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('cm-debtor'), confirmReplace: false, bank: 'credit_mutuel' }),
     ).rejects.toMatchObject({
       statusCode: 400,
-      statusMessage: ApiErrorCode.PdfParseFailed,
-      data: { reason: 'credit_mutuel_not_supported_yet' },
+      statusMessage: ApiErrorCode.StatementFormatUnrecognized,
+      data: { reason: 'unsupported_balance_line', label: 'SOLDE DEBITEUR AU' },
     })
     expect(llmMod.categorizeStatement).not.toHaveBeenCalled()
     expect(dbMod.db.select().from(schema.bankStatements).all()).toHaveLength(0)
+    expect(existsSync(pdfPathFor(pdf('cm-debtor')))).toBe(false)
+  })
+
+  it('les sections ignorées de l\'extraction sont rendues dans la réponse (AC 2, story 28.2)', async () => {
+    mockExtract({ ignoredSections: ['LIVRET BLEU', 'PLAN D\'EPARGNE LOGEMENT EXEMPLE'], openingBalanceCents: 100_000, closingBalanceCents: 90_000 })
+    mockCategorize([
+      { transactionDate: '2026-04-05', label: 'Op', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
+    ])
+    const result = await orch.ingestStatement({ event: FAKE_EVENT, pdfBuffer: pdf('ignored-sections'), confirmReplace: false })
+    expect(result.ignoredSections).toEqual(['LIVRET BLEU', 'PLAN D\'EPARGNE LOGEMENT EXEMPLE'])
   })
 
   it('fallback période G3 : déduit periodStart/End des dates min/max si extracteur null', async () => {
@@ -837,5 +852,113 @@ describe('ingestExport (orchestrator, story 28.4)', () => {
     await expect(orch.ingestExport({ event: PROFILE_1_EVENT, fileBuffer: xlsx('overlap-2'), confirmReplace: false }))
       .rejects.toMatchObject({ statusCode: 409, statusMessage: ApiErrorCode.PeriodOverlap })
     expect(llmMod.categorizeLabels).not.toHaveBeenCalled()
+  })
+})
+
+describe('raccord relevé PDF / export (story 28.2, AC 12, FR83)', () => {
+  const EXPORT_HASH = 'e'.repeat(64)
+
+  /** Export Crédit Mutuel du profil 1, clos à `periodEnd`, sans raccord encore (`unverified`). */
+  function seedExport(periodEnd: string, closingBalanceCents: number, periodStart = '2026-09-01') {
+    dbMod.db.insert(schema.bankStatements).values({
+      hashSha256: EXPORT_HASH,
+      profileId: 1,
+      bank: 'credit_mutuel',
+      periodStart,
+      periodEnd,
+      openingBalanceCents: 0,
+      closingBalanceCents,
+      source: 'export',
+      continuityGapCents: null,
+    }).run()
+  }
+
+  function ingestCreditMutuelStatement(name: string) {
+    mockExtract({ periodStart: '2026-10-02', periodEnd: '2026-10-16', openingBalanceCents: 200_000, closingBalanceCents: 185_000 })
+    mockCategorize([
+      { transactionDate: '2026-10-05', label: 'Op avant la date de solde', amountCents: -3_000, categoryItemCode: 'alimentation-courses' },
+      { transactionDate: '2026-10-08', label: 'Op le jour de la date de solde', amountCents: -2_000, categoryItemCode: 'alimentation-courses' },
+      { transactionDate: '2026-10-10', label: 'Op après la date de solde', amountCents: -10_000, categoryItemCode: 'alimentation-courses' },
+    ])
+    return orch.ingestStatement({ event: PROFILE_1_EVENT, pdfBuffer: pdf(name), confirmReplace: false, bank: 'credit_mutuel' })
+  }
+
+  const statementRow = (hash: string) => dbMod.db.select().from(schema.bankStatements).where(eq(schema.bankStatements.hashSha256, hash)).get()!
+
+  it('raccord à zéro : lignes couvertes écartées, relevé décalé, export passe fiable', async () => {
+    seedExport('2026-10-08', 195_000)
+    const result = await ingestCreditMutuelStatement('raccord-zero')
+
+    // Écartées : celles datées jusqu'à la date de solde de l'export INCLUSE. Reste 1 ligne.
+    expect(result.transactionCount).toBe(1)
+    expect(result.periodStart).toBe('2026-10-09')
+    expect(result.periodEnd).toBe('2026-10-16')
+    expect(result.isBalanced).toBe(true)
+    expect(result.gapCents).toBe(0)
+
+    const stmt = statementRow(result.hash)
+    expect(stmt.openingBalanceCents).toBe(195_000) // 200 000 − 3 000 − 2 000 (lignes écartées)
+    expect(stmt.periodStart).toBe('2026-10-09')
+    expect(dbMod.db.select().from(schema.transactions).where(eq(schema.transactions.statementHash, result.hash)).all()).toHaveLength(1)
+
+    const exp = statementRow(EXPORT_HASH)
+    expect(exp.continuityGapCents).toBe(0)
+    expect(deriveReliability({ gapCents: 0, gapAccepted: false, source: 'export', continuityGapCents: exp.continuityGapCents })).toBe('reliable')
+    // Pas de chevauchement : l'export n'a pas été remplacé.
+    expect(dbMod.db.select().from(schema.bankStatements).all()).toHaveLength(2)
+  })
+
+  it('raccord avec écart : l\'écart est écrit sur l\'export, qui devient non fiable', async () => {
+    seedExport('2026-10-08', 194_000)
+    const result = await ingestCreditMutuelStatement('raccord-ecart')
+
+    expect(result.isBalanced).toBe(true) // le relevé, lui, se réconcilie sur les lignes qu'il porte
+    const exp = statementRow(EXPORT_HASH)
+    expect(exp.continuityGapCents).toBe(1_000) // 195 000 − 194 000
+    expect(deriveReliability({ gapCents: 0, gapAccepted: false, source: 'export', continuityGapCents: exp.continuityGapCents })).toBe('gap_unreviewed')
+  })
+
+  it('aucun chevauchement : l\'export reste unverified, relevé inchangé', async () => {
+    seedExport('2026-09-26', 195_000)
+    const result = await ingestCreditMutuelStatement('raccord-aucun')
+
+    expect(result.transactionCount).toBe(3)
+    expect(result.periodStart).toBe('2026-10-02')
+    const stmt = statementRow(result.hash)
+    expect(stmt.openingBalanceCents).toBe(200_000)
+    const exp = statementRow(EXPORT_HASH)
+    expect(exp.continuityGapCents).toBeNull()
+    expect(deriveReliability({ gapCents: 0, gapAccepted: false, source: 'export', continuityGapCents: exp.continuityGapCents })).toBe('unverified')
+  })
+
+  it('export commençant APRÈS le début du relevé : pas de raccord, 409 period_overlap', async () => {
+    seedExport('2026-10-08', 195_000, '2026-10-04')
+    await expect(ingestCreditMutuelStatement('raccord-export-tardif')).rejects.toMatchObject({ statusCode: 409, statusMessage: ApiErrorCode.PeriodOverlap })
+    expect(statementRow(EXPORT_HASH).continuityGapCents).toBeNull()
+  })
+
+  it('export couvrant tout le relevé : pas de raccord, 409 period_overlap', async () => {
+    seedExport('2026-10-20', 195_000)
+    await expect(ingestCreditMutuelStatement('raccord-export-couvrant')).rejects.toMatchObject({ statusCode: 409, statusMessage: ApiErrorCode.PeriodOverlap })
+    expect(statementRow(EXPORT_HASH).continuityGapCents).toBeNull()
+  })
+
+  it('borne : export clos le jour du début du relevé → raccord, aucune ligne écartée', async () => {
+    seedExport('2026-10-02', 200_000)
+    const result = await ingestCreditMutuelStatement('raccord-borne')
+    expect(result.transactionCount).toBe(3)
+    expect(result.periodStart).toBe('2026-10-03')
+    expect(statementRow(result.hash).openingBalanceCents).toBe(200_000)
+    expect(statementRow(EXPORT_HASH).continuityGapCents).toBe(0)
+  })
+
+  it('un export d\'une autre banque n\'est pas raccordé (chevauchement ordinaire)', async () => {
+    dbMod.db.insert(schema.bankStatements).values({
+      hashSha256: EXPORT_HASH, profileId: 1, bank: 'boursorama', periodStart: '2026-09-01', periodEnd: '2026-10-08',
+      openingBalanceCents: 0, closingBalanceCents: 195_000, source: 'export', continuityGapCents: null,
+    }).run()
+    // Pas de raccord : la période de l'autre banque se traite comme un chevauchement ordinaire.
+    await expect(ingestCreditMutuelStatement('raccord-autre-banque')).rejects.toMatchObject({ statusMessage: ApiErrorCode.PeriodOverlap })
+    expect(statementRow(EXPORT_HASH).continuityGapCents).toBeNull()
   })
 })

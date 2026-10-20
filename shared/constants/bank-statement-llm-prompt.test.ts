@@ -115,8 +115,8 @@ describe('BANK_STATEMENT_SYSTEM_PROMPT', () => {
 })
 
 describe('BANK_STATEMENT_PROMPT_VERSION', () => {
-  it('vaut 4 depuis la story 28.1', () => {
-    expect(BANK_STATEMENT_PROMPT_VERSION).toBe(4)
+  it('vaut 5 depuis la story 28.2', () => {
+    expect(BANK_STATEMENT_PROMPT_VERSION).toBe(5)
   })
 })
 
@@ -146,9 +146,12 @@ describe('buildBankStatementSystemPrompt', () => {
     expect(boursoramaPrompt).toMatch(rule)
   })
 
-  it('credit_mutuel reste neutre (extraction reportée à la story 28.2)', () => {
+  it('credit_mutuel : paragraphe propre, date de l\'opération et non date de valeur', () => {
     const creditMutuelPrompt = buildBankStatementSystemPrompt('credit_mutuel')
-    expect(creditMutuelPrompt).toBe(BANK_STATEMENT_SYSTEM_PROMPT)
+    expect(creditMutuelPrompt.startsWith(BANK_STATEMENT_SYSTEM_PROMPT)).toBe(true)
+    expect(creditMutuelPrompt).toContain('Débit EUROS')
+    expect(creditMutuelPrompt).toMatch(/PREMIÈRE colonne, JAMAIS la date de valeur/)
+    expect(creditMutuelPrompt).toMatch(/Une ligne sans date prolonge le libellé/)
     expect(creditMutuelPrompt).not.toContain('SOLDE AU')
   })
 })

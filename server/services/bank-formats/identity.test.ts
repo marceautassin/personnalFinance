@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { maskAccountNumbers, maskIban } from './identity'
+import { maskAccountNumbers, maskIban, maskLabelledBankId } from './identity'
 
 describe('maskAccountNumbers (D42)', () => {
   it('masque un numéro de compte connu trouvé dans un libellé', () => {
@@ -50,5 +50,32 @@ describe('maskIban', () => {
 
   it('ne modifie pas un libellé bancaire ordinaire en majuscules', () => {
     expect(maskIban('CARTE ACHAT SUPERMARCHE FICTIF')).toBe('CARTE ACHAT SUPERMARCHE FICTIF')
+  })
+})
+
+describe('maskIban — ne mange jamais un montant (story 28.2)', () => {
+  it('laisse lisible une référence courte suivie d\'un montant', () => {
+    expect(maskIban('ASSURANCE SANTE SC0000001 55,28 [DÉBIT]')).toBe('ASSURANCE SANTE SC0000001 55,28 [DÉBIT]')
+  })
+
+  it('masque toujours un IBAN espacé ou compact', () => {
+    expect(maskIban('IBAN : FR76 3000 0000 0100 0000 0012 345')).toBe('IBAN : [IBAN]')
+    expect(maskIban('FR7630000000010000000012345')).toBe('[IBAN]')
+  })
+})
+
+describe('maskLabelledBankId — identifiant introduit par son intitulé (story 28.2)', () => {
+  it('masque un QXBAN à groupes irréguliers en entier', () => {
+    expect(maskLabelledBankId('QXBAN : QX00 ZZZZ ZZZ ZZZZ 0000 0ZZZ ZZZZ ZZZZ ZZZ')).toBe('QXBAN : [IBAN]')
+  })
+
+  it('masque une forme RIB 5/5/11/2', () => {
+    expect(maskLabelledBankId('IBAN : 12345 67890 12345678901 23')).toBe('IBAN : [IBAN]')
+    expect(maskLabelledBankId('RIB : 12345 67890 12345678901 23')).toBe('RIB : [IBAN]')
+  })
+
+  it('n\'avale pas un montant qui suit sur la même ligne, ni le second intitulé', () => {
+    expect(maskLabelledBankId('IBAN : 12345 67890 12345678901 23 55,28 [DÉBIT]')).toBe('IBAN : [IBAN] 55,28 [DÉBIT]')
+    expect(maskLabelledBankId('QXBAN : QX00 ZZZZ ZZ2A IBAN : FR76 3000 0000 0100')).toBe('QXBAN : [IBAN] IBAN : [IBAN]')
   })
 })

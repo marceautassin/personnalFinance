@@ -25,7 +25,7 @@
  * Sur erreur après la sauvegarde du fichier : `deletePdfByHash(hash)` rollback FS.
  * Sur erreur avant : rien à rollback (pas de side-effect persistant encore).
  */
-import { eq, and, lte, gte, asc, notInArray } from 'drizzle-orm'
+import { eq, and, lte, lt, gte, asc, desc, notInArray } from 'drizzle-orm'
 import { JOINT_REIMBURSEMENT_ITEM_CODE, CARD_UNDETAILED_ITEM_CODE } from '~~/shared/constants/default-referential'
 import { db } from '~~/server/db/client'
 import { bankStatements, transactions, categoryItems, categoryGroups, classificationRules } from '~~/server/db/schema'
@@ -33,7 +33,7 @@ import { applyRules, type MatchableRule } from '~~/server/services/rule-matcher'
 import { extractStatement } from '~~/server/services/pdf-extractor'
 import { extractExport } from '~~/server/services/spreadsheet-extractor'
 import { maskAccountNumbers } from '~~/server/services/bank-formats/identity'
-import { BankMismatchError, ExportFormatError } from '~~/server/services/bank-formats/types'
+import { BankMismatchError, ExportFormatError, StatementFormatError } from '~~/server/services/bank-formats/types'
 import {
   categorizeStatement,
   categorizeLabels,
@@ -239,6 +239,47 @@ async function loadItemIdByCode(profileId: ProfileId): Promise<Map<string, numbe
   return new Map(rows.map(i => [i.code, i.id]))
 }
 
+interface ExportToJoin {
+  hash: string
+  periodEnd: string
+  closingBalanceCents: number
+}
+
+/**
+ * L'export du même profil et de la même banque dont la date de solde tombe DANS la période du
+ * relevé (AC 12, FR83) — strictement avant sa fin : un export qui couvre tout le relevé n'est pas
+ * un raccord mais un chevauchement complet, traité par la garde de chevauchement habituelle.
+ * Plusieurs candidats (non observé) : le plus récent.
+ */
+async function findExportToJoin(profileId: ProfileId, bank: Bank, periodStart: string, periodEnd: string): Promise<ExportToJoin | null> {
+  const [row] = await db
+    .select({
+      hash: bankStatements.hashSha256,
+      periodEnd: bankStatements.periodEnd,
+      closingBalanceCents: bankStatements.closingBalanceCents,
+    })
+    .from(bankStatements)
+    .where(and(
+      eq(bankStatements.profileId, profileId),
+      eq(bankStatements.bank, bank),
+      eq(bankStatements.source, 'export'),
+      // L'export couvre le DÉBUT du relevé et s'arrête avant sa fin : sinon des lignes antérieures
+      // au début de l'export seraient écartées sans qu'aucun écart ne le signale (revue du 2026-10-20).
+      lte(bankStatements.periodStart, periodStart),
+      gte(bankStatements.periodEnd, periodStart),
+      lt(bankStatements.periodEnd, periodEnd),
+    ))
+    .orderBy(desc(bankStatements.periodEnd))
+    .limit(1)
+  return row ?? null
+}
+
+/** Date civile + n jours, sans fuseau. */
+function addDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(Date.UTC(y!, m! - 1, d! + days)).toISOString().slice(0, 10)
+}
+
 // ---------------------------------------------------------------------------------------------
 // ingestStatement — PDF (Story 2.6 et suivantes)
 // ---------------------------------------------------------------------------------------------
@@ -278,6 +319,10 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
         400,
       )
     }
+    // Structure de relevé jamais observée (story 28.2, AR41) : refusée ici, AVANT le fournisseur.
+    if (err instanceof StatementFormatError) {
+      throw domainError(ApiErrorCode.StatementFormatUnrecognized, { reason: err.reason, ...err.data }, 400)
+    }
     throw domainError(
       ApiErrorCode.PdfParseFailed,
       { reason: err instanceof Error ? err.message : String(err) },
@@ -304,6 +349,13 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
       400,
     )
   }
+
+  // 3ter. Raccord avec un export (FR83, story 28.2) : cherché AVANT l'appel au fournisseur, car
+  // il ne dépend que de la période lue. S'il existe, les lignes déjà couvertes par l'export seront
+  // écartées après la catégorisation (étape 6bis).
+  const joinedExport = raw.periodStart && raw.periodEnd
+    ? await findExportToJoin(profileId, bank, raw.periodStart, raw.periodEnd)
+    : null
 
   // 4. Catégorisation LLM (avant résolution période, pour permettre fallback G3)
   //
@@ -373,18 +425,35 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
     }, 502)
   }
 
+  // 6bis. Raccord avec l'export (AC 12, FR83). Les opérations datées jusqu'à la date de solde de
+  // l'export incluse y figurent déjà : on ne les réimporte pas. Le solde d'ouverture effectif est
+  // l'ouverture lue AUGMENTÉE de ces opérations — c'est le solde du compte à la date de l'export —,
+  // et son écart avec la clôture de l'export est le FAIT de continuité écrit sur l'export. Le
+  // relevé se réconcilie ensuite au centime sur les lignes qu'il porte réellement.
+  let openingBalanceCents = raw.openingBalanceCents
+  let continuityGapCents: number | null = null
+  let periodStartToStore = periodStart
+  if (joinedExport) {
+    const covered = extracted.filter(t => t.transactionDate <= joinedExport.periodEnd)
+    extracted = extracted.filter(t => t.transactionDate > joinedExport.periodEnd)
+    openingBalanceCents = cents(raw.openingBalanceCents + covered.reduce((sum, t) => sum + t.amountCents, 0))
+    continuityGapCents = openingBalanceCents - joinedExport.closingBalanceCents
+    periodStartToStore = addDays(joinedExport.periodEnd, 1)
+    step('export-joined', { exportEnd: joinedExport.periodEnd, coveredCount: covered.length, continuityGapCents })
+  }
+
   // 7. Détection chevauchement période — restreinte AU PROFIL (AC 5, story 27.2) : A dépose un
   // relevé couvrant une période que seul B a ingérée, aucun chevauchement n'est signalé.
-  const overlapping = await findOverlapping(profileId, periodStart, periodEnd)
+  const overlapping = await findOverlapping(profileId, periodStartToStore, periodEnd)
 
   step('period-resolved', {
-    periodStart,
+    periodStart: periodStartToStore,
     periodEnd,
     fallbackUsed: raw.periodStart === null || raw.periodEnd === null,
     overlappingCount: overlapping.length,
   })
 
-  guardOverlap(overlapping, periodStart, periodEnd, confirmReplace)
+  guardOverlap(overlapping, periodStartToStore, periodEnd, confirmReplace)
 
   // 8. Sauvegarde PDF sur disque (point de rollback FS si la suite échoue)
   await savePdfByHash(pdfBuffer, hash, 'pdf')
@@ -404,7 +473,7 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
 
   // 9. Réconciliation (les amountCents extraits sont déjà en integer cents — cast brand-only)
   const reconciliation = reconcile({
-    openingCents: raw.openingBalanceCents,
+    openingCents: openingBalanceCents,
     closingCents: raw.closingBalanceCents,
     transactions: extracted.map(t => ({ amountCents: cents(t.amountCents) })),
   })
@@ -428,9 +497,9 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
         hashSha256: hash,
         profileId,
         bank,
-        periodStart,
+        periodStart: periodStartToStore,
         periodEnd,
-        openingBalanceCents: raw.openingBalanceCents!,
+        openingBalanceCents,
         closingBalanceCents: raw.closingBalanceCents!,
         // Aucune décision n'est prise à l'ingestion : `gap_accepted` reste faux. Si la
         // réconciliation laisse un écart, le relevé sort donc « écart non examiné » — et non
@@ -439,6 +508,13 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
         gapAccepted: false,
         source: 'pdf',
       }).run()
+      // Le fait de continuité s'écrit sur l'EXPORT, dans la même transaction que le relevé (AC 12).
+      if (joinedExport) {
+        tx.update(bankStatements)
+          .set({ continuityGapCents })
+          .where(eq(bankStatements.hashSha256, joinedExport.hash))
+          .run()
+      }
       if (extracted.length > 0) {
         tx.insert(transactions).values(extracted.map((t) => {
           const categoryItemId = itemIdByCode.get(t.categoryItemCode)
@@ -488,12 +564,13 @@ export async function ingestStatement(args: IngestStatementArgs): Promise<Ingest
 
   return {
     hash,
-    periodStart,
+    periodStart: periodStartToStore,
     periodEnd,
     transactionCount: extracted.length,
     isBalanced: reconciliation.isBalanced,
     gapCents: reconciliation.gapCents,
     source: 'pdf',
+    ignoredSections: raw.ignoredSections,
   }
 }
 

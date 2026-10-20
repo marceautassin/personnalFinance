@@ -24,4 +24,4 @@ export function detectBank(flatText: string): Bank | null {
 }
 
 export type { BankFormat, PositionedItem, ColumnHeader } from './types'
-export { BankMismatchError } from './types'
+export { BankMismatchError, StatementFormatError } from './types'

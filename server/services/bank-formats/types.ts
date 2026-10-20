@@ -35,11 +35,20 @@ export interface BankFormat {
   recognizes(flatText: string): boolean
   /** Texte transmis au modèle, bloc d'identité coupé. `pages` vaut null si la lecture positionnelle a échoué. */
   operationsText(input: { pages: PositionedItem[][] | null, flatText: string }): string
-  balancesAndPeriod(flatText: string): {
+  /**
+   * Soldes et période. `pages` (second paramètre, optionnel) n'est lu que par les formats dont
+   * les soldes se lisent par la géométrie d'une section (Crédit Mutuel, story 28.2) ; Boursorama
+   * ne lit que le texte plat et ignore ce paramètre.
+   *
+   * `ignoredSections` : titres des sections du relevé qui n'ont PAS été importées (livrets, PEL…),
+   * sans leurs numéros. Absent pour une banque dont le relevé ne porte qu'un compte.
+   */
+  balancesAndPeriod(flatText: string, pages?: PositionedItem[][] | null): {
     periodStart: string | null
     periodEnd: string | null
     openingCents: Cents | null
     closingCents: Cents | null
+    ignoredSections?: string[]
   }
 }
 
@@ -54,6 +63,24 @@ export class BankMismatchError extends Error {
   ) {
     super('bank_mismatch')
     this.name = 'BankMismatchError'
+  }
+}
+
+/**
+ * Levée par un format de relevé PDF (story 28.2, AR41) quand la structure lue n'est pas l'une de
+ * celles qui ont été observées — traduite en `400 statement_format_unrecognized`, AVANT tout
+ * appel au fournisseur. On refuse l'inconnu plutôt que de le deviner.
+ *
+ * `reason` et `data` ne portent JAMAIS de valeur lue dans le document hormis un intitulé de
+ * ligne de solde (`SOLDE DEBITEUR AU`) : pas de numéro, pas de libellé d'opération, pas de montant.
+ */
+export class StatementFormatError extends Error {
+  constructor(
+    readonly reason: string,
+    readonly data: Record<string, string | number> = {},
+  ) {
+    super(`statement_format_unrecognized: ${reason}`)
+    this.name = 'StatementFormatError'
   }
 }
 
