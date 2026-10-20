@@ -1,5 +1,5 @@
 # generated: 2026-04-30
-# last_updated: 2026-09-26
+# last_updated: 2026-10-20
 # project: personnalFinance
 # project_key: NOKEY
 # tracking_system: file-system
@@ -183,12 +183,12 @@ development_status:
   # FR20-FR24. Ordre volontaire : la mesure (13-3) existe AVANT la ré-ingestion (13-4),
   # et la bascule de fournisseur (13-5) vient après une première mesure de référence.
   # Deux mesures encadrent le changement de modèle : les causes restent séparables.
-  epic-13: review
-  13-1-prompt-de-categorisation-hierarchique: review
-  13-2-reclassement-transaction-vers-autre-nature: review
-  13-3-taux-de-correction-manuelle-par-releve: review
-  13-4-reingestion-historique-court: review
-  13-5-bascule-fournisseur-mistral-glm: review
+  epic-13: done
+  13-1-prompt-de-categorisation-hierarchique: done
+  13-2-reclassement-transaction-vers-autre-nature: done
+  13-3-taux-de-correction-manuelle-par-releve: done
+  13-4-reingestion-historique-court: done
+  13-5-bascule-fournisseur-mistral-glm: done
 
   # Stories NÉES DE LA MESURE, hors découpage initial (2026-09-05).
   # Chacune vient d'un défaut constaté sur les données réelles, pas d'une intention de cadrage.
@@ -198,10 +198,10 @@ development_status:
   # 13-7 : « non fiable » confondait l'écart CONSTATÉ et l'écart ASSUMÉ ; deux relevés à
   #        2 187 € et 1 764 € d'écart s'affichaient « fiables ».
   # 13-8/13-9 : règles de classement déterministes (FR40-FR43, amendement PRD du 2026-09-05).
-  13-6-extraction-du-signe-par-colonne: review
-  13-7-modele-de-fiabilite-a-trois-etats: review
-  13-8-regles-de-classement-deterministes: review
-  13-9-apprentissage-depuis-les-corrections: review
+  13-6-extraction-du-signe-par-colonne: done
+  13-7-modele-de-fiabilite-a-trois-etats: done
+  13-8-regles-de-classement-deterministes: done
+  13-9-apprentissage-depuis-les-corrections: done
   epic-13-retrospective: optional
 
   # Epic 14 — Ingestion de l'historique complet
@@ -210,8 +210,8 @@ development_status:
   # SEUIL : ≤ 10 %. Au-dessus, l'epic 15 NE DÉMARRE PAS — on ajuste modèle, prompt ou
   # finesse du référentiel avant de construire des écrans sur une donnée mal rangée.
   epic-14: in-progress
-  14-1-depot-multiple-avec-progression: review
-  14-2-echec-isole-et-rapport-par-fichier: review
+  14-1-depot-multiple-avec-progression: done
+  14-2-echec-isole-et-rapport-par-fichier: done
   14-3-suppression-d-un-releve-ingere: backlog
   # JALON MESURÉ le 2026-09-05, mais NON FRANCHI et volontairement dépassé.
   # 20 relevés ingérés, 1 855 transactions, 0 écart de réconciliation (critère technique tenu).
@@ -226,13 +226,13 @@ development_status:
   # FR12, FR25-FR36. ⚠️ CONDITIONNÉ AU FRANCHISSEMENT DU JALON 14-4.
   # C'est le produit : ne pas démarrer tant que les lignes ne sont pas dans les bonnes cases.
   # Démarré malgré le jalon non franchi — décision de l'utilisateur du 2026-09-05.
-  epic-15: review
-  15-1-moteur-analyse-arbre-et-indicateurs: review
-  15-2-endpoint-analyse-fiabilite-solde: review
-  15-3-page-analyse-selecteur-et-indicateurs: review
-  15-4-repartition-par-rubrique-et-poste: review
-  15-5-descente-agregat-vers-transactions: review
-  15-6-evolution-entre-periodes: review
+  epic-15: done
+  15-1-moteur-analyse-arbre-et-indicateurs: done
+  15-2-endpoint-analyse-fiabilite-solde: done
+  15-3-page-analyse-selecteur-et-indicateurs: done
+  15-4-repartition-par-rubrique-et-poste: done
+  15-5-descente-agregat-vers-transactions: done
+  15-6-evolution-entre-periodes: done
   epic-15-retrospective: optional
 
   # Epic 16 — Système de design et refonte du front
@@ -241,16 +241,16 @@ development_status:
   # Les quatre stories sont implémentées et passées en revue (agent `pr-reviewer`, 2026-09-05,
   # contexte neuf) : trois bloquants levés — en-tête collant neutralisé par un `overflow` sur
   # deux tableaux, et un `disabled` natif sur un contrôle porteur d'information.
-  epic-16: review
-  16-1-fondations-tokens-fontes-reset: review
-  16-2-primitives-partagees: review
-  16-3-barre-application-et-compteurs: review
-  16-4-refonte-des-six-ecrans: review
+  epic-16: done
+  16-1-fondations-tokens-fontes-reset: done
+  16-2-primitives-partagees: done
+  16-3-barre-application-et-compteurs: done
+  16-4-refonte-des-six-ecrans: done
   # Conçue et validée, non implémentée : demande une capacité d'API nouvelle (filtre par
   # rubrique sur GET /api/transactions). Signalée plutôt que faite en passant — scope verrouillé.
   # Fermée par la story 18-13 le 2026-09-06 : la capacité d'API qui lui manquait — filtrer
   # `GET /api/transactions` par RUBRIQUE — est livrée avec elle.
-  16-5-descente-depuis-la-trajectoire: review
+  16-5-descente-depuis-la-trajectoire: done
   epic-16-retrospective: optional
 
   # ─────────────────── AUDIT DU 2026-09-06 (epics 17-18) ───────────────────
@@ -267,16 +267,16 @@ development_status:
   # Epic 17 — Correctifs de l'audit. Aucune fonctionnalité nouvelle.
   # Ordre = gravité décroissante : 17-1 à 17-3 avant tout le reste.
   epic-17: in-progress
-  17-1-texte-transmis-limite-aux-operations: review
-  17-2-lecture-des-soldes-robuste: review
-  17-3-ecart-accepte-neutre: review
-  17-4-dates-bornees-a-la-periode: review
-  17-5-relance-transitoire-et-ordre-des-etapes: review
-  17-6-descente-par-poste-rechargement-et-course: review
-  17-7-erreurs-de-chargement-et-invalidation: review
-  17-8-index-de-poste-et-echappement-like: review
-  17-9-suppression-du-forecast-residuel: review
-  17-10-sauvegarde-et-restauration: review
+  17-1-texte-transmis-limite-aux-operations: done
+  17-2-lecture-des-soldes-robuste: done
+  17-3-ecart-accepte-neutre: done
+  17-4-dates-bornees-a-la-periode: done
+  17-5-relance-transitoire-et-ordre-des-etapes: done
+  17-6-descente-par-poste-rechargement-et-course: done
+  17-7-erreurs-de-chargement-et-invalidation: done
+  17-8-index-de-poste-et-echappement-like: done
+  17-9-suppression-du-forecast-residuel: done
+  17-10-sauvegarde-et-restauration: done
   # PARTIELLE : la CI est livrée, le seuil de couverture NON.
   # La mesure est cassée dans ce dépôt — avec `v8` comme avec `istanbul`, les onze fichiers du
   # périmètre sont instrumentés puis rapportés à 0/N statements alors que les 497 tests les
@@ -322,8 +322,8 @@ development_status:
   #     et `server/utils/sql-like.ts` (story 17.8) disparaît, sans consommateur.
   #   • MAJEURS — le chapeau de `/regles` affirmait encore qu'une règle ne touche pas
   #     l'existant ; `skippedManualCount` comptait des lignes qu'aucune règle n'aurait bougées.
-  18-1-filtres-de-requalification: review
-  18-2-reapplication-d-une-regle-a-l-historique: review
+  18-1-filtres-de-requalification: done
+  18-2-reapplication-d-une-regle-a-l-historique: done
   18-3-rubriques-classees-par-variation: backlog
   18-4-releve-source-et-fiabilite-partout: backlog
   18-5-comparaison-moyenne-douze-tranches: backlog
@@ -351,30 +351,30 @@ development_status:
   #   • `formatEuros(tx.amountCents as never)` contournait le type branded : `RangeTransaction`
   #     porte maintenant `Cents`, et les casts disparaissent en amont.
   # Vérifications : 525 tests unitaires, 20 E2E, lint et typecheck propres.
-  18-9-etat-d-application-d-une-regle: review
-  18-10-ecran-des-non-categorises: review
+  18-9-etat-d-application-d-une-regle: done
+  18-10-ecran-des-non-categorises: done
   # Née de l'usage réel, 2026-09-06 : le bloc des mouvements internes ne dit pas le SENS des
   # flux, et son net les cache — « Virement entre comptes » affiche -651,40 € sur 2026 quand
   # 4 512 € sont sortis et 3 861 € rentrés. Le code couleur n'est pas la réponse : ailleurs il
   # signale la VARIATION, pas le sens. Arbitrage : flux bruts par nœud ET phrase de lecture.
-  18-11-sens-des-mouvements-internes: review
+  18-11-sens-des-mouvements-internes: done
   # Demandée le 2026-09-06 : ouvrir l'analyse d'une tranche depuis le tableau d'évolution.
-  18-12-descente-evolution-vers-analyse: review
+  18-12-descente-evolution-vers-analyse: done
   # Née de l'usage réel : le suivi d'une cible était caché en bas de page et sans issue vers
   # les lignes. Il passe en tête, ses tranches s'ouvrent sur leurs transactions, et l'infobulle
   # donne la répartition par poste. Son tableau ne redirige PLUS vers l'analyse (18-12 amendée).
   # Ferme au passage la story 16-5, en backlog depuis l'epic 16.
-  18-13-suivi-de-cible-au-coeur-de-l-evolution: review
+  18-13-suivi-de-cible-au-coeur-de-l-evolution: done
   # LE manque de fond, formule le 2026-09-06 : « est-ce que mon patrimoine a augmente ou
   # baisse ». Le chiffre existait deja - recettes + depenses, internes exclus - sous le nom
   # comptable « Tresorerie de la periode », dans lequel l'utilisateur ne reconnaissait pas sa
   # question. Sur l'historique reel : compte courant -2 646 EUR, patrimoine -10 412 EUR.
   # L'ecart, 7 766 EUR, est ce qui a ete tire de l'epargne pour tenir le compte a flot.
-  18-14-variation-du-patrimoine: review
-  18-15-transactions-groupees-par-poste: review
+  18-14-variation-du-patrimoine: done
+  18-15-transactions-groupees-par-poste: done
   # Le selecteur de l'evolution designait le PAS, la fenetre valant douze tranches de ce pas :
   # « Annee » donnait douze ANNEES. Il designe desormais la PERIODE regardee, decoupee en mois.
-  18-16-evolution-par-periode: review
+  18-16-evolution-par-periode: done
   18-17-tri-par-colonne-des-transactions: review
   18-18-filtre-multi-categories: review
   18-19-moyenne-mensuelle-de-la-cible: review
@@ -416,7 +416,7 @@ development_status:
   # Reporte : l'excedent de remboursement porte en bloc par une seule ligne peut lui faire
   # afficher un montant superieur au sien. Corriger demande de toucher `neutralizeSettlements`.
   # Verifications : 595 tests unitaires, 22 E2E (7 skipped), lint et typecheck propres.
-  19-4-lisibilite-des-lignes-neutralisees: review
+  19-4-lisibilite-des-lignes-neutralisees: done
   # Deux pieges rencontres a l'implementation, tous deux corriges :
   #   • ALTER TABLE de SQLite ne porte PAS d'action de cle etrangere : la migration 0007 a
   #     produit une contrainte nue la ou le schema declarait `ON DELETE SET NULL`. Le DDL de
@@ -447,7 +447,7 @@ development_status:
   # l'APPARENCE des ecrans, jamais leur ORGANISATION. Ne touche ni aux calculs ni aux donnees.
   # Demande de l'utilisateur : « ranger les onglets de maniere logique ».
   # Sept liens de meme poids -> quatre entrees, dont deux menus. Aucune URL ne change.
-  epic-20: in-progress
+  epic-20: done
   # REVUE du 2026-09-08 (4 relecteurs en contexte neuf, validation visuelle FAITE par
   # `pr-reviewer` sur une COPIE de la base) : 0 bloquant, 4 majeurs, une dizaine de mineurs.
   # Tous traites. Le defaut central etait invisible a l'oeil ET aux tests :
@@ -465,7 +465,7 @@ development_status:
   # Couverture : 15 cas E2E (7 au depart), dont `/reconciliation/<hash>` — la seule logique dont
   # la forme change — qui n'etait exercee par rien.
   # Verifications : 595 tests unitaires, 37 E2E (7 skipped), lint et typecheck propres.
-  20-1-navigation-en-deux-menus: review
+  20-1-navigation-en-deux-menus: done
 
   # Epic 21 — Compte joint : ne compter que ma moitie. Ouvert le 2026-09-08.
   # 33 virements recus du joint (+8 264,70 EUR) etaient exclus de tout, alors que les
@@ -477,6 +477,13 @@ development_status:
   epic-21: in-progress
   21-1-part-du-compte-joint: review
 
+  # ─────────── RÉGULARISATION DES STATUTS DU 2026-10-20 ───────────
+  # Les stories ci-dessus restaient en `review` alors que leur code est sur master depuis
+  # septembre. Passées en `done` quand une revue est tracée : commit b74f353 (epics 13-15),
+  # notes de revue ci-dessus (16, 17, 18-1/2, 18-9/10, lot du 2026-09-07 pour 18-11..18-16,
+  # 19-4, 20-1). RESTENT en `review`, faute de trace de relecture : 18-17, 18-18, 18-19,
+  # 19-1, 19-2, 19-3, 21-1 — à faire passer par `pr-reviewer`.
+  # Restent ouverts : 14-3 (backlog), 14-4 (jalon non franchi), 17-11 (G4).
   # =========================================================================
   # CHANTIERS CADRES LE 2026-09-12 — ORDRE DE LIVRAISON, PAS ORDRE DE NUMERO
   # =========================================================================
