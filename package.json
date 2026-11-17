@@ -1,5 +1,7 @@
 {
   "name": "personnalfinance",
+  "description": "Analyse de dépenses personnelles locale : ingère les relevés bancaires (Boursorama, Crédit Mutuel), les catégorise via LLM et montre où part l’argent.",
+  "license": "MIT",
   "type": "module",
   "private": true,
   "engines": {

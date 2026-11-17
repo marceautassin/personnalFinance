@@ -1,8 +1,26 @@
 # personnalFinance
 
-App d'**analyse de dépenses personnelles**, locale et mono-utilisateur. Ingère des relevés PDF
-Boursorama/Boursobank, catégorise chaque ligne via un modèle de langage, et restitue **où part
-l'argent** — par rubrique et par poste, sur une période choisie, avec l'évolution dans le temps.
+App d'**analyse de dépenses personnelles**, locale (aucun cloud, aucune authentification).
+Ingère des relevés bancaires, catégorise chaque ligne via un modèle de langage, et restitue
+**où part l'argent** — par rubrique et par poste, sur une période choisie, avec l'évolution
+dans le temps.
+
+## Ce que fait l'app
+
+- **Banques prises en charge** : relevés PDF Boursorama/Boursobank, relevés PDF Crédit Mutuel
+  et export Excel de l'historique Crédit Mutuel. La banque est choisie (et préremplie) à
+  chaque dépôt ; un dépôt croisé est refusé.
+- **Réconciliation** : la somme des lignes est confrontée au solde du relevé, au centime près.
+  Un écart rend le mois « non fiable » — jamais ignoré silencieusement.
+- **Catégorisation** : référentiel à deux niveaux (rubrique → poste) portant la nature du
+  mouvement (`income` / `expense` / `internal_transfer`), règles de classement déterministes,
+  apprentissage depuis les corrections manuelles.
+- **Profils** : plusieurs profils, chacun avec ses propres données ; on bascule de l'un à
+  l'autre.
+- **Écrans** : Import · Analyse (répartition + 4 indicateurs) · Évolution · Transactions ·
+  À ranger (non catégorisées) · Règles · Catégories · Réconciliation · Profils.
+- **Traçabilité** : tout montant affiché descend jusqu'aux lignes qui le composent. Aucun
+  agrégat persisté.
 
 > Le cadrage initial (forecast inverse, dividende SAS, dettes, fiscalité) a été invalidé par
 > l'usage réel le 2026-09-04 et retiré du code. Les documents de l'ancien périmètre sont
@@ -13,8 +31,9 @@ Specs complètes : `_bmad-output/planning-artifacts/{prd,architecture,epics}.md`
 
 ## Stack
 
-Nuxt 4 (SPA) · Nitro · SQLite + Drizzle · `unpdf` · **Mistral** (modèle `zai-glm-5-2`,
-inférence Europe) · CSS vanilla · Pinia · Zod · Vitest + Playwright · **Yarn Classic**.
+Nuxt 4 (SPA) · Nitro · SQLite + Drizzle · `unpdf` · `exceljs` · **Mistral** (modèle
+`zai-glm-5-2`, surchargeable par `MISTRAL_CATEGORIZER_MODEL`, inférence Europe) · CSS vanilla ·
+Pinia · Zod · Vitest + Playwright · **Yarn Classic**.
 
 ## Prérequis
 
@@ -36,6 +55,7 @@ cp .env.example .env
 yarn dev                  # Nuxt + Nitro hot reload sur http://localhost:3000
 yarn db:generate          # Génère un fichier de migration Drizzle
 yarn apply-migration      # Applique les migrations pending
+yarn db:migrate-safe      # Migration avec sauvegarde vérifiée, échoue en cas de perte de données
 yarn db:backup            # Sauvegarde la base + exporte les corrections (voir plus bas)
 yarn db:studio            # Drizzle Studio (explorer la base)
 yarn test                 # Vitest watch
@@ -63,8 +83,8 @@ Toutes les conventions sont codifiées dans `CLAUDE.md`. Quelques rappels critiq
 - **Yarn Classic uniquement** (pas npm/pnpm)
 - **CSS vanilla** uniquement (pas de Tailwind)
 - **`Cents` branded type** pour toute valeur monétaire (pas de `float`)
-- **Boundaries imperméables** : `unpdf` via `pdf-extractor`, le SDK Mistral via
-  `llm-categorizer`, DB via Drizzle uniquement
+- **Boundaries imperméables** : `unpdf` via `pdf-extractor`, `exceljs` via
+  `spreadsheet-extractor`, le SDK Mistral via `llm-categorizer`, DB via Drizzle uniquement
 - **`.env`** ne quitte JAMAIS la machine (gitignored, jamais en log/réponse/bundle)
 
 ## Ce qui part au fournisseur de modèle
@@ -89,3 +109,7 @@ cohérente de la base, et un export JSON des **corrections** — règles de clas
 reclassements manuels, écarts assumés, référentiel. Les PDF suffisent à reconstruire les
 montants ; ils ne reconstruisent pas le rangement, qui est le seul travail que la machine ne
 refait pas.
+
+## Licence
+
+[MIT](LICENSE)
