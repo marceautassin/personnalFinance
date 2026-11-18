@@ -1,13 +1,21 @@
 import type { IngestionResult } from '~~/shared/schemas/ingestion-result.schema'
-import type { ReliabilityValue } from '~~/server/db/schema'
+import type { StatementReliability } from '~~/shared/types/statement-reliability'
+import type { Ratio } from '~~/shared/types/ratio'
+import type { Bank } from '~~/shared/types/bank'
 
 export interface StatementListItem {
   hash: string
+  bank: Bank
   periodStart: string
   periodEnd: string
-  reliability: ReliabilityValue
+  reliability: StatementReliability
   ingestedAt: number
   transactionCount: number
+  manualCount: number
+  /** `null` sur un relevé sans transaction : le taux n'est pas défini, il n'est pas nul. */
+  correctionRate: Ratio | null
+  /** Écart courant, recalculé à la lecture — jamais stocké. */
+  gapCents: number
 }
 
 export interface StatementsListResponse {
@@ -18,12 +26,18 @@ const EMPTY_STATEMENTS_LIST: StatementsListResponse = { statements: [] }
 
 /**
  * Liste de tous les relevés ingérés (story 3.3) — `key` constante pour partage du cache.
+ *
+ * `immediate` (défaut `true`) : `useBaseHealth` le passe à `false` pour ne PAS partir tant
+ * qu'aucun profil courant n'existe (story 27.3, revue IMPORTANT 2) — sans quoi la barre
+ * d'application déclenche ce fetch sur `/profils`, précisément l'écran où la garde de route
+ * envoie un visiteur SANS profil, et l'endpoint répond `400 profile_required`.
  */
-export function useStatementsList() {
+export function useStatementsList(options: { immediate?: boolean } = {}) {
   return useFetch<StatementsListResponse>('/api/statements', {
     key: 'statements-list',
     default: () => EMPTY_STATEMENTS_LIST,
     server: false,
+    immediate: options.immediate ?? true,
   })
 }
 
@@ -54,14 +68,14 @@ export const isRetryableErrorCode = (code: string | undefined): boolean =>
  */
 export function useStatements() {
   const { mapError } = useApiError()
-  const invalidate = useInvalidate()
 
   async function uploadStatement(
     file: File,
-    opts: { confirmReplace?: boolean, signal?: AbortSignal } = {},
+    opts: { confirmReplace?: boolean, signal?: AbortSignal, bank?: Bank } = {},
   ): Promise<UploadOutcome> {
     const form = new FormData()
     form.append('file', file)
+    if (opts.bank) form.append('bank', opts.bank)
 
     try {
       const result = await $fetch<IngestionResult>('/api/statements', {
@@ -70,8 +84,10 @@ export function useStatements() {
         headers: opts.confirmReplace ? { 'X-Confirm-Replace': 'true' } : undefined,
         signal: opts.signal,
       })
-      invalidate.invalidateForecast()
-      invalidate.invalidateDashboard()
+      // Story 17.7 : PLUS d'invalidation globale par fichier. Sur un dépôt d'historique de
+      // vingt-quatre relevés, elle déclenchait vingt-quatre rechargements complets de toutes
+      // les vues montées — pour un état intermédiaire que personne ne regarde. L'appelant
+      // invalide une fois, quand la file est vide (`useIngestionQueue.drain`).
       return { result }
     }
     catch (err) {

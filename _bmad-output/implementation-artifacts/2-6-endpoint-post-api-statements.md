@@ -354,7 +354,7 @@ Si Option B retenue : ajouter aussi `server/services/statement-ingestion-orchest
 
 ### Agent Model Used
 
-claude-opus-4-7 (1M context)
+Agent de développement.
 
 ### Debug Log References
 

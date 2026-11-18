@@ -1,4 +1,5 @@
 import { ApiErrorCode, type ApiErrorCodeValue } from '~~/shared/schemas/api-errors'
+import { BANK_LABELS, BANKS, type Bank } from '~~/shared/types/bank'
 
 /**
  * Mapping code stable → message FR utilisateur.
@@ -8,15 +9,104 @@ const FR_MESSAGES: Record<ApiErrorCodeValue, string> = {
   [ApiErrorCode.ValidationFailed]: 'Les données saisies sont invalides. Vérifie les champs en erreur.',
   [ApiErrorCode.NotFound]: 'Ressource introuvable.',
   [ApiErrorCode.Unauthorized]: 'Tu n\'es pas autorisé à effectuer cette action.',
+  [ApiErrorCode.ProfileRequired]: 'Choisis un profil pour continuer.',
+  [ApiErrorCode.ProfileNameTaken]: 'Ce nom de profil est déjà utilisé.',
   [ApiErrorCode.PdfAlreadyIngested]: 'Ce relevé a déjà été ingéré. Si c\'est une mise à jour, supprime l\'ancien d\'abord.',
-  [ApiErrorCode.PdfParseFailed]: 'L\'analyse du PDF a échoué. Vérifie qu\'il s\'agit bien d\'un relevé Boursorama valide.',
+  [ApiErrorCode.PdfParseFailed]: 'L\'analyse du PDF a échoué. Vérifie qu\'il s\'agit bien d\'un relevé valide pour la banque sélectionnée.',
   [ApiErrorCode.PeriodOverlap]: 'La période de ce relevé chevauche un relevé déjà ingéré. Confirme le remplacement pour continuer.',
+  [ApiErrorCode.BankMismatch]: 'Ce relevé ne correspond pas à la banque sélectionnée.',
+  [ApiErrorCode.StatementFormatUnrecognized]: 'Ce fichier n\'est ni un relevé PDF ni un export Excel reconnu.',
   [ApiErrorCode.LlmExtractionFailed]: 'L\'analyse automatique du relevé a échoué. Réessaie ou ajoute les transactions manuellement.',
   [ApiErrorCode.LlmUnavailable]: 'Le service de catégorisation est indisponible. Réessaie dans quelques instants.',
+  [ApiErrorCode.LlmConfigError]: 'Accès au fournisseur refusé : vérifiez la clé MISTRAL_API_KEY dans .env. Réessayer n\'y changera rien.',
   [ApiErrorCode.ReconciliationFailed]: 'Les transactions extraites ne correspondent pas au solde du relevé. Une vérification manuelle est nécessaire.',
+  [ApiErrorCode.CategoryInUse]: 'Poste encore utilisé par des transactions — reclasse-les d\'abord.',
+  [ApiErrorCode.CategoryProtected]: 'Élément système : il ne peut être ni supprimé, ni réorienté.',
+  [ApiErrorCode.CategoryLabelTaken]: 'Ce libellé est déjà utilisé dans cette rubrique.',
+  [ApiErrorCode.CategoriesNotSeeded]: 'Référentiel absent en base : relance l\'application pour rejouer l\'initialisation.',
+  [ApiErrorCode.GroupNotEmpty]: 'Rubrique encore peuplée — supprime ou déplace ses postes d\'abord.',
+  [ApiErrorCode.GroupNotFound]: 'Rubrique introuvable.',
+  [ApiErrorCode.RuleAlreadyExists]: 'Une règle existe déjà pour ce motif.',
 }
 
 const FALLBACK_MESSAGE = 'Une erreur est survenue. Réessaie ou recharge la page.'
+
+/**
+ * Résultat d'une mutation composable : `ok` en succès, sinon `error` (message FR utilisateur)
+ * + `errorCode` (code stable API, pour réagir au code côté appelant). Forme partagée par tous
+ * les composables de mutation — voir `mapMutationError`.
+ */
+export interface MutationOutcome {
+  ok?: true
+  error?: string
+  errorCode?: string
+}
+
+/** Pluriel FR simple : `1 transaction` / `3 transactions`. */
+function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count} ${count > 1 ? pluralForm : singular}`
+}
+
+/**
+ * Message détaillé du 409 `category_in_use` à partir du compteur renvoyé par l'API. Le mapping
+ * statique ne mentionnait aucun chiffre — l'utilisateur ne savait pas combien de transactions
+ * reclasser, ni si le blocage venait d'une ou de deux cents lignes (revue 2026-08-04).
+ */
+function categoryInUseMessage(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null
+  const count = (data as Record<string, unknown>).transactionCount
+  if (typeof count !== 'number' || count === 0) return null
+  return `Poste utilisé par ${plural(count, 'transaction', 'transactions')} — reclasse-les d'abord.`
+}
+
+/** Message détaillé du 409 `group_not_empty` : combien de postes bloquent la suppression. */
+function groupNotEmptyMessage(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null
+  const count = (data as Record<string, unknown>).itemCount
+  if (typeof count !== 'number' || count === 0) return null
+  return `Rubrique contenant ${plural(count, 'poste', 'postes')} — supprime-les ou déplace-les d'abord.`
+}
+
+/**
+ * Message détaillé du 400 `bank_mismatch` : nomme la banque reconnue par le contenu du PDF
+ * (`data.detected`), ou dit qu'aucune banque n'a été reconnue. Sans ce détail, l'utilisateur
+ * ne sait pas quelle banque choisir pour redéposer le même fichier.
+ */
+function bankMismatchMessage(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null
+  const detected = (data as Record<string, unknown>).detected
+  if (detected === null) return 'Ce relevé ne correspond pas à la banque sélectionnée, et sa banque n\'a pas pu être reconnue.'
+  if (typeof detected !== 'string' || !(BANKS as readonly string[]).includes(detected)) return null
+  return `Ce relevé semble être un relevé ${BANK_LABELS[detected as Bank]} — sélectionne cette banque et redépose le fichier.`
+}
+
+const STATEMENT_FORMAT_REASONS: Record<string, string> = {
+  no_current_account: 'aucune section de compte courant n\'a été trouvée',
+  multiple_current_accounts: 'plusieurs comptes courants figurent dans ce relevé',
+  current_account_section_repeated: 'la section du compte courant est présentée d\'une façon jamais rencontrée jusqu\'ici',
+  current_account_section_not_closed: 'la section du compte courant n\'est pas close comme d\'habitude',
+  continuation_page_without_header: 'une page de suite n\'a pas son en-tête de colonnes',
+  unexpected_balance_line_count: 'les lignes de solde du compte courant sont inattendues',
+  balance_unreadable: 'un solde n\'a pas pu être lu',
+  positional_reading_unavailable: 'la mise en page du PDF n\'a pas pu être lue',
+}
+
+/**
+ * Message détaillé du 400 `statement_format_unrecognized` d'un relevé PDF (story 28.2) : dit POURQUOI
+ * le relevé est refusé. Les raisons d'un export Excel, ou inconnues, gardent le message générique.
+ */
+function statementFormatMessage(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null
+  const { reason, label } = data as Record<string, unknown>
+  if (typeof reason !== 'string') return null
+  if (reason === 'unsupported_balance_line') {
+    if (typeof label !== 'string' || !/^SOLDE [A-Z ]{1,20} AU$/u.test(label)) return null
+    const kind = /DEBITEUR/u.test(label) ? 'solde débiteur' : 'ligne de solde'
+    return `Relevé Crédit Mutuel non pris en charge : ${kind} (${label}) jamais rencontré jusqu'ici.`
+  }
+  const why = Object.hasOwn(STATEMENT_FORMAT_REASONS, reason) ? STATEMENT_FORMAT_REASONS[reason] : null
+  return why ? `Relevé Crédit Mutuel non pris en charge : ${why}.` : null
+}
 
 /**
  * Composable de mapping erreur API → message utilisateur FR.
@@ -28,10 +118,30 @@ export function useApiError() {
 
     // Pour les FetchError ofetch/Nuxt, err.statusMessage = phrase HTTP ("Bad Request")
     // et le code domaine est dans err.data.statusMessage. On lit data en priorité.
-    const e = err as { statusMessage?: unknown, data?: { statusMessage?: unknown } }
+    const e = err as {
+      statusMessage?: unknown
+      data?: { statusMessage?: unknown, data?: unknown }
+    }
     const code = e.data?.statusMessage ?? e.statusMessage
     if (typeof code !== 'string') return FALLBACK_MESSAGE
     if (!Object.hasOwn(FR_MESSAGES, code)) return FALLBACK_MESSAGE
+
+    if (code === ApiErrorCode.CategoryInUse) {
+      const detailed = categoryInUseMessage(e.data?.data)
+      if (detailed) return detailed
+    }
+    if (code === ApiErrorCode.GroupNotEmpty) {
+      const detailed = groupNotEmptyMessage(e.data?.data)
+      if (detailed) return detailed
+    }
+    if (code === ApiErrorCode.StatementFormatUnrecognized) {
+      const detailed = statementFormatMessage(e.data?.data)
+      if (detailed) return detailed
+    }
+    if (code === ApiErrorCode.BankMismatch) {
+      const detailed = bankMismatchMessage(e.data?.data)
+      if (detailed) return detailed
+    }
 
     return FR_MESSAGES[code as ApiErrorCodeValue]
   }

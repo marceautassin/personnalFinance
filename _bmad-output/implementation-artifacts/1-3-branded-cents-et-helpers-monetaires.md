@@ -307,7 +307,7 @@ Le dossier `shared/` peut ne pas exister encore — le créer. Nuxt 4 auto-impor
 
 ### Agent Model Used
 
-claude-opus-4-7 (1M context)
+Agent de développement.
 
 ### Debug Log References
 

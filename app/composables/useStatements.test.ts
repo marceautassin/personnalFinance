@@ -5,27 +5,33 @@ const mapErrorMock = vi.fn((err: unknown) => {
   const e = err as { statusMessage?: string, data?: { statusMessage?: string } }
   return `mapped:${e.data?.statusMessage ?? e.statusMessage ?? 'unknown'}`
 })
-const invalidateForecast = vi.fn()
-const invalidateDashboard = vi.fn()
+const invalidateAnalysis = vi.fn()
 
 vi.stubGlobal('$fetch', fetchMock)
 vi.stubGlobal('useApiError', () => ({ mapError: mapErrorMock }))
-vi.stubGlobal('useInvalidate', () => ({ invalidateForecast, invalidateDashboard }))
+vi.stubGlobal('useInvalidate', () => ({ invalidateAnalysis }))
 
 const { useStatements } = await import('./useStatements')
 
 beforeEach(() => {
   fetchMock.mockReset()
   mapErrorMock.mockClear()
-  invalidateForecast.mockClear()
-  invalidateDashboard.mockClear()
+  invalidateAnalysis.mockClear()
 })
 afterEach(() => vi.clearAllMocks())
 
 const fakeFile = new File(['hello'], 'releve.pdf', { type: 'application/pdf' })
 
 describe('useStatements.uploadStatement', () => {
-  it('retourne le résultat et invalide les vues sur succès', async () => {
+  /**
+   * Story 17.7 — l'invalidation n'est PLUS déclenchée par fichier.
+   *
+   * Sur un dépôt d'historique de vingt-quatre relevés, une invalidation globale par fichier
+   * provoquait vingt-quatre rechargements complets de toutes les vues montées, pour des états
+   * intermédiaires que personne ne regarde. C'est la file (`useIngestionQueue.drain`) qui
+   * invalide une fois, quand elle se vide.
+   */
+  it('retourne le résultat sans invalider les vues à chaque fichier', async () => {
     const result = {
       hash: 'a'.repeat(64),
       periodStart: '2026-01-01',
@@ -41,8 +47,7 @@ describe('useStatements.uploadStatement', () => {
     expect(out.result).toEqual(result)
     expect(out.error).toBeUndefined()
     expect(out.overlap).toBeUndefined()
-    expect(invalidateForecast).toHaveBeenCalledTimes(1)
-    expect(invalidateDashboard).toHaveBeenCalledTimes(1)
+    expect(invalidateAnalysis).not.toHaveBeenCalled()
 
     // POST multipart sans header Confirm-Replace par défaut
     const [url, opts] = fetchMock.mock.calls[0]!
@@ -50,6 +55,36 @@ describe('useStatements.uploadStatement', () => {
     expect(opts.method).toBe('POST')
     expect(opts.body).toBeInstanceOf(FormData)
     expect(opts.headers).toBeUndefined()
+  })
+
+  it('ajoute le champ multipart bank quand fourni (AC 2, story 28.1)', async () => {
+    fetchMock.mockResolvedValueOnce({
+      hash: 'd'.repeat(64),
+      periodStart: '2026-03-01',
+      periodEnd: '2026-03-31',
+      transactionCount: 0,
+      isBalanced: true,
+      gapCents: 0,
+    })
+    await useStatements().uploadStatement(fakeFile, { bank: 'credit_mutuel' })
+    const [, opts] = fetchMock.mock.calls[0]!
+    const form = opts.body as FormData
+    expect(form.get('bank')).toBe('credit_mutuel')
+  })
+
+  it('n\'ajoute aucun champ bank quand absent — le serveur retombe sur le défaut du profil', async () => {
+    fetchMock.mockResolvedValueOnce({
+      hash: 'e'.repeat(64),
+      periodStart: '2026-03-01',
+      periodEnd: '2026-03-31',
+      transactionCount: 0,
+      isBalanced: true,
+      gapCents: 0,
+    })
+    await useStatements().uploadStatement(fakeFile)
+    const [, opts] = fetchMock.mock.calls[0]!
+    const form = opts.body as FormData
+    expect(form.get('bank')).toBeNull()
   })
 
   it('ajoute le header X-Confirm-Replace quand confirmReplace = true', async () => {
@@ -85,7 +120,7 @@ describe('useStatements.uploadStatement', () => {
     expect(out.error).toBeUndefined()
     expect(out.result).toBeUndefined()
     expect(mapErrorMock).not.toHaveBeenCalled()
-    expect(invalidateForecast).not.toHaveBeenCalled()
+    expect(invalidateAnalysis).not.toHaveBeenCalled()
   })
 
   it('retombe sur error si 409 mais data est incomplète', async () => {
@@ -105,7 +140,7 @@ describe('useStatements.uploadStatement', () => {
     expect(out.error).toBe('mapped:pdf_already_ingested')
     expect(out.errorCode).toBe('pdf_already_ingested')
     expect(mapErrorMock).toHaveBeenCalledTimes(1)
-    expect(invalidateForecast).not.toHaveBeenCalled()
+    expect(invalidateAnalysis).not.toHaveBeenCalled()
   })
 
   it('retourne aborted=true quand le signal est avorté', async () => {

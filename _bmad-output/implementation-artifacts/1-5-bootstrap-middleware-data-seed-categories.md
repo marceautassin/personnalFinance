@@ -206,7 +206,7 @@ Le dossier `server/middleware/` peut ne pas exister — le créer.
 
 ### Agent Model Used
 
-claude-opus-4-7 (Claude Code)
+Agent de développement.
 
 ### Debug Log References
 

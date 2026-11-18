@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { H3Event } from 'h3'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-tx-patch-api-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
@@ -25,46 +26,16 @@ beforeAll(async () => {
 
   // @ts-expect-error -- accès interne drizzle pour DDL de test
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE bank_statements (
-      hash_sha256 TEXT PRIMARY KEY,
-      period_start TEXT NOT NULL,
-      period_end TEXT NOT NULL,
-      opening_balance_cents INTEGER NOT NULL,
-      closing_balance_cents INTEGER NOT NULL,
-      reliability TEXT NOT NULL DEFAULT 'reliable',
-      ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      statement_hash TEXT NOT NULL REFERENCES bank_statements(hash_sha256) ON DELETE CASCADE,
-      transaction_date TEXT NOT NULL,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      is_manual INTEGER NOT NULL DEFAULT 0,
-      is_debt_repayment INTEGER NOT NULL DEFAULT 0,
-      debt_id INTEGER,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE INDEX transactions_period_idx ON transactions(transaction_date);
-    CREATE INDEX transactions_statement_idx ON transactions(statement_hash);
-  `)
-
-  dbMod.db.insert(schema.categoryDefinitions).values([
-    { code: 'courses', label: 'Courses' },
-    { code: 'restaurants', label: 'Restaurants' },
-  ]).run()
+  sqlite.exec(TEST_SCHEMA_DDL)
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 
   handler = (await import('./[id].patch')).default as Handler
 })
+
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
 
 afterAll(() => {
   sqlite?.close?.()
@@ -83,11 +54,13 @@ const HASH_A = 'a'.repeat(64)
 function seedStatement(hash = HASH_A) {
   dbMod.db.insert(schema.bankStatements).values({
     hashSha256: hash,
+    profileId: 1,
+    bank: 'boursorama',
     periodStart: '2026-04-01',
     periodEnd: '2026-04-30',
     openingBalanceCents: 100_000,
     closingBalanceCents: 50_000,
-    reliability: 'reliable',
+    gapAccepted: false,
   }).run()
 }
 
@@ -97,14 +70,16 @@ function seedTransaction(): number {
     transactionDate: '2026-04-15',
     label: 'Carrefour',
     amountCents: -2500,
-    categoryCode: 'courses',
+    categoryItemId: itemId('alimentation-courses'),
   }).run()
   return Number(result.lastInsertRowid)
 }
 
-function makeEvent(id: string, body: unknown): H3Event {
+function makeEvent(id: string, body: unknown, profileId?: number): H3Event {
   const rawBody = body === undefined ? '' : JSON.stringify(body)
-  const req = { headers: { 'content-type': 'application/json' }, method: 'PATCH' }
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  if (profileId !== undefined) headers.cookie = `pf_profile=${profileId}`
+  const req = { headers, method: 'PATCH' }
   return {
     _requestBody: rawBody,
     node: { req, res: {} },
@@ -115,58 +90,56 @@ function makeEvent(id: string, body: unknown): H3Event {
 }
 
 describe('PATCH /api/transactions/[id]', () => {
-  it('updates categoryCode and flips is_manual to true', async () => {
+  it('updates categoryItemCode and flips is_manual to true', async () => {
     seedStatement()
     const id = seedTransaction()
 
-    const result = (await handler(makeEvent(String(id), { categoryCode: 'restaurants' }))) as {
+    const result = (await handler(makeEvent(String(id), { categoryItemCode: 'alimentation-restaurant' }))) as {
       id: number
-      categoryCode: string
+      categoryItemCode: string
       isManual: boolean
-      isDebtRepayment: boolean
-      debtId: number | null
     }
 
     expect(result.id).toBe(id)
-    expect(result.categoryCode).toBe('restaurants')
+    expect(result.categoryItemCode).toBe('alimentation-restaurant')
     expect(result.isManual).toBe(true)
-    expect(result.isDebtRepayment).toBe(false)
-    expect(result.debtId).toBeNull()
   })
 
-  it('persists isDebtRepayment + debtId without creating a debt_repayments row (Story 6.3 scope)', async () => {
+  it('sets isManual only when the patch touches the category (Story 6.8)', async () => {
     seedStatement()
     const id = seedTransaction()
-
-    const result = (await handler(makeEvent(String(id), { isDebtRepayment: true, debtId: 42 }))) as {
-      isDebtRepayment: boolean
-      debtId: number | null
+    const result = (await handler(makeEvent(String(id), { categoryItemCode: 'alimentation-restaurant' }))) as {
+      categoryItemCode: string
       isManual: boolean
     }
-
-    expect(result.isDebtRepayment).toBe(true)
-    expect(result.debtId).toBe(42)
+    expect(result.categoryItemCode).toBe('alimentation-restaurant')
     expect(result.isManual).toBe(true)
   })
+
+  // Contrat CHANGÉ par la story 6.5 (D16) : une transaction ENTRANTE peut être rattachée à une
+  // dette — c'est la condition d'un compte-courant conjoint, où un règlement reçu diminue le
+  // solde (FR66/FR67). La garde précédente refusait tout `amountCents >= 0`, ce qui rendait ce
+  // cas structurellement impossible. FR9 reste vrai pour ce qu'il dit : seule une SORTIE est un
+  // « remboursement » ; une entrée rattachée est un mouvement de sens inverse.
 
   it('returns 404 not_found for unknown id', async () => {
     seedStatement()
     seedTransaction()
 
     await expect(
-      handler(makeEvent('999999', { categoryCode: 'restaurants' })),
+      handler(makeEvent('999999', { categoryItemCode: 'alimentation-restaurant' })),
     ).rejects.toMatchObject({
       statusCode: 404,
       statusMessage: ApiErrorCode.NotFound,
     })
   })
 
-  it('returns 422 validation_failed for unknown categoryCode (FK pre-check)', async () => {
+  it('returns 422 validation_failed for unknown categoryItemCode (FK pre-check)', async () => {
     seedStatement()
     const id = seedTransaction()
 
     await expect(
-      handler(makeEvent(String(id), { categoryCode: 'this-does-not-exist' })),
+      handler(makeEvent(String(id), { categoryItemCode: 'this-does-not-exist' })),
     ).rejects.toMatchObject({
       statusCode: 422,
       statusMessage: ApiErrorCode.ValidationFailed,
@@ -174,7 +147,7 @@ describe('PATCH /api/transactions/[id]', () => {
 
     const rows = dbMod.db.select().from(schema.transactions).all()
     const row = rows.find(r => r.id === id)!
-    expect(row.categoryCode).toBe('courses')
+    expect(row.categoryItemId).toBe(itemId('alimentation-courses'))
     expect(row.isManual).toBe(false)
   })
 
@@ -192,10 +165,111 @@ describe('PATCH /api/transactions/[id]', () => {
 
   it('returns 422 validation_failed for non-numeric id', async () => {
     await expect(
-      handler(makeEvent('abc', { categoryCode: 'restaurants' })),
+      handler(makeEvent('abc', { categoryItemCode: 'alimentation-restaurant' })),
     ).rejects.toMatchObject({
       statusCode: 422,
       statusMessage: ApiErrorCode.ValidationFailed,
     })
+  })
+})
+
+/**
+ * Proposition de règle après une correction manuelle (FR43).
+ *
+ * Une correction porte une connaissance que le modèle n'a pas. Sans mémoire, l'utilisateur la
+ * ressaisit à chaque relevé : sur 20 mois de données réelles, `CDISCOUNT` revient 18 fois.
+ */
+describe('PATCH /api/transactions/[id] — proposition de règle', () => {
+  function seedTx(label: string) {
+    seedStatement()
+    dbMod.db.insert(schema.transactions).values({
+      statementHash: HASH_A,
+      transactionDate: '2026-04-05',
+      label,
+      amountCents: -1000,
+      categoryItemId: itemId('divers-non-categorise'),
+    }).run()
+    return dbMod.db.select().from(schema.transactions).all().at(-1)!.id
+  }
+
+  beforeEach(() => {
+    dbMod.db.delete(schema.classificationRules).run()
+  })
+
+  it('propose le commerçant comme motif après un reclassement', async () => {
+    const id = seedTx('CARTE 12/03/26 CDISCOUNT A CB*0000')
+    const out = (await handler(makeEvent(String(id), { categoryItemCode: 'alimentation-courses' }))) as {
+      ruleSuggestion: { pattern: string, categoryItemCode: string } | null
+    }
+    expect(out.ruleSuggestion).toEqual({
+      pattern: 'cdiscount a',
+      categoryItemCode: 'alimentation-courses',
+    })
+  })
+
+  /** Un chèque n'a pas de commerçant : une règle attraperait tous les chèques indistinctement. */
+  it('ne propose rien quand le libellé ne porte aucun commerçant', async () => {
+    const id = seedTx('CHQ. N.7925088')
+    const out = (await handler(makeEvent(String(id), { categoryItemCode: 'alimentation-courses' }))) as {
+      ruleSuggestion: unknown
+    }
+    expect(out.ruleSuggestion).toBeNull()
+  })
+
+  /**
+   * Une règle couvre déjà ce libellé : elle vient d'être contredite par la correction.
+   * En proposer une seconde créerait deux règles concurrentes sur la même ligne.
+   */
+  it('ne propose rien quand une règle couvre déjà le libellé', async () => {
+    dbMod.db.insert(schema.classificationRules).values({
+      profileId: 1,
+      pattern: 'cdiscount',
+      categoryItemId: itemId('alimentation-courses'),
+    }).run()
+    const id = seedTx('CARTE 12/03/26 CDISCOUNT A CB*0000')
+    const out = (await handler(makeEvent(String(id), { categoryItemCode: 'alimentation-restaurant' }))) as {
+      ruleSuggestion: unknown
+    }
+    expect(out.ruleSuggestion).toBeNull()
+    dbMod.db.delete(schema.classificationRules).run()
+  })
+
+  /**
+   * Le garde `categoryChanged` de `suggestRule` n'est pas atteignable par l'API : depuis la
+   * suppression du périmètre dettes, `TransactionPatchSchema` n'accepte plus QUE la catégorie
+   * et refuse un corps vide en 422. La garde reste, parce qu'elle redeviendra utile au premier
+   * champ patchable qui n'est pas une catégorie — mais on le teste au bon endroit.
+   */
+  it('refuse un patch qui ne touche pas la catégorie, avant même la proposition', async () => {
+    const id = seedTx('CARTE 12/03/26 CDISCOUNT A CB*0000')
+    await expect(handler(makeEvent(String(id), {}))).rejects.toMatchObject({ statusCode: 422 })
+  })
+})
+
+/** Cloisonnement entre profils (story 27.2, AC 3) : une transaction de A n'existe pas pour B. */
+describe('PATCH /api/transactions/[id] — cloisonnement entre profils', () => {
+  beforeEach(() => {
+    dbMod.db.delete(schema.classificationRules).run()
+  })
+
+  it('404 not_found : une transaction du profil A n\'existe pas pour B, même identifiant', async () => {
+    seedStatement()
+    const id = seedTransaction() // profil 1 (A)
+
+    const other = sqlite
+      .prepare('INSERT INTO profiles (name, default_bank) VALUES (?, ?)')
+      .run('conjoint', 'boursorama')
+    const otherProfileId = Number(other.lastInsertRowid)
+
+    await expect(
+      handler(makeEvent(String(id), { categoryItemCode: 'alimentation-restaurant' }, otherProfileId)),
+    ).rejects.toMatchObject({ statusCode: 404, statusMessage: ApiErrorCode.NotFound })
+
+    // La ligne de A n'a pas bougé.
+    const row = dbMod.db.select().from(schema.transactions).all().find(r => r.id === id)!
+    expect(row.categoryItemId).toBe(itemId('alimentation-courses'))
+    expect(row.isManual).toBe(false)
+
+    sqlite.prepare('DELETE FROM profiles WHERE id = ?').run(otherProfileId)
   })
 })

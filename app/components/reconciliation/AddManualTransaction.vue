@@ -5,13 +5,22 @@ import type { AddManualTransactionInput } from '~~/shared/schemas/reconciliation
 const props = defineProps<{ submitting?: boolean }>()
 const emit = defineEmits<{ submit: [tx: AddManualTransactionInput], cancel: [] }>()
 
-const { data: categories, pending: categoriesPending } = useCategories()
+/**
+ * Le sélecteur propose des POSTES groupés par rubrique, jamais des rubriques.
+ *
+ * `useCategories()` renvoie l'arbre depuis D17 ; itérer dessus directement posait un code de
+ * RUBRIQUE dans `categoryItemCode`, que le pré-check de FK rejetait en 422 « données
+ * invalides » — le formulaire était inutilisable, et ça typecheckait parce que rubrique et
+ * poste partagent `code` et `label` (revue du 2026-09-05).
+ */
+const { data: groups, pending: categoriesPending } = useCategories()
+const groupsWithItems = computed(() => groups.value.filter(g => g.items.length > 0))
 
 const transactionDate = ref('')
 const label = ref('')
 const amountInput = ref('')
 const direction = ref<'expense' | 'income'>('expense')
-const categoryCode = ref('')
+const categoryItemCode = ref('')
 const error = ref<string | null>(null)
 // Garde locale synchrone : la prop `submitting` venant du parent ne se propage qu'au tick suivant,
 // double-Enter peut sinon déclencher 2 emits avant que `:disabled` ne s'applique.
@@ -44,7 +53,7 @@ function onSubmit() {
     error.value = 'Montant invalide (nombre positif, max 2 décimales).'
     return
   }
-  if (categoryCode.value.length === 0) {
+  if (categoryItemCode.value.length === 0) {
     error.value = 'Catégorie requise.'
     return
   }
@@ -56,7 +65,7 @@ function onSubmit() {
     transactionDate: transactionDate.value,
     label: label.value.trim(),
     amountCents,
-    categoryCode: categoryCode.value,
+    categoryItemCode: categoryItemCode.value,
   })
   // Le parent réinitialise `submitting` à false ; on suit son cycle via watch sur la prop.
 }
@@ -83,6 +92,7 @@ watch(() => props.submitting, (val) => {
         <input
           v-model="transactionDate"
           type="date"
+          class="input"
           required
         >
       </label>
@@ -91,6 +101,7 @@ watch(() => props.submitting, (val) => {
         <input
           v-model="label"
           type="text"
+          class="input"
           required
           maxlength="120"
         >
@@ -100,7 +111,10 @@ watch(() => props.submitting, (val) => {
     <div class="add-tx__row">
       <label class="add-tx__field">
         <span>Sens</span>
-        <select v-model="direction">
+        <select
+          v-model="direction"
+          class="select"
+        >
           <option value="expense">
             Sortie (-)
           </option>
@@ -114,6 +128,7 @@ watch(() => props.submitting, (val) => {
         <input
           v-model="amountInput"
           type="text"
+          class="input"
           inputmode="decimal"
           placeholder="0,00"
           required
@@ -122,7 +137,8 @@ watch(() => props.submitting, (val) => {
       <label class="add-tx__field add-tx__field--grow">
         <span>Catégorie</span>
         <select
-          v-model="categoryCode"
+          v-model="categoryItemCode"
+          class="select"
           required
         >
           <option
@@ -131,37 +147,53 @@ watch(() => props.submitting, (val) => {
           >
             {{ categoriesPending ? 'Chargement…' : 'Choisir…' }}
           </option>
-          <option
-            v-for="cat in categories"
-            :key="cat.code"
-            :value="cat.code"
+          <!--
+            `<optgroup>` plutôt qu'un libellé aplati : « Restaurant » existe sous Alimentation
+            ET sous Voyages (FR19), et le libellé seul ne les distingue pas.
+          -->
+          <optgroup
+            v-for="group in groupsWithItems"
+            :key="group.code"
+            :label="group.label"
           >
-            {{ cat.label }}
-          </option>
+            <option
+              v-for="item in group.items"
+              :key="item.code"
+              :value="item.code"
+            >
+              {{ item.label }}
+            </option>
+          </optgroup>
         </select>
       </label>
     </div>
 
     <p
       v-if="error"
-      class="add-tx__error"
+      class="notice"
       role="alert"
     >
       {{ error }}
     </p>
 
     <div class="add-tx__actions">
+      <!--
+        `aria-disabled` et non `disabled` : s'il porte le focus au moment de l'envoi, un
+        `disabled` natif le fait disparaître et renvoie le clavier au début du document
+        (NFR19). La garde du clic vit donc dans le gestionnaire.
+      -->
       <button
         type="button"
-        class="add-tx__btn"
-        :disabled="submitting || localSubmitting"
-        @click="$emit('cancel')"
+        class="btn"
+        :aria-disabled="submitting || localSubmitting"
+        :aria-label="submitting || localSubmitting ? 'Annuler — impossible, enregistrement en cours' : undefined"
+        @click="!(submitting || localSubmitting) && $emit('cancel')"
       >
         Annuler
       </button>
       <button
         type="submit"
-        class="add-tx__btn add-tx__btn--primary"
+        class="btn btn--primary"
         :disabled="submitting || localSubmitting"
       >
         {{ (submitting || localSubmitting) ? 'Envoi…' : 'Ajouter' }}
@@ -180,7 +212,7 @@ watch(() => props.submitting, (val) => {
   border-radius: var(--radius-md);
   background: var(--color-bg-elevated);
 }
-.add-tx__title { margin: 0; font-size: var(--font-size-lg); }
+.add-tx__title { margin: 0; font-size: var(--font-size-md); }
 .add-tx__row {
   display: flex;
   gap: var(--space-3);
@@ -194,40 +226,10 @@ watch(() => props.submitting, (val) => {
   min-width: 8rem;
 }
 .add-tx__field--grow { flex: 1 1 12rem; }
-.add-tx__field input,
-.add-tx__field select {
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  background: var(--color-bg);
-}
-.add-tx__error {
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-left: 3px solid var(--color-danger);
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-md);
-  color: var(--color-danger);
-}
+
 .add-tx__actions {
   display: flex;
   gap: var(--space-2);
   justify-content: flex-end;
 }
-.add-tx__btn {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  font: inherit;
-  cursor: pointer;
-}
-.add-tx__btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.add-tx__btn--primary {
-  background: var(--color-accent);
-  color: white;
-  border-color: var(--color-accent);
-}
-.add-tx__btn--primary:hover:not(:disabled) { filter: brightness(1.05); }
 </style>

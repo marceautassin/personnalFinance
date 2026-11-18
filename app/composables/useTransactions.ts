@@ -1,6 +1,16 @@
 import { computed, type Ref } from 'vue'
 import type { Cents } from '~~/shared/types/money'
+import type { MutationOutcome } from './useApiError'
 import { useInvalidate } from './useInvalidate'
+import type { StatementReliability } from '~~/shared/types/statement-reliability'
+import type { SettlementStatus } from '~~/shared/types/settlement-status'
+import { bucketBounds, type Granularity } from '~~/shared/types/granularity'
+
+/** Règle que le serveur propose après une correction manuelle (FR43). */
+export interface RuleSuggestion {
+  pattern: string
+  categoryItemCode: string
+}
 
 export interface TransactionListItem {
   id: number
@@ -8,37 +18,37 @@ export interface TransactionListItem {
   transactionDate: string
   label: string
   amountCents: Cents
-  categoryCode: string
+  categoryItemCode: string
   isManual: boolean
-  isDebtRepayment: boolean
-  debtId: number | null
+  /** Groupe de réconciliation (epic 19), ou `null`. */
+  settlementGroupId?: number | null
+  /** Ce que la réconciliation a fait de cette ligne — `null` hors groupe. */
+  settlementStatus?: SettlementStatus | null
 }
 
 export interface TransactionsResponse {
   transactions: TransactionListItem[]
-  reliability: 'reliable' | 'unreliable' | null
+  reliability: StatementReliability | null
 }
 
 const EMPTY_RESPONSE: TransactionsResponse = { transactions: [], reliability: null }
 
 /**
- * Liste des transactions d'un mois (`YYYY-MM`) + reliability agrégée du/des statement(s).
- * `month` est un `Ref` réactif : changer sa valeur déclenche un refetch via la `key` calculée.
+ * Liste des transactions d'une TRANCHE + fiabilité agrégée des relevés qui la couvrent.
+ *
+ * La tranche est une clé de `granularity` — `2026`, `2026-T3` ou `2026-08` — et non plus un
+ * mois seul (demande du 2026-09-06 : « toutes les transactions de l'année, pas seulement du
+ * mois »). Les bornes en sont dérivées, comme sur l'écran d'analyse : c'est la tranche que
+ * l'utilisateur manipule, les bornes sont ce qu'on envoie à l'API.
+ *
+ * `bucket` et `granularity` sont réactifs : les changer déclenche un refetch via la `key`.
  * Pas de cache Pinia — la source de vérité est l'API (cf. CLAUDE.md anti-patterns).
  */
-export interface MutateCategoryOutcome {
-  /** Set when the PATCH succeeded and the list has been refreshed. */
-  ok?: true
-  /** Message FR utilisateur quand le PATCH a échoué. */
-  error?: string
-  /** Code stable côté API (utilisable pour décider d'un retry). */
-  errorCode?: string
-}
-
-export function useTransactions(month: Ref<string>) {
-  const key = computed(() => `transactions-${month.value}`)
+export function useTransactions(bucket: Ref<string>, granularity: Ref<Granularity>) {
+  const bounds = computed(() => bucketBounds(bucket.value, granularity.value))
+  const key = computed(() => `transactions-${bucket.value}`)
   const fetchState = useFetch<TransactionsResponse>('/api/transactions', {
-    query: { month },
+    query: computed(() => ({ from: bounds.value.from, to: bounds.value.to })),
     key,
     default: () => EMPTY_RESPONSE,
     server: false,
@@ -48,25 +58,49 @@ export function useTransactions(month: Ref<string>) {
   const invalidate = useInvalidate()
   const { mapError } = useApiError()
 
-  async function mutateCategory(id: number, categoryCode: string): Promise<MutateCategoryOutcome> {
+  /**
+   * Motif de règle proposé par le serveur après la dernière correction, ou `null`.
+   *
+   * Vit ici et non dans le composant : la proposition survit au refetch de la liste, sinon
+   * elle disparaîtrait avant que l'utilisateur ait eu le temps de la lire.
+   */
+  const ruleSuggestion = ref<RuleSuggestion | null>(null)
+
+  async function patchTransaction(
+    id: number,
+    body: Record<string, unknown>,
+    afterRefresh?: () => Promise<unknown> | unknown,
+  ): Promise<MutationOutcome> {
+    let response: { ruleSuggestion?: RuleSuggestion | null } | undefined
     try {
-      await $fetch(`/api/transactions/${id}`, {
-        method: 'PATCH',
-        body: { categoryCode },
-      })
+      response = await apiMutate<{ ruleSuggestion?: RuleSuggestion | null }>(
+        `/api/transactions/${id}`,
+        { method: 'PATCH', body },
+      )
     }
     catch (err) {
       const e = err as { statusMessage?: string, data?: { statusMessage?: string } }
       return { error: mapError(err), errorCode: e.data?.statusMessage ?? e.statusMessage }
     }
+    ruleSuggestion.value = response?.ruleSuggestion ?? null
     await fetchState.refresh()
-    invalidate.invalidateForecast()
-    invalidate.invalidateDashboard()
+    if (afterRefresh) await afterRefresh()
+    await invalidate.invalidateAnalysis()
     return { ok: true }
+  }
+
+  function mutateCategory(id: number, categoryItemCode: string): Promise<MutationOutcome> {
+    return patchTransaction(id, { categoryItemCode })
+  }
+
+  function dismissSuggestion() {
+    ruleSuggestion.value = null
   }
 
   return {
     ...fetchState,
     mutateCategory,
+    ruleSuggestion,
+    dismissSuggestion,
   }
 }

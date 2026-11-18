@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import type { TransactionListItem } from '~/composables/useTransactions'
 import { formatEuros, type Cents } from '~~/shared/types/money'
+import { settlementBadge } from '~/utils/settlement-badge'
 
 const props = defineProps<{
   transaction: TransactionListItem
+  selected?: boolean
 }>()
 
 defineEmits<{
   categoryChange: [transactionId: number, code: string]
+  toggleSelect: [transactionId: number]
 }>()
 
 const dayFormatter = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' })
@@ -19,36 +22,67 @@ const dayLabel = computed(() => {
 
 const amountLabel = computed(() => formatEuros(props.transaction.amountCents as Cents))
 
-const isNegative = computed(() => props.transaction.amountCents < 0)
+/** Badge de réconciliation — texte, ton et explication complète en infobulle (NFR20). */
+const badge = computed(() => settlementBadge(props.transaction.settlementStatus))
 </script>
 
 <template>
-  <tr class="tx-row">
+  <tr
+    class="tx-row"
+    :class="{ 'tx-row--picked': selected }"
+  >
+    <td class="tx-row__pick">
+      <input
+        type="checkbox"
+        :checked="selected"
+        :aria-label="`Sélectionner ${transaction.label}`"
+        @change="$emit('toggleSelect', transaction.id)"
+      >
+    </td>
     <td class="tx-row__date">
       {{ dayLabel }}
     </td>
-    <td class="tx-row__label">
-      <span>{{ transaction.label }}</span>
-      <small
-        v-if="transaction.isManual"
-        class="tx-row__badge tx-row__badge--manual"
-        :title="'Catégorie modifiée manuellement'"
-      >modifié</small>
-      <small
-        v-if="transaction.isDebtRepayment"
-        class="tx-row__badge tx-row__badge--debt"
-        :title="'Marqué comme remboursement de dette'"
-      >remb. dette</small>
-    </td>
     <td
-      class="tx-row__amount"
-      :class="{ 'tx-row__amount--neg': isNegative, 'tx-row__amount--pos': !isNegative }"
+      class="tx-row__label"
+      :title="transaction.label"
     >
+      <!--
+        Le flex vit sur un conteneur INTERNE, jamais sur le `<td>` : `display: flex` sort la
+        cellule du layout de tableau, et le `vertical-align: middle` de la ligne cesse alors
+        de s'y appliquer — le libellé se calait en haut pendant que la date et le montant
+        restaient centrés (recette du 2026-09-05).
+      -->
+      <span class="tx-row__label-inner">
+        <span class="tx-row__label-text">{{ transaction.label }}</span>
+        <small
+          v-if="transaction.isManual"
+          class="tag"
+          :title="'Catégorie modifiée manuellement'"
+        >modifié</small>
+        <!--
+          Badge de réconciliation (epic 19, demandé le 2026-09-07). Il dit ce que la ligne est
+          DEVENUE, pas seulement qu'elle appartient à un groupe : « lié » sans état laisserait
+          croire qu'une avance non encore remboursée ne compte plus.
+        -->
+        <small
+          v-if="badge"
+          class="tag"
+          :class="badge.tone"
+          :title="badge.title"
+        >{{ badge.text }}</small>
+      </span>
+    </td>
+    <!--
+      Montant NEUTRE (epic 16). Peindre chaque ligne en rouge ou en vert faisait un mur de
+      couleur où plus rien ne ressortait : le signe moins dit déjà le sens, et la couleur est
+      désormais réservée aux totaux, aux écarts et aux alertes.
+    -->
+    <td class="tx-row__amount num">
       {{ amountLabel }}
     </td>
     <td class="tx-row__cat">
       <CategoryEditor
-        :current-code="transaction.categoryCode"
+        :current-code="transaction.categoryItemCode"
         :transaction-id="transaction.id"
         @change="(id, code) => $emit('categoryChange', id, code)"
       />
@@ -57,22 +91,16 @@ const isNegative = computed(() => props.transaction.amountCents < 0)
 </template>
 
 <style scoped>
-.tx-row td {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  vertical-align: middle;
-}
-.tx-row__date { color: var(--color-text-muted); white-space: nowrap; }
-.tx-row__label { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.tx-row__amount { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tx-row__amount--neg { color: var(--color-danger); }
-.tx-row__amount--pos { color: var(--color-success); }
-.tx-row__badge {
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  background: var(--color-neutral-100);
-  color: var(--color-text-muted);
-}
-.tx-row__badge--debt { background: var(--color-warning-bg, #fff4cc); color: var(--color-warning, #8a6500); }
+.tx-row--picked { background: var(--color-accent-subtle); }
+.tx-row__pick { text-align: center; }
+
+.tx-row td { vertical-align: middle; }
+.tx-row__date { color: var(--color-text-muted); white-space: nowrap; font-family: var(--font-mono); font-size: var(--font-size-sm); }
+.tx-row__label { overflow: hidden; }
+/* Le libellé se TRONQUE au lieu de passer à la ligne : un libellé bancaire fait parfois
+   quatre-vingts caractères, et le laisser se replier ferait grandir la ligne — donc perdre
+   la densité que toute la refonte cherche. Le texte entier reste dans l'infobulle. */
+.tx-row__label-inner { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.tx-row__label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tx-row__amount { white-space: nowrap; }
 </style>

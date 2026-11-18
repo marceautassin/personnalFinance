@@ -191,7 +191,7 @@ Aucun changement de schéma DB. Pas de nouveau composable côté UI (story 4.3 l
 
 ### Agent Model Used
 
-Claude Opus 4.7 (1M context)
+Agent de développement.
 
 ### Debug Log References
 

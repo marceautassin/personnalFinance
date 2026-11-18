@@ -121,3 +121,99 @@
 
 - `ApiErrorCode.NotFound` mappé en FR générique "Ressource introuvable" (`app/composables/useApiError.ts:9`) — la page `/reconciliation/[hash]` ne distingue pas un 404 hash inconnu d'un 500 serveur. À enrichir quand le mapping s'étoffe.
 - `ReliabilityBadge` n'affiche aucun signal quand `reliability === 'reliable'` sur `/transactions/[period]` (badge masqué). FR14 demande un indicateur explicite. À traiter avec le dashboard narratif (Epic 4).
+
+## Deferred from: code review of epic 7 — forecast inverse (2026-07-19)
+
+- `resolveNextAgMonth` ignore le jour de clôture (`server/utils/period.ts:73-82`) — comparaison purement mensuelle (`mm >= parsed.month`) : au 15/12 avec une clôture `12-31`, l'AG est résolue à `2026-12` alors que l'exercice n'est pas encore clos. L'alerte ARE (`agMonth <= areEndMonth`) et l'affichage `AG {{agMonth}}` en héritent. Deferred : la granularité mensuelle est une simplification assumée dans tout le projet ; corriger ici seul créerait une incohérence. À reprendre si le forecast passe un jour à une granularité journalière.
+- Incohérence des signaux de fiabilité (`server/api/forecast.get.ts` vs `server/services/variable-projection.ts`) — `reducedReliability` compte les mois distincts de **toutes** les transactions (revenus et charges fixes inclus), alors que `sufficientHistory` se calcule par catégorie variable. 3 mois de relevés sans aucune dépense variable ⇒ bandeau « fiabilité OK » affiché alors que toutes les projections variables valent 0 sur un historique insuffisant. Deferred : réconcilier les deux signaux demande un arbitrage produit (fiabilité globale vs par catégorie), pas un correctif mécanique.
+
+## Deferred from: code review of stories 5.3 + 5.4 (2026-08-04)
+
+- Prorata ARE en fin de mois non défini (`server/services/forecast-engine.ts:66`) — une fin de droits au 14/03 compte le mois de mars en entier. La granularité mensuelle est une simplification assumée dans tout le projet (cf. defer `resolveNextAgMonth`, epic 7) ; corriger ici seul créerait une incohérence.
+- Lecture-puis-écriture non transactionnelle sur `PUT /api/revenues` (`server/api/revenues.put.ts:23-40`) — deux requêtes entrelacées lisent chacune un état pré-patch cohérent et peuvent produire l'état interdit `{ARE > 0, endDate: null}`. Aucune transaction, aucune contrainte CHECK en DB. V1 mono-utilisateur local ; à reprendre si déploiement multi-client (cf. epics 8-11).
+- `updated_at` en secondes et aucun contrôle de version optimiste (`server/api/revenues.put.ts:40`, `server/api/sas-config.put.ts`) — deux PUT dans la même seconde produisent un `updatedAt` identique, rendant toute détection ultérieure de perte de mise à jour impossible. À reprendre avec un `If-Match`/millisecondes si l'app devient multi-onglets sérieuse.
+- DDL des tests recréé à la main au lieu des migrations Drizzle (`server/api/revenues.test.ts`, `server/api/sas-config.test.ts`) — étend le pattern déjà flaggé en story 2.10. Refactor global : helper `tests/fixtures/setup-test-db.ts`.
+- Écart documenté à la formule littérale de l'AC#6 de la story 5.4 (`shared/services/dividend-capacity.ts:50-54`) — la décomposition `q·rate + floor(r·rate/10000)` évite le dépassement de `MAX_SAFE_INTEGER` au plafond `1e12` du schéma. Mathématiquement identique, vérifiée contre une référence BigInt. L'AC devrait être amendé pour qu'une revue future ne le lise pas comme une divergence.
+
+## Deferred from: story 19.4 — lisibilité des lignes neutralisées (2026-09-08)
+
+- **Un excédent de remboursement est porté EN BLOC par une seule ligne** (`server/services/analysis-engine.ts:92-95`). Quand plusieurs remboursements dépassent les avances, tout le surplus est posé sur la ligne d'entrée la plus récente : `remaining` peut alors excéder le montant de CETTE ligne. Cas extrême : deux virements de +100 € dans un groupe sans avance → l'un affiche `200,00 € (100,00 €)` avec le badge « remboursé en partie », l'autre `0,00 €`. Le total du groupe reste juste, mais la ligne affiche un montant qui ne figure sur aucun relevé — un accroc à NFR2 que la story 19.4 a rendu VISIBLE sans le créer. Le corriger demande de répartir le surplus entre les remboursements, c'est-à-dire de toucher `neutralizeSettlements` : la spec 19.4 range explicitement cette modification en « Ask First ». **ARBITRÉ le 2026-09-08 : on laisse en l'état.** Le cas demande un groupe dont les remboursements dépassent les avances ET qui en compte plusieurs — il n'existe pas dans l'historique, et le total reste juste. À rouvrir si l'usage le fait apparaître ; ne pas le re-signaler comme un oubli d'ici là.
+- **L'invariant « pied de descente = total du poste » n'a pas de garde automatique croisant le moteur.** Les tests comparent la somme des montants effectifs à une valeur écrite à la main, jamais au résultat de `analyze()`. Le risque est faible (les deux passent par le même `neutralizeSettlements`), mais une divergence de PORTÉE entre l'endpoint et le moteur — le défaut même corrigé par 19.4, deux fois — passerait au vert. Un test d'intégration comparant `/api/transactions` à `/api/analysis` sur la même période fermerait le trou.
+- **Le sous-total de la vue mensuelle somme les montants du relevé** (`app/pages/transactions/[period].vue:312`), là où les deux descentes somment les montants effectifs. C'est un CHOIX documenté dans le code — cet écran est le relevé, et c'est là qu'on sélectionne des lignes à lier en comparant ce que la banque a débité. À revoir seulement si l'usage montre que la double lecture gêne.
+
+## Deferred from: demande du 2026-09-08 — reporté au profit de la refonte de la navigation
+
+- **Rapprocher les virements du compte joint des dépenses qu'ils remboursent.** 30 lignes
+  `VIR INST M J DUPONT OU MME A DUPO`, **+7 915,50 €**, toutes entrantes, aujourd'hui rangées en
+  `internes-virement-comptes` (poste de 71 lignes, net −6 218 €). Formulation de l'utilisateur :
+  « ce sont des remboursements pour certaines dépenses que je fais. Il faudrait donc que je les
+  groupe avec les dépenses **mais je ne veux pas faire de bêtise en faisant cela**. »
+  Ce n'est donc PAS une requalification de nature : c'est l'usage à grande échelle du mécanisme
+  de réconciliation de l'epic 19 — et la crainte exprimée est le vrai sujet. Ce qui manque pour
+  y aller sans risque, à cadrer : retrouver quelles dépenses un virement rembourse (30 lignes
+  contre ~1 800 dépenses, à la main c'est irréalisable), voir l'effet AVANT de valider, et
+  défaire un groupe sans séquelle. À noter : la réconciliation écarte les DEUX côtés, donc
+  chaque rapprochement retire aussi la dépense correspondante des dépenses — l'effet sur le
+  patrimoine n'est pas +7 915 €, il est nul par construction. C'est probablement ce que
+  l'utilisateur veut vérifier avant de s'engager.
+- **Précision du 2026-09-08 sur l'alimentation du compte joint**, qui nomme le risque : « ce
+  compte joint est alimenté par des virements pour charges par exemple, par le crédit d'impôt et
+  de l'argent que nous avions dessus ». L'argent qui en revient est donc un MÉLANGE — une part
+  est la sienne, qu'il y a virée lui-même (on voit sortir `VIR SEPA DUPONT Jean charges`
+  −298,50 €, `charges enfant` −286,50 €, `credit impot - charges` −1 420 €), une autre est la
+  contribution de sa conjointe aux dépenses qu'il a avancées. **Conséquence :** rapprocher
+  aveuglément un virement entrant des dépenses qu'il « rembourse » effacerait des dépenses qu'il
+  a réellement supportées — pour la part financée par son propre argent. C'est précisément la
+  bêtise redoutée. Tout cadrage devra donc d'abord répondre à : quelle FRACTION d'un virement du
+  joint est un remboursement, et quelle fraction est de l'argent qui rentre chez lui après
+  détour ? Les sorties vers le joint (~1 610 € + 1 420 € de crédit d'impôt sur l'historique) sont
+  la clé de ce calcul et doivent entrer dans le modèle, pas seulement les entrées.
+
+## Deferred from: story 20.1 — navigation en deux menus (2026-09-08)
+
+- **`latestPeriod` est `null` pendant le chargement, pas seulement sur base vide**
+  (`app/components/shared/AppBar.vue`). L'entrée « Toutes » se replie alors sur l'année du
+  CALENDRIER : cliquer avant la résolution de `useStatementsList` ouvre l'écran le plus dense du
+  produit sur son état vide — précisément ce que le repli cherchait à éviter. Antérieur à la
+  story 20.1 : l'onglet « Transactions » avait déjà ce comportement. Se corrige en distinguant
+  « en cours de chargement » de « base vide ».
+
+## Deferred from: story 21.1 — part du compte joint (2026-09-08)
+
+- **`priorRows` charge toutes les transactions antérieures à la fenêtre** (`server/api/evolution.get.ts`).
+  C'était un `SUM` SQL ; c'est désormais une lecture complète, parce que le patrimoine antérieur
+  doit traverser la coupe et la neutralisation, qui vivent dans le moteur. Correct, mais le
+  chargement croît avec l'historique et s'exécute à chaque appel de `/api/evolution`. Négligeable
+  à 1 855 lignes ; à reprendre si l'historique s'allonge beaucoup — en agrégeant côté moteur par
+  tranche plutôt qu'en rendant toutes les lignes.
+- **La rubrique « Compte joint » sera TOUJOURS un nœud « net inversé »** (total positif sur une
+  nature dépense) : elle est donc exclue de la base de répartition et annoncée « à surveiller »
+  quand elle monte, alors qu'une hausse y est une bonne nouvelle. Comportement générique
+  pré-existant sur les nets inversés — « Impôts » subit le même — mais ce poste-ci ne sera jamais
+  dans l'autre cas. À reprendre en même temps que le traitement général des nets inversés.
+- **Dans la trajectoire, les lignes de la cible « Part remboursée » portent le code du poste
+  INTERNE** (`useTargetTransactions` les regroupe sous « Virement du compte joint »). Sans
+  conséquence sur les montants, mais le libellé du groupe induit en erreur.
+
+## Chantier « Profils et banques » (epics 27-28) — reliquats au 2026-09-29
+
+- **Base E2E partagée** : toutes les specs partagent `_data/e2e.db`. Dès qu'une spec crée un
+  second profil, les suivantes perdent le repli « exactement un profil ». Quatre specs ont été
+  corrigées en épinglant le cookie `pf_profile` ; le remède de fond est une base (ou un profil)
+  par worker. Toute nouvelle spec doit poser le cookie en `beforeEach` d'ici là.
+- **`scripts/migrate-safely.mjs` trop strict** : il signale comme « écart » une migration qui
+  insère volontairement du référentiel (0011 : poste « Carte (non détaillée) », 61 → 62 postes).
+  Il faudrait lui déclarer les écarts attendus. Constaté sur la vraie base le 2026-09-26, sans perte.
+- **GLM 5.3 (`zai-glm-5`) écarté** : modèle à raisonnement, 32 000 tokens de « thinking » sans
+  réponse sur 40 libellés (203 s contre 2,6 s pour 5.2), réponse en blocs non lue par
+  `llm-categorizer`. Y passer suppose : couper le raisonnement si Mistral le permet, lire le
+  format en blocs, re-mesurer le taux de correction (NFR34).
+- **Story 28.4, suggestions de test non faites** : forcer un code inconnu dans `ingestExport`
+  (502 + aucune ligne + fichier supprimé) ; ordre persisté avec des lignes carte intercalées ;
+  test de `cleanLabel` sur un libellé multiligne. Revue 28.4 lot : codes distincts par index dans
+  le test à 90 libellés.
+- **28.2 et 28.3 bloquées** : attendent le premier relevé PDF Crédit Mutuel (octobre 2026), qui
+  servira d'échantillon ET de preuve de continuité de l'export importé (FR83).
+- **`CLAUDE.md`, section « Documents sources »** : décrit encore 39 FR / D17-D29 / 4 epics.
+- **`useApiError` / vocabulaire** : l'erreur `pdf_already_ingested` sert aussi aux exports
+  (le code dit « pdf »).

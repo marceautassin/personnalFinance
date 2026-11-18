@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { extractStatement, parseFrAmount } from './pdf-extractor'
+import {
+  extractStatement,
+  redactIdentity,
+} from './pdf-extractor'
+import { operationRows, findDebitCreditHeader } from './bank-formats/columns'
+import { BankMismatchError } from './bank-formats/types'
 import { eurosToCents } from '~~/shared/types/money'
 
 const FIXTURE_DIR = resolve('tests/fixtures/pdfs')
@@ -45,83 +50,38 @@ const BOURSOBANK_FIXTURES: Array<{
   },
 ]
 
-describe('parseFrAmount', () => {
-  it('parses a standard FR amount with thin space and comma', () => {
-    expect(parseFrAmount('1 234,56')).toBe(eurosToCents(1234.56))
-  })
-
-  it('parses an amount with euro symbol', () => {
-    expect(parseFrAmount('1 234,56 €')).toBe(eurosToCents(1234.56))
-  })
-
-  it('parses a negative amount (overdraft)', () => {
-    expect(parseFrAmount('-12,34')).toBe(eurosToCents(-12.34))
-  })
-
-  it('parses an amount with non-breaking spaces (U+00A0)', () => {
-    expect(parseFrAmount('1 234,56')).toBe(eurosToCents(1234.56))
-  })
-
-  it('parses an amount with narrow no-break space (U+202F)', () => {
-    expect(parseFrAmount('1 234,56')).toBe(eurosToCents(1234.56))
-  })
-
-  it('parses dot decimal as fallback', () => {
-    expect(parseFrAmount('1234.56')).toBe(eurosToCents(1234.56))
-  })
-
-  it('parses Boursobank thousands-dot + comma-decimal ("1.023,98")', () => {
-    expect(parseFrAmount('1.023,98')).toBe(eurosToCents(1023.98))
-  })
-
-  it('parses millions with thousands-dot ("1.234.567,89")', () => {
-    expect(parseFrAmount('1.234.567,89')).toBe(eurosToCents(1234567.89))
-  })
-
-  it('returns null on garbage input', () => {
-    expect(parseFrAmount('hello')).toBeNull()
-  })
-
-  it('returns null on empty string', () => {
-    expect(parseFrAmount('')).toBeNull()
-  })
-
-  it('returns null on ambiguous "1.234" (no comma, dot+3 digits)', () => {
-    // Pourrait être 1.234 € ASCII OU 1 234 € milliers-point — on refuse de deviner.
-    expect(parseFrAmount('1.234')).toBeNull()
-  })
-
-  it('returns null on ambiguous "12.345" (no comma, dot+3 digits)', () => {
-    expect(parseFrAmount('12.345')).toBeNull()
-  })
-
-  it('parses non-ambiguous "1234.56" (2 decimals, ASCII fallback)', () => {
-    expect(parseFrAmount('1234.56')).toBe(eurosToCents(1234.56))
-  })
-})
-
 describe('extractStatement', () => {
   it('rejects a non-PDF buffer with an explicit error', async () => {
     const garbage = Buffer.from('this is definitely not a pdf')
-    await expect(extractStatement(garbage)).rejects.toThrow()
+    await expect(extractStatement(garbage, 'boursorama')).rejects.toThrow()
   })
 
   it('rejects an empty buffer', async () => {
-    await expect(extractStatement(Buffer.alloc(0))).rejects.toThrow()
+    await expect(extractStatement(Buffer.alloc(0), 'boursorama')).rejects.toThrow()
   })
 
   describe.each(BOURSOBANK_FIXTURES)('Boursobank fixture: $file', (fx) => {
     const path = fixtureByName(fx.file)
 
     it.skipIf(!path)('extracts period and balances exactly', async () => {
-      const result = await extractStatement(readFileSync(path!))
+      const result = await extractStatement(readFileSync(path!), 'boursorama')
 
       expect(result.rawText.length).toBeGreaterThan(1000)
-      expect(result.rawText).toContain('BOURSOBANK')
+      // Le bloc d'identité est coupé (story 17.1) : « BOURSOBANK » et l'IBAN n'y figurent
+      // plus. Ce qui reste commence à l'en-tête de colonnes.
+      expect(result.rawText).toContain('SOLDE AU')
+      expect(result.rawText).not.toContain('BOURSOBANK')
       expect(result.periodStart).toBe(fx.periodStart)
       expect(result.periodEnd).toBe(fx.periodEnd)
       expect(result.openingBalanceCents).toBe(eurosToCents(fx.openingEuros))
       expect(result.closingBalanceCents).toBe(eurosToCents(fx.closingEuros))
+    })
+
+    it.skipIf(!path)('rejette avec BankMismatchError si on attend une autre banque (FR78, AR38)', async () => {
+      const err = await extractStatement(readFileSync(path!), 'credit_mutuel').catch(e => e)
+      expect(err).toBeInstanceOf(BankMismatchError)
+      expect((err as BankMismatchError).expected).toBe('credit_mutuel')
+      expect((err as BankMismatchError).detected).toBe('boursorama')
     })
   })
 
@@ -140,15 +100,15 @@ describe('extractStatement', () => {
       for (let i = 0; i < sorted.length - 1; i++) {
         const cur = sorted[i]!
         const next = sorted[i + 1]!
-        const curRes = await extractStatement(readFileSync(fixtureByName(cur.file)!))
-        const nextRes = await extractStatement(readFileSync(fixtureByName(next.file)!))
+        const curRes = await extractStatement(readFileSync(fixtureByName(cur.file)!), 'boursorama')
+        const nextRes = await extractStatement(readFileSync(fixtureByName(next.file)!), 'boursorama')
         expect(curRes.closingBalanceCents).toBe(nextRes.openingBalanceCents)
       }
     },
   )
 
   it.skipIf(!fixturePath)('extracts a non-empty rawText from any PDF fixture', async () => {
-    const result = await extractStatement(readFileSync(fixturePath!))
+    const result = await extractStatement(readFileSync(fixturePath!), 'boursorama')
     expect(result.rawText.length).toBeGreaterThan(100)
     if (result.periodStart !== null) {
       expect(result.periodStart).toMatch(/^\d{4}-\d{2}-\d{2}$/)
@@ -156,5 +116,64 @@ describe('extractStatement', () => {
     if (result.openingBalanceCents !== null) {
       expect(Number.isInteger(result.openingBalanceCents)).toBe(true)
     }
+  })
+})
+
+/**
+ * Expurgation de l'identité avant transmission au fournisseur — NFR6, story 17.1.
+ *
+ * L'audit du 2026-09-06 a constaté que le texte INTÉGRAL du relevé partait chez le fournisseur,
+ * bloc d'identité compris : IBAN `FR76…`, numéro de compte, nom et adresse du titulaire. Le
+ * PRD, l'architecture et CLAUDE.md décrivaient tous trois une garantie que le code n'appliquait
+ * pas. Ces tests sont la garantie.
+ */
+describe('expurgation de l\'identité (NFR6, story 17.1)', () => {
+  describe('expurgation par motif', () => {
+    it('remplace un IBAN, espacé ou non', () => {
+      expect(redactIdentity('Titulaire FR76 1234 5678 9012 3456 7890 123 fin')).toBe('Titulaire [IBAN] fin')
+      expect(redactIdentity('IBAN FR7612345678901234567890123 fin')).toBe('IBAN [IBAN] fin')
+    })
+
+    it('remplace un BIC ancré sur son intitulé', () => {
+      expect(redactIdentity('BIC : BOUSFRPPXXX')).toBe('BIC : [BIC]')
+    })
+
+    it.each([
+      'CARTE 08/08/25 CARREFOUR MARKET CB*0000',
+      'PRLV SEPA SAS EXEMPLE LA CARTE',
+      'VIR SEPA DUPONT Jean charges Jean',
+      'CARTE 30/03/26 Amazon.fr*X000X0X CB*0000',
+      'VIR INST MME MARIE DUPONT',
+    ])('laisse intact le libellé bancaire « %s »', (label) => {
+      expect(redactIdentity(label)).toBe(label)
+    })
+  })
+
+  const fx = fixtureByName('Releve-compte-31-03-2026.pdf')
+  it.skipIf(!fx)('aucun IBAN ne subsiste dans ce qui part au fournisseur', async () => {
+    const result = await extractStatement(readFileSync(fx!), 'boursorama')
+    expect(result.rawText).not.toMatch(/FR\d{2}[\s\u00a0\u202f]?\d{4}/u)
+    // La donnée métier, elle, doit survivre à la coupe.
+    expect(result.rawText).toContain('SOLDE AU')
+  })
+})
+
+/**
+ * `operationRows`/`findDebitCreditHeader` (désormais dans `bank-formats/columns.ts`) restent
+ * exercées ici sur un cas d'usage complet propre à `pdf-extractor` : la coupe géométrique du
+ * bloc d'identité, avant `redactIdentity`. Les tests unitaires génériques de ces fonctions
+ * vivent dans `bank-formats/columns.test.ts`.
+ */
+describe('coupe géométrique + expurgation par motif, bout en bout', () => {
+  const item = (text: string, x: number, y: number, width = 20) => ({ text, x, right: x + width, y })
+
+  it('la coupe géométrique retire déjà le bloc d\'identité avant même redactIdentity', () => {
+    const header = [item('Débit', 400, 700), item('Crédit', 480, 700)]
+    const identity = [item('FR76 1234 5678 9012 3456 7890 123', 50, 760), item('12 rue des Lilas', 50, 780)]
+    const operations = [item('02/03/2026', 50, 660), item('VIR Epargne', 120, 660), item('10,00', 400, 660)]
+
+    const kept = operationRows([...identity, ...header, ...operations], findDebitCreditHeader(header))
+    expect(kept.map(i => i.text)).not.toContain('FR76 1234 5678 9012 3456 7890 123')
+    expect(kept.map(i => i.text)).toEqual(expect.arrayContaining(['Débit', 'Crédit', 'VIR Epargne', '10,00']))
   })
 })

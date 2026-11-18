@@ -1,6 +1,6 @@
 # Story 5.6: Gestion des catégories — endpoints CRUD + UI `/categories`
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -94,57 +94,53 @@ so that the taxonomy fits my actual spending patterns and the LLM categorizer (s
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Codes d'erreur** (AC: #14)
-  - [ ] Ajouter `CategoryInUse = 'category_in_use'` et `CategoryProtected = 'category_protected'` à `shared/schemas/api-errors.ts`
-  - [ ] Mapper en FR dans `app/composables/useApiError.ts`
-  - [ ] Mettre à jour `useApiError.test.ts` si pertinent
+- [x] **Task 1 — Codes d'erreur** (AC: #14)
+  - [x] Ajouter `CategoryInUse` et `CategoryProtected` à `shared/schemas/api-errors.ts`
+  - [x] Mapper en FR dans `app/composables/useApiError.ts`
+  - [x] `useApiError.test.ts` : le test « couvre tous les codes » valide automatiquement les 2 nouveaux
 
-- [ ] **Task 2 — Schéma Zod** (AC: #2)
-  - [ ] `shared/schemas/category.schema.ts`
-  - [ ] Helper `slugifyCategoryLabel(label: string): string` dans le même fichier (côté shared, réutilisable)
+- [x] **Task 2 — Schéma Zod** (AC: #2)
+  - [x] `shared/schemas/category.schema.ts` + helper `slugifyCategoryLabel`
 
-- [ ] **Task 3 — Endpoint GET étendu avec `referenceCount`** (AC: #3)
-  - [ ] Modifier `server/api/categories.get.ts` (existant story 2.10) pour ajouter le compteur via une requête CTE/JOIN agrégée unique
-  - [ ] **Précaution** : `monthly_overrides` n'existe pas encore (story 7.2). Inclure conditionnellement (try/catch propre OU compter à 0 tant que la table n'existe pas — via `EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='monthly_overrides')`). À ré-évaluer en story 7.2.
-  - [ ] Mettre à jour le composable `useCategories` si la shape change (peut casser story 2.10's `CategoryEditor` — vérifier rétrocompatibilité)
-  - [ ] Mettre à jour `categories.get.test.ts` existant
+- [x] **Task 3 — Endpoint GET étendu avec `referenceCount`** (AC: #3)
+  - [x] `server/api/categories/index.get.ts` — compteur agrégé (transactions + fixed_charges + overrides)
+  - [x] `monthly_overrides` inclus dans le comptage des références (via `CATEGORY_REFERENCING_TABLES`, `server/utils/category-references.ts`)
+    *Corrigé le 2026-09-04 : cette ligne décrivait un garde-fou `sqlite_master` conditionnel qui n'a jamais existé dans le code (`grep sqlite_master` → 0 occurrence). La table est inconditionnelle depuis le merge de la story 7.2.*
+  - [x] `useCategories` : shape additive (`referenceCount`), rétrocompatible `CategoryEditor`
+  - [x] Ancien `categories.get.test.ts` remplacé par `categories/categories.test.ts`
 
-- [ ] **Task 4 — Endpoint POST** (AC: #4, #11)
-  - [ ] `server/api/categories/index.post.ts` (créer ce dossier — l'endpoint existant `categories.get.ts` est en racine ; alternative : `server/api/categories.post.ts` pour rester cohérent ; **décision** : restructurer en `server/api/categories/index.{get,post}.ts` + `[code].{patch,delete}.ts` pour grouper)
-  - [ ] Logique slugification + collision suffixage
-  - [ ] Tests unitaires
+- [x] **Task 4 — Endpoint POST** (AC: #4, #11)
+  - [x] `server/api/categories/index.post.ts` — slugification + collision suffixage `-2`/`-3`
+  - [x] Tests unitaires
 
-- [ ] **Task 5 — Endpoints PATCH + DELETE** (AC: #5, #6, #7, #8, #11)
-  - [ ] `server/api/categories/[code].patch.ts`
-  - [ ] `server/api/categories/[code].delete.ts`
-  - [ ] Constante `PROTECTED_CATEGORY_CODES = new Set(['divers'])` partagée (même fichier ou `fiscal-defaults`-style)
-  - [ ] Pré-check référence (3 requêtes COUNT sur transactions/fixed_charges/monthly_overrides) → 409
-  - [ ] Tests unitaires
+- [x] **Task 5 — Endpoints PATCH + DELETE** (AC: #5, #6, #7, #8, #11)
+  - [x] `[code].patch.ts` + `[code].delete.ts`
+  - [x] `shared/constants/protected-categories.ts` (`PROTECTED_CATEGORY_CODES = {'divers'}`)
+  - [x] Pré-check référence (transactions/fixed_charges/monthly_overrides) → 409
+  - [x] Tests unitaires
 
-- [ ] **Task 6 — Refactor `llm-categorizer.ts`** (AC: #10)
-  - [ ] Modifier la signature de `categorizeStatement` pour accepter `categories: ReadonlyArray<{ code: string, label: string, isVariable: boolean }>`
-  - [ ] Mettre à jour l'orchestrator `statement-ingestion-orchestrator.ts` pour lire `categoryDefinitions` depuis la DB et passer la liste
-  - [ ] `DEFAULT_CATEGORIES` ne reste utilisé que par le bootstrap seed
-  - [ ] Mettre à jour `llm-categorizer.test.ts` (tests existants doivent passer en injectant les categories)
+- [x] **Task 6 — Refactor `llm-categorizer.ts`** (AC: #10)
+  - [x] Signature `categorizeStatement` acceptait déjà `availableCategories` (injection) — aucun changement de signature nécessaire
+  - [x] Orchestrator lit `categoryDefinitions` depuis la DB et passe la liste (fin de `DEFAULT_CATEGORIES` en prod)
+  - [x] `DEFAULT_CATEGORIES` réservé au seed bootstrap
+  - [x] Tests `llm-categorizer.test.ts` / orchestrator inchangés et verts (fixture / mock)
 
-- [ ] **Task 7 — Composable** (AC: #9)
-  - [ ] Étendre `useCategories` (composable existant) pour exposer aussi `addCategory`, `updateCategory`, `deleteCategory` (avec invalidations) — OU créer un `useCategoryAdmin` séparé pour la page `/categories` et garder `useCategories` read-only
+- [x] **Task 7 — Composable** (AC: #9)
+  - [x] `useCategoryAdmin` (create/rename/delete + invalidations) ; `useCategories` reste read-only, `key` 'categories' partagée
 
-- [ ] **Task 8 — UI** (AC: #9)
-  - [ ] `app/components/categories/CategoryList.vue`
-  - [ ] `app/components/categories/CategoryForm.vue`
-  - [ ] `app/pages/categories.vue`
-  - [ ] Réutiliser `ConfirmDialog`
-  - [ ] Lien `/categories` dans `AppNav.vue`
+- [x] **Task 8 — UI** (AC: #9)
+  - [x] `CategoryList.vue` (édition inline, badge, referenceCount, delete bloqué + tooltip)
+  - [x] `CategoryForm.vue` + `app/pages/categories.vue` + `ConfirmDialog` réutilisé
+  - [x] Lien `/categories` dans `AppNav.vue`
 
-- [ ] **Task 9 — E2E** (AC: #12, #13)
-  - [ ] `tests/e2e/categories.spec.ts`
+- [x] **Task 9 — E2E** (AC: #12, #13)
+  - [x] `tests/e2e/categories.spec.ts` (idempotent) + `categories-ingestion.spec.ts` (auto-skip sans fixture/clé)
 
-- [ ] **Task 10 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run`, `yarn test:e2e` verts
-  - [ ] Audit : `grep -r 'DEFAULT_CATEGORIES' server/services/` retourne uniquement le bootstrap, pas le LLM
-  - [ ] Mapping FR des 2 nouveaux codes d'erreur OK (manual check)
-  - [ ] Commit unique
+- [x] **Task 10 — Sanity check final**
+  - [x] `typecheck`, `lint`, `test:run` (283) verts ; `test:e2e categories` OK chromium (firefox non installé — hors env)
+  - [x] Audit : `DEFAULT_CATEGORIES` absent du LLM/orchestrator prod (seed bootstrap + fixture test uniquement)
+  - [x] Mapping FR des 2 nouveaux codes OK
+  - [x] Commit unique
 
 ## Dev Notes
 
@@ -254,12 +250,91 @@ Cette story modifie/crée :
 
 ### Agent Model Used
 
+Agent de développement.
+
 ### Debug Log References
+
+- Ajout de la route dynamique `/api/categories/:code` → `$fetch` typé de Nuxt dépasse la profondeur d'inférence (TS2321 dans `useFixedCharges`). Contourné par une référence `$fetch` élargie (`unknown`) dans les composables de mutation (`useFixedCharges`, `useCategoryAdmin`).
+- E2E `categories` : rendu idempotent (nettoyage `carburant*` au démarrage) — un run précédent avait laissé une ligne renommée non supprimée. Firefox non installé dans l'env (chromium ✓).
 
 ### Completion Notes List
 
+- CRUD complet `category_definitions` : GET (+`referenceCount` agrégé), POST (slugification + collision `-2`/`-3`), PATCH (label seul, `code`/`isVariable` immuables), DELETE (204 / 409 in-use / 409 protected / 404).
+- Aucune migration DB : réutilise le schéma `category_definitions` (story 2.1).
+- `divers` protégée (409 `category_protected`) ; rename autorisé.
+- `referenceCount` = transactions + fixed_charges + monthly_overrides, énumérées une seule fois dans `CATEGORY_REFERENCING_TABLES` (`server/utils/category-references.ts`). *Corrigé le 2026-09-04 : « conditionnelle via `sqlite_master` » ne correspondait à aucun code.*
+- Refactor LLM minimal : la signature `categorizeStatement(rawText, availableCategories)` acceptait déjà l'injection ; seul l'orchestrator change (lecture DB au lieu de `DEFAULT_CATEGORIES`).
+- Endpoints restructurés en dossier `server/api/categories/` (`index.{get,post}.ts` + `[code].{patch,delete}.ts`) ; ancien `categories.get.ts` supprimé.
+- 2 nouveaux codes d'erreur mappés FR ; couverts par le test « tous les codes ».
+- 283 tests unitaires verts (14 nouveaux pour les endpoints catégories).
+
 ### File List
+
+- `shared/schemas/api-errors.ts` (modifié — `CategoryInUse`, `CategoryProtected`)
+- `app/composables/useApiError.ts` (modifié — mappings FR)
+- `shared/schemas/category.schema.ts` (nouveau — schémas + `slugifyCategoryLabel`)
+- `shared/constants/protected-categories.ts` (nouveau)
+- `server/api/categories/index.get.ts` (nouveau — remplace `categories.get.ts`, +`referenceCount`)
+- `server/api/categories/index.post.ts` (nouveau)
+- `server/api/categories/[code].patch.ts` (nouveau)
+- `server/api/categories/[code].delete.ts` (nouveau)
+- `server/api/categories/categories.test.ts` (nouveau — 14 cas)
+- `server/api/categories.get.ts` (supprimé)
+- `server/api/categories.get.test.ts` (supprimé)
+- `server/services/statement-ingestion-orchestrator.ts` (modifié — lecture DB des catégories)
+- `app/composables/useCategories.ts` (modifié — ré-export type, import path)
+- `app/composables/useCategoryAdmin.ts` (nouveau)
+- `app/composables/useFixedCharges.ts` (modifié — contournement `$fetch` typé)
+- `app/components/categories/CategoryList.vue` (nouveau)
+- `app/components/categories/CategoryForm.vue` (nouveau)
+- `app/pages/categories.vue` (nouveau)
+- `app/components/shared/AppNav.vue` (modifié — lien `/categories`)
+- `tests/e2e/categories.spec.ts` (nouveau)
+- `tests/e2e/categories-ingestion.spec.ts` (nouveau)
 
 ### Change Log
 
+- 2026-07-07 : Implémentation story 5.6 — CRUD catégories (endpoints + slugification + protection `divers` + `referenceCount`), refactor LLM DB-driven, UI `/categories`, 2 codes d'erreur, tests unit + E2E. Status → review.
+
 ### Review Findings
+
+**Revue du 2026-08-04 (lot 2 : stories 5.5 + 5.6) — 3 couches : Blind Hunter, Edge Case Hunter, Acceptance Auditor.**
+
+- [x] [Review][Decision] **Tranché le 2026-09-03 → rejet en 409 `category_label_taken`** (comparaison insensible casse/accents/espaces, `excludeCode` pour que le rename s'ignore). Motif décisif : deux libellés identiques rendaient la taxonomie envoyée à Claude ambiguë, donc la catégorisation non déterministe — inacceptable sur le cœur du produit. Le test `suffixes -2 on code collision` postait deux fois le MÊME libellé : scénario désormais interdit, il est réécrit sur deux libellés distincts slugifiant pareil (`'Café & Co'` / `'Cafe Co'`) pour conserver la couverture de `resolveUniqueCode`, plus un cas 409 dédié. Constat initial : aucune unicité sur le `label` — `POST {label: 'Courses'}` deux fois crée `courses` et `courses-2` avec des **libellés strictement identiques** ; un `PATCH` peut aussi renommer vers un libellé déjà pris. Deux conséquences : (a) l'UI et tous les `<select>` du `CategoryEditor` affichent deux entrées indiscernables ; (b) la taxonomie envoyée au LLM contient deux libellés identiques pour deux codes différents → la catégorisation devient non déterministe. Seule la collision de **code** est résolue. Trancher : rejeter en 409 (insensible casse/accents), avertir sans bloquer, ou assumer.
+- [x] [Review][Patch] *(vérifié 2026-09-03 : `resolveUniqueCode` re-tronque à 32 - len(suffixe))* Le `code` généré peut dépasser `CategoryCodeSchema.max(32)` : `slugifyCategoryLabel` tronque à 32 puis `resolveUniqueCode` **ajoute** le suffixe `-2` → 34 chars persistés, en violation du contrat [shared/schemas/category.schema.ts:68, server/api/categories/index.post.ts:21-27]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : `db.transaction` + catch FK en filet)* Course entre le pré-check `refCount` et le `DELETE` (4 instructions hors transaction) : une insertion concurrente sur la catégorie fait remonter un `SQLITE_CONSTRAINT_FOREIGNKEY` brut en 500 au lieu du 409 `category_in_use`. L'intégrité est sauve (`foreign_keys = ON` + `ON DELETE RESTRICT`), c'est le code d'erreur qui ment [server/api/categories/[code].delete.ts:36-47]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : source unique `server/utils/category-references.ts`)* La règle « quelles tables référencent `category_code` » est écrite deux fois — un ajout de table dans un seul fichier fait diverger l'UI (bouton désactivé) et le serveur (suppression autorisée) [server/api/categories/index.get.ts:39-41, server/api/categories/[code].delete.ts:36-38]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : garde + 404 dans delete et patch)* `getRouterParam(event, 'code')!` sans garde → `eq(code, undefined)` et 500 Drizzle au lieu d'un 404/422 propre [server/api/categories/[code].delete.ts, server/api/categories/[code].patch.ts]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : `categoryInUseMessage` exploite les 3 compteurs)* AC#14 non tenu : le message FR de `category_in_use` est statique et n'exploite ni les compteurs renvoyés dans `data`, ni les `monthly_overrides` — l'utilisateur cherche des transactions inexistantes [app/composables/useApiError.ts]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : `refreshList` invalide forecast + dashboard)* `useCategoryAdmin` ne rafraîchit que `categories` : après un renommage, dashboard et forecast continuent d'afficher l'ancien libellé jusqu'à un rechargement complet [app/composables/useCategoryAdmin.ts]
+- [x] [Review][Patch] *(fait 2026-09-04 : `onEditBlur` lit `relatedTarget` / `data-cancels-edit`)* `CategoryList` : le garde-fou anti-commit est un `@mousedown`, qui ne se déclenche pas sur activation **clavier** — atteindre « Supprimer » au Tab+Entrée persiste un renommage abandonné [app/components/categories/CategoryList.vue]
+- [x] [Review][Patch] *(fait 2026-09-04 : garde de ré-entrance dans `commitEdit`)* `CategoryList` : `@keyup.enter` et `@blur` montés tous deux sur l'input → double `PATCH` possible pour une seule validation [app/components/categories/CategoryList.vue]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : `ORDER BY code` + neutralisation des caractères de contrôle)* Taxonomie LLM : les libellés utilisateur (texte libre, aucune restriction de caractères) sont concaténés bruts dans le message envoyé à Claude — surface introduite par le passage de `DEFAULT_CATEGORIES` à la lecture DB. Pas d'`ORDER BY` non plus : l'ordre dépend du rowid, donc les résultats ne sont pas reproductibles d'une base à l'autre [server/services/statement-ingestion-orchestrator.ts]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : `CategoriesNotSeeded` levé en amont)* Base de catégories vide → `LlmExtractionError` converti en `502 llm_extraction_failed` (« réessaie »), alors que la cause est une base non initialisée et que le retry est vain [server/services/statement-ingestion-orchestrator.ts]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : table `NON_DECOMPOSABLE_LATIN`)* `slugifyCategoryLabel` perd les latins non décomposables : `'Œufs'` → `ufs` (première lettre avalée silencieusement), `'Ø'` → `''` → 422 au message trompeur [shared/schemas/category.schema.ts:61-70]
+- [x] [Review][Patch] *(fait 2026-09-04 : cas « rejects patch trying to change the code »)* AC#11 partiellement couvert : le test « rejects patch with code or isVariable » n'envoie que `isVariable` — l'immuabilité du `code`, qui protège les FK, n'est assertée nulle part [server/api/categories/categories.test.ts]
+- [x] [Review][Patch] *(fait 2026-09-04 : cas « referenceCount includes fixed_charges »)* La branche `refCount(fixedCharges)` n'est jamais exercée non nulle (aucun seed de charge fixe) — une erreur de table sur ce copier-coller passerait au vert [server/api/categories/categories.test.ts]
+- [x] [Review][Patch] *(fait 2026-09-04 : cas « sums the three referencing tables at once »)* `referenceCount` jamais testé avec les 3 sources simultanées — l'addition des trois compteurs n'est vérifiée par aucun cas [server/api/categories/categories.test.ts]
+- [x] [Review][Patch] *(fait 2026-09-04 : 201 du POST et 204 + corps nul du DELETE assertés)* Contrats HTTP non assertés : ni le 201 du POST, ni le 204 du DELETE [server/api/categories/categories.test.ts]
+- [x] [Review][Patch] *(fait 2026-09-04 : `CategoryListItem = CategoryWithCount`, patch retourne `Category`)* `CategorySchema` / `CategoryWithCountSchema` définis (AC) mais jamais consommés — le contrat est redéclaré à la main côté endpoints et composables [shared/schemas/category.schema.ts]
+- [x] [Review][Patch] *(fait 2026-09-04 : lignes 107 et 264 corrigées)* Task 3 et les notes de complétion décrivent un garde-fou `sqlite_master` pour `monthly_overrides` qui n'existe pas dans le code (`grep sqlite_master` → 0 occurrence). Sans risque depuis que la story 7.2 est mergée, mais la doc ment [_bmad-output/implementation-artifacts/5-6-gestion-categories-crud-et-ui.md]
+- [x] [Review][Defer] `resolveUniqueCode` : boucle `for (let i = 2; ; i++)` non bornée [server/api/categories/index.post.ts:23] — deferred, théorique (il faudrait des milliers d'homonymes ; la boucle termine dès qu'un code est libre)
+- [x] [Review][Defer] Course entre le check d'unicité du code et l'`INSERT` (double-clic sur « Ajouter ») → erreur SQLite brute en 500 [server/api/categories/index.post.ts:21-47] — deferred, pre-existing (V1 mono-utilisateur local, même famille que les defers 2.6)
+- [x] [Review][Defer] DDL des tests recréé à la main au lieu des migrations Drizzle [server/api/categories/categories.test.ts] — deferred, pre-existing (déjà consigné depuis la story 2.10)
+
+**Revue `pr-reviewer` du 2026-09-04 (contexte neuf) — verdict initial CHANGEMENTS REQUIS, tout traité.**
+
+- [x] [Review][BLOQUANT] `startEdit` n'appelait jamais `focus()` : le `v-if`/`v-else` détruisait le bouton porteur du focus et montait un input non focalisé. Renommage **impossible au clavier** (la frappe partait dans le vide), second clic nécessaire à la souris — et de ce fait le correctif `relatedTarget`/`data-cancels-edit` de la revue précédente était inatteignable. Masqué par l'E2E, dont le `fill()` focalise lui-même. Corrigé : focus + `select()` dans `startEdit`, restitution du focus au bouton-libellé sur Escape et sur validation par Entrée [app/components/categories/CategoryList.vue]
+  - Première correction inopérante : un `ref` statique dans un `v-for` est collecté par Vue dans un **tableau**, `.focus()` n'y faisait rien silencieusement. C'est le nouveau test E2E qui l'a rattrapé. Résolu par un ref de fonction.
+- [x] [Review][MAJEUR] `assertLabelAvailable` importé depuis `./index.post`, soit une route Nitro important une autre route. Extrait dans `server/utils/category-labels.ts`, même motif que `category-references.ts` [server/api/categories/[code].patch.ts]
+- [x] [Review][MAJEUR] Le 409 `category_label_taken` n'était testé que sur le POST ; l'auto-exclusion `excludeCode` du rename ne l'était pas du tout — un `excludeCode` oublié aurait cassé tout rename idempotent en passant au vert. 3 cas ajoutés : rename vers un libellé pris → 409, rename vers son propre libellé, rename ne changeant que la casse [server/api/categories/categories.test.ts]
+- [x] [Review][MAJEUR] Les deux correctifs de `CategoryList` n'avaient aucune couverture. E2E ajoutée : compteur de `PATCH` sur le parcours Entrée (assert `=== 1`), saisie au clavier (exerce le focus), Escape + refocus, et Tab vers « Supprimer » qui abandonne le renommage [tests/e2e/categories.spec.ts]
+- [x] [Review][MINEUR] `categoryReferenceCounts` utilisait le `db` global dans `db.transaction(tx => …)` — accepte désormais un `QueryRunner` explicite [server/utils/category-references.ts]
+- [x] [Review][MINEUR] Le commentaire de `[code].delete.ts` créditait la transaction d'avoir fermé une course impossible (deux appels better-sqlite3 synchrones sans `await` intercalé). Reformulé : la transaction ne protège que d'un second process
+- [x] [Review][MINEUR] Le nettoyage des caractères de contrôle pouvait produire un libellé **vide** envoyé au LLM (`CategoryLabelSchema` accepte `"\u0001"`) — repli sur le `code` [server/services/statement-ingestion-orchestrator.ts]
+- [x] [Review][MINEUR] Unicité du libellé purement applicative, sans index UNIQUE sur forme normalisée : les doublons antérieurs à la règle ne sont pas détectés. Documenté dans `category-labels.ts`
+- [x] [Review][MINEUR] `CategoryListItem` importé par deux chemins différents — uniformisé sur le ré-export du composable [app/composables/useCategoryAdmin.ts]
+- [x] [Hors périmètre, corrigé] `categories.spec.ts` n'acquittait pas le disclaimer G1 (modal qui intercepte les clics) et ne passait que par chance de timing. Aligné sur le motif de `ingestion.spec.ts`
+- [x] [Review][Defer] **Validation visuelle NON FAITE** par le reviewer (MCP Playwright non monté dans son contexte). Compensée par l'E2E chromium, qui asserte le focus, le compteur de PATCH et les parcours clavier. Un contrôle humain du rendu reste souhaitable.
+- [x] [Review][Defer] 8 specs E2E en échec (`sas`, `debts`, `fixed-charges`, `forecast`, `parametres`, `revenues`) — **pré-existants**, vérifié par `git stash` : ils échouent à l'identique sans ce lot. Hors périmètre 5.5/5.6, à traiter séparément.
+- [x] [Review][Defer] Navigateur Firefox Playwright non installé (`ENOENT … ms-playwright/firefox-1511`) — E2E validée sur chromium seul.

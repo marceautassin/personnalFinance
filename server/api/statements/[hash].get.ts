@@ -6,13 +6,15 @@
  * pas de colonne dérivée — cf. CLAUDE.md §Invariants critiques).
  */
 import { defineEventHandler, getRouterParam } from 'h3'
-import { eq, asc } from 'drizzle-orm'
+import { and, eq, asc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { bankStatements, transactions } from '~~/server/db/schema'
+import { bankStatements, transactions, categoryItems } from '~~/server/db/schema'
 import { reconcile } from '~~/server/services/reconciler'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { cents } from '~~/shared/types/money'
+import { deriveReliability } from '~~/shared/types/statement-reliability'
+import { requireProfile } from '~~/server/utils/current-profile'
 
 const HASH_RE = /^[a-f0-9]{64}$/
 
@@ -21,11 +23,12 @@ export default defineEventHandler(async (event) => {
   if (!hash || !HASH_RE.test(hash)) {
     throw domainError(ApiErrorCode.ValidationFailed, { reason: 'invalid hash', value: hash ?? null }, 422)
   }
+  const profileId = requireProfile(event)
 
   const [statement] = await db
     .select()
     .from(bankStatements)
-    .where(eq(bankStatements.hashSha256, hash))
+    .where(and(eq(bankStatements.hashSha256, hash), eq(bankStatements.profileId, profileId)))
     .limit(1)
   if (!statement) {
     throw notFound(ApiErrorCode.NotFound, { resource: 'bank_statement', hash })
@@ -38,12 +41,11 @@ export default defineEventHandler(async (event) => {
       transactionDate: transactions.transactionDate,
       label: transactions.label,
       amountCents: transactions.amountCents,
-      categoryCode: transactions.categoryCode,
+      categoryItemCode: categoryItems.code,
       isManual: transactions.isManual,
-      isDebtRepayment: transactions.isDebtRepayment,
-      debtId: transactions.debtId,
     })
     .from(transactions)
+    .innerJoin(categoryItems, eq(categoryItems.id, transactions.categoryItemId))
     .where(eq(transactions.statementHash, hash))
     .orderBy(asc(transactions.transactionDate), asc(transactions.id))
 
@@ -53,13 +55,24 @@ export default defineEventHandler(async (event) => {
     transactions: txRows.map(t => ({ amountCents: cents(t.amountCents) })),
   })
 
+  // La fiabilité est dérivée de l'écart courant et de la décision de l'utilisateur, jamais
+  // lue dans une colonne d'état — cf. `shared/types/statement-reliability.ts`.
+  const reliability = deriveReliability({
+    gapCents: reconciliation.gapCents,
+    gapAccepted: statement.gapAccepted,
+    source: statement.source,
+    continuityGapCents: statement.continuityGapCents,
+  })
+
   return {
     hash: statement.hashSha256,
     periodStart: statement.periodStart,
     periodEnd: statement.periodEnd,
     openingBalanceCents: statement.openingBalanceCents,
     closingBalanceCents: statement.closingBalanceCents,
-    reliability: statement.reliability,
+    reliability,
+    gapAccepted: statement.gapAccepted,
+    source: statement.source,
     transactions: txRows,
     reconciliation,
   }

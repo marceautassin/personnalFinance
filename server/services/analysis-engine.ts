@@ -1,0 +1,577 @@
+/**
+ * analysis-engine — agrégation d'une période en arbre nature → rubrique → poste, plus les
+ * quatre indicateurs (D19, FR26-FR34).
+ *
+ * Fonction PURE : elle reçoit des lignes et un référentiel, elle n'importe jamais le client de
+ * base de données. C'est ce qui rend les cas limites de NFR3 testables sans SQLite — période
+ * vide, recettes nulles, signe inattendu — et c'est le contrat qui a fait ses preuves sur
+ * `reconciler.ts`.
+ *
+ * **Somme algébrique, jamais de valeur absolue (D28).** `amount_cents` est signé : négatif
+ * pour les sorties, positif pour les entrées. Un remboursement rangé sur un poste de dépense
+ * diminue cette dépense — il n'est ni ignoré, ni rerouté vers les recettes. Les totaux
+ * conservent donc le signe bancaire, et l'orientation d'affichage appartient à l'UI.
+ */
+import { type Cents, cents, sumCents } from '~~/shared/types/money'
+import { ratio, type Ratio } from '~~/shared/types/ratio'
+import type { MovementNature } from '~~/shared/types/movement-nature'
+import {
+  JOINT_TRANSFER_ITEM_CODE,
+  JOINT_REIMBURSEMENT_ITEM_CODE,
+  JOINT_SHARE_BASIS_POINTS,
+} from '~~/shared/constants/default-referential'
+import { MOVEMENT_NATURES } from '~~/shared/types/movement-nature'
+import { bucketOf, bucketLabel, type Granularity } from '~~/shared/types/granularity'
+
+/** Une ligne à agréger. Le moteur ne connaît rien d'autre d'une transaction. */
+export interface AnalysisTransaction {
+  transactionDate: string
+  amountCents: number
+  categoryItemCode: string
+  /** Groupe de réconciliation (epic 19), ou `null` — voir `neutralizeSettlements`. */
+  settlementGroupId?: number | null
+}
+
+/**
+ * Écarte des agrégats ce qu'une avance remboursée fait seulement CIRCULER (epic 19).
+ *
+ * **Le problème.** L'utilisateur avance des achats pour un tiers — courses, bouteille de gaz —
+ * et se fait rembourser plus tard, souvent en un seul virement couvrant plusieurs achats, et
+ * souvent le mois suivant. Sans traitement, ces lignes gonflent ses dépenses ET ses recettes,
+ * alors qu'il n'a ni dépensé ni gagné.
+ *
+ * **Le modèle, arrêté avec lui le 2026-09-07 : on ÉCARTE les deux côtés, on n'en réduit
+ * aucun.** C'est le seul qui ne déplace rien entre les mois. Réduire l'avance du montant
+ * remboursé obligerait à choisir quel mois porte la réduction — janvier, où l'achat a eu lieu,
+ * ou mars, où le virement est arrivé — et ferait donc bouger un mois par le fait d'un autre.
+ * Écarter chaque ligne dans SON mois laisse les deux justes.
+ *
+ * **Ce qui n'est pas couvert reste dû.** Le remboursement s'impute sur les avances les plus
+ * ANCIENNES d'abord — l'ordre d'un compte, celui que l'utilisateur reconnaît. Le reliquat d'une
+ * avance partiellement couverte demeure une dépense, dans son mois et sa rubrique. Un excédent
+ * de remboursement, lui, redevient une recette : c'est de l'argent reçu qui n'a rien remboursé.
+ *
+ * Transformation PURE : la base garde `amount_cents` tel qu'il figure au relevé (D28). Rien
+ * n'est écrit, rien n'est supprimé — les lignes restent traçables (NFR2).
+ */
+/**
+ * Coupe en deux les virements reçus du compte joint (story 21.1).
+ *
+ * Le compte joint est alimenté à parts égales. Un virement qui en revient rembourse une dépense
+ * commune avancée depuis le compte personnel : la moitié vient du conjoint — un vrai
+ * remboursement, qui doit DIMINUER les dépenses — et l'autre moitié est l'argent de
+ * l'utilisateur, déjà compté en dépense au titre de sa contribution mensuelle. Sans la coupe,
+ * cette moitié-là est comptée deux fois.
+ *
+ * La ligne d'origine n'est pas modifiée en base : comme `neutralizeSettlements`, c'est une
+ * transformation PURE appliquée avant agrégation, et `amount_cents` reste le montant du relevé
+ * (D28). Les deux moitiés portent la même date et la même identité : la descente sait donc
+ * remonter de l'une comme de l'autre à la ligne du relevé (NFR2).
+ *
+ * **Seules les ENTRÉES sont coupées.** Une sortie vers le joint est une contribution, déjà
+ * comptée sur `logement-charges` ou `enfants-*` : la couper reviendrait à la compter à moitié.
+ *
+ * **L'arrondi va à l'interne.** La moitié qui compte est plancher, celle qui ne compte pas porte
+ * le centime en trop : deux arrondis symétriques feraient perdre ou inventer un centime sur un
+ * montant impair, et huit des trente-trois virements de l'historique le sont.
+ */
+/**
+ * La part d'un virement du joint qui rembourse réellement — plancher, le reste allant à
+ * l'interne. Exportée pour que la DESCENTE rejoue le même calcul que l'agrégat : deux
+ * implémentations de la même règle finiraient par diverger (leçon de l'epic 19).
+ */
+export function jointReimbursedCents(amountCents: number): number {
+  if (amountCents <= 0) return 0
+  return Math.floor((amountCents * JOINT_SHARE_BASIS_POINTS) / 10_000)
+}
+
+export function splitJointTransfers(
+  transactions: readonly AnalysisTransaction[],
+): AnalysisTransaction[] {
+  const out: AnalysisTransaction[] = []
+  for (const tx of transactions) {
+    // Une ligne déjà rattachée à un groupe de réconciliation n'est PAS coupée : les deux
+    // mécanismes se disputeraient la même ligne. La couper la ferait entrer en double dans son
+    // groupe — deux moitiés au lieu d'un remboursement — et la descente, qui donne la priorité
+    // à la réconciliation, dirait alors autre chose que le moteur. La réconciliation, plus
+    // précise puisqu'elle nomme les dépenses couvertes, l'emporte (revue du 2026-09-08).
+    const inSettlement = tx.settlementGroupId !== null && tx.settlementGroupId !== undefined
+    if (tx.categoryItemCode !== JOINT_TRANSFER_ITEM_CODE || tx.amountCents <= 0 || inSettlement) {
+      out.push(tx)
+      continue
+    }
+    const reimbursed = jointReimbursedCents(tx.amountCents)
+    // Un virement d'un centime donne une moitié NULLE : l'émettre poserait sur la part
+    // remboursée un nœud à 0,00 € portant une transaction, exactement ce que
+    // `neutralizeSettlements` évite en ne rendant pas ses lignes nulles.
+    if (reimbursed === 0) {
+      out.push(tx)
+      continue
+    }
+    out.push({ ...tx, amountCents: reimbursed, categoryItemCode: JOINT_REIMBURSEMENT_ITEM_CODE })
+    // Le reste, et non un second calcul : c'est ce qui garantit la somme au centime.
+    out.push({ ...tx, amountCents: tx.amountCents - reimbursed })
+  }
+  return out
+}
+
+export function neutralizeSettlements(
+  transactions: readonly AnalysisTransaction[],
+): AnalysisTransaction[] {
+  const groups = new Map<number, AnalysisTransaction[]>()
+  const out: AnalysisTransaction[] = []
+
+  for (const tx of transactions) {
+    const id = tx.settlementGroupId
+    if (id === null || id === undefined) {
+      out.push(tx)
+      continue
+    }
+    const bucket = groups.get(id)
+    if (bucket) bucket.push(tx)
+    else groups.set(id, [tx])
+  }
+
+  for (const lines of groups.values()) {
+    // Les avances sont les SORTIES, les remboursements les entrées. Le signe est le fait
+    // bancaire, pas la nature du poste : une avance rangée en « Alimentation » et un
+    // remboursement rangé en « Remboursements » se compensent quand même.
+    const advances = lines.filter(t => t.amountCents < 0)
+      .sort((a, b) => a.transactionDate.localeCompare(b.transactionDate))
+    const refunds = lines.filter(t => t.amountCents > 0)
+
+    // `-` : les avances sont négatives, la couverture se raisonne en positif.
+    let remaining = refunds.reduce((sum, t) => sum + t.amountCents, 0)
+
+    for (const advance of advances) {
+      const owed = -advance.amountCents
+      const covered = Math.min(remaining, owed)
+      remaining -= covered
+      const residual = covered - owed
+      // Une avance entièrement couverte disparaît des agrégats ; une avance partiellement
+      // couverte y reste pour ce qui n'a pas été remboursé.
+      if (residual !== 0) out.push({ ...advance, amountCents: residual })
+    }
+
+    // Un remboursement qui excède les avances n'a rien remboursé : c'est une vraie recette.
+    // On la porte sur la ligne d'entrée la plus RÉCENTE, la seule qui puisse en être la cause.
+    if (remaining > 0) {
+      const latest = [...refunds].sort((a, b) => a.transactionDate.localeCompare(b.transactionDate)).at(-1)
+      if (latest) out.push({ ...latest, amountCents: remaining })
+    }
+
+    // Les lignes à montant nul après neutralisation ne sont pas rendues : les garder ferait
+    // compter des transactions qui ne pèsent plus rien dans les totaux qu'elles accompagnent.
+  }
+
+  return out
+}
+
+/**
+ * Résultat brut d'un jeu de lignes — recettes plus dépenses, mouvements internes exclus (NFR4).
+ *
+ * Existe pour que le patrimoine ANTÉRIEUR à une fenêtre passe par les mêmes transformations que
+ * celui de la fenêtre. Il était calculé en SQL, directement sur `amount_cents` : la coupe du
+ * compte joint ne le traversait donc pas, et un même mois pesait différemment selon qu'il
+ * tombait avant la fenêtre ou dedans — la courbe cumulée se décalait de plusieurs milliers
+ * d'euros et bougeait au changement de période (revue du 2026-09-08).
+ *
+ * Le prendre ici, dans le moteur, est ce qui empêche un appelant de l'oublier à nouveau.
+ */
+export function resultTotalCents(
+  rawTransactions: readonly AnalysisTransaction[],
+  referential: readonly AnalysisItemRef[],
+): number {
+  const byCode = new Map(referential.map(r => [r.code, r]))
+  return neutralizeSettlements(splitJointTransfers(rawTransactions)).reduce((sum, tx) => {
+    const nature = byCode.get(tx.categoryItemCode)?.nature
+    if (nature === undefined || nature === 'internal_transfer') return sum
+    return sum + tx.amountCents
+  }, 0)
+}
+
+/** Le référentiel, aplati : de quoi situer un poste dans l'arbre. */
+export interface AnalysisItemRef {
+  code: string
+  label: string
+  nature: MovementNature
+  groupCode: string
+  groupLabel: string
+}
+
+export interface AnalysisItemNode {
+  itemCode: string
+  label: string
+  totalCents: Cents
+  /** Même poste sur la période précédente. `null` si cette période n'est pas fournie. */
+  previousTotalCents: Cents | null
+  transactionCount: number
+  /**
+   * Flux bruts du nœud : somme des montants sortants (négatifs) et entrants (positifs).
+   *
+   * **Pourquoi ils existent (story 18.11).** Le net les cache. Sur 2026, « Virement entre
+   * comptes » vaut −651,40 € alors que 4 512 € sont sortis et 3 861 € rentrés : ce net ne
+   * raconte rien des mouvements qui le composent. Sur les mouvements internes, où aucune
+   * nature n'annonce le sens attendu, c'est la seule façon de lire la ligne.
+   *
+   * Calculés pour TOUS les nœuds, sans distinction de nature : une fonction de calcul n'a pas
+   * à savoir ce que l'écran affichera (NFR22). `outflowCents + inflowCents === totalCents`.
+   */
+  outflowCents: Cents
+  inflowCents: Cents
+}
+
+export interface AnalysisGroupNode {
+  groupCode: string
+  label: string
+  totalCents: Cents
+  previousTotalCents: Cents | null
+  transactionCount: number
+  /** Cf. `AnalysisItemNode` — somme des flux bruts des postes de la rubrique. */
+  outflowCents: Cents
+  inflowCents: Cents
+  items: AnalysisItemNode[]
+}
+
+export interface AnalysisNatureNode {
+  nature: MovementNature
+  totalCents: Cents
+  previousTotalCents: Cents | null
+  groups: AnalysisGroupNode[]
+}
+
+export interface AnalysisIndicators {
+  /** Recettes de la période, hors mouvements internes. */
+  incomeCents: Cents
+  /** Dépenses de la période, hors mouvements internes. Négatif en convention bancaire. */
+  expenseCents: Cents
+  /** Mouvements internes, exposés à part : ils n'entrent dans aucun des deux totaux (NFR4). */
+  internalCents: Cents
+  /** Trésorerie de la période = recettes + dépenses, hors mouvements internes. */
+  resultCents: Cents
+  /** Trésorerie cumulée sur la série, jusqu'à la fin de la période. */
+  cumulativeResultCents: Cents
+  /** Part des recettes consommée par les dépenses. `null` sans recette. */
+  spendRate: Ratio | null
+  /** Part des recettes conservée. `null` sans recette. */
+  savingsRate: Ratio | null
+}
+
+export interface AnalysisSeriesPoint {
+  bucket: string
+  label: string
+  incomeCents: Cents
+  expenseCents: Cents
+  resultCents: Cents
+  cumulativeResultCents: Cents
+}
+
+export interface AnalysisResult {
+  natures: AnalysisNatureNode[]
+  indicators: AnalysisIndicators
+  series: AnalysisSeriesPoint[]
+  /** Lignes dont le poste est absent du référentiel — ni agrégées, ni tues. */
+  orphanCount: number
+}
+
+export interface AnalysisInput {
+  transactions: readonly AnalysisTransaction[]
+  /**
+   * Lignes de la FENÊTRE d'évolution, plus large que la période analysée.
+   *
+   * L'arbre décrit la période choisie ; la série, elle, n'a de sens que sur plusieurs
+   * tranches. Les confondre donnait, en granularité mois, une série d'un seul point — un
+   * graphique d'évolution qui n'évolue pas. Par défaut, la fenêtre est la période elle-même.
+   */
+  seriesTransactions?: readonly AnalysisTransaction[]
+  /** Lignes de la période précédente, pour `previousTotalCents` (D24). Vide si non demandée. */
+  previousTransactions?: readonly AnalysisTransaction[]
+  referential: readonly AnalysisItemRef[]
+  granularity: Granularity
+  /** Vrai si la période précédente a été fournie — distingue « zéro » de « inconnu ». */
+  hasPrevious?: boolean
+}
+
+/** Totaux par code de poste. */
+function totalsByItem(transactions: readonly AnalysisTransaction[]) {
+  const totals = new Map<string, { cents: number, count: number, out: number, in: number }>()
+  for (const tx of transactions) {
+    const entry = totals.get(tx.categoryItemCode) ?? { cents: 0, count: 0, out: 0, in: 0 }
+    entry.cents += tx.amountCents
+    // Les deux sens sont sommés SÉPARÉMENT, sans valeur absolue : chacun garde le signe
+    // bancaire, et leur somme redonne le net (D28). Un montant nul ne compte d'aucun côté.
+    if (tx.amountCents < 0) entry.out += tx.amountCents
+    else if (tx.amountCents > 0) entry.in += tx.amountCents
+    entry.count++
+    totals.set(tx.categoryItemCode, entry)
+  }
+  return totals
+}
+
+/**
+ * Agrège une période.
+ *
+ * Les nœuds à zéro sont conservés dès lors qu'ils portent au moins une transaction sur l'une
+ * des deux périodes : un poste tombé à zéro ce mois-ci est une information, pas un vide.
+ * Les postes jamais touchés, eux, sont omis — afficher 48 lignes dont 40 à zéro noierait le
+ * signal.
+ */
+export function analyze(input: AnalysisInput): AnalysisResult {
+  const { referential, granularity } = input
+  // La neutralisation s'applique AVANT toute agrégation, et à chacune des deux périodes
+  // séparément : une avance de janvier remboursée en mars doit sortir de janvier comme de
+  // mars, sans que l'une déteigne sur l'autre (epic 19).
+  const transactions = neutralizeSettlements(splitJointTransfers(input.transactions))
+  const previous = neutralizeSettlements(splitJointTransfers(input.previousTransactions ?? []))
+  const hasPrevious = input.hasPrevious ?? input.previousTransactions !== undefined
+
+  const byCode = new Map(referential.map(r => [r.code, r]))
+  const current = totalsByItem(transactions)
+  const prior = totalsByItem(previous)
+
+  // Une ligne dont le poste n'existe plus au référentiel ne peut être placée nulle part.
+  // On la compte plutôt que de la faire disparaître : un total qui ne dit pas ce qu'il omet
+  // est exactement le chiffre invérifiable que ce produit refuse.
+  let orphanCount = 0
+  for (const [code, entry] of current) {
+    if (!byCode.has(code)) orphanCount += entry.count
+  }
+
+  const natures: AnalysisNatureNode[] = []
+  for (const nature of MOVEMENT_NATURES) {
+    const groups = new Map<string, AnalysisGroupNode>()
+
+    for (const ref of referential) {
+      if (ref.nature !== nature) continue
+      const cur = current.get(ref.code)
+      const pre = prior.get(ref.code)
+      if (!cur && !pre) continue
+
+      const group = groups.get(ref.groupCode) ?? {
+        groupCode: ref.groupCode,
+        label: ref.groupLabel,
+        totalCents: cents(0),
+        previousTotalCents: hasPrevious ? cents(0) : null,
+        transactionCount: 0,
+        outflowCents: cents(0),
+        inflowCents: cents(0),
+        items: [],
+      }
+      const item: AnalysisItemNode = {
+        itemCode: ref.code,
+        label: ref.label,
+        totalCents: cents(cur?.cents ?? 0),
+        previousTotalCents: hasPrevious ? cents(pre?.cents ?? 0) : null,
+        transactionCount: cur?.count ?? 0,
+        outflowCents: cents(cur?.out ?? 0),
+        inflowCents: cents(cur?.in ?? 0),
+      }
+      group.items.push(item)
+      group.totalCents = cents(group.totalCents + item.totalCents)
+      group.outflowCents = cents(group.outflowCents + item.outflowCents)
+      group.inflowCents = cents(group.inflowCents + item.inflowCents)
+      if (group.previousTotalCents !== null && item.previousTotalCents !== null) {
+        group.previousTotalCents = cents(group.previousTotalCents + item.previousTotalCents)
+      }
+      group.transactionCount += item.transactionCount
+      groups.set(ref.groupCode, group)
+    }
+
+    if (groups.size === 0) continue
+    const groupList = [...groups.values()]
+    natures.push({
+      nature,
+      totalCents: sumCents(groupList.map(g => g.totalCents)),
+      previousTotalCents: hasPrevious
+        ? sumCents(groupList.map(g => g.previousTotalCents ?? cents(0)))
+        : null,
+      groups: groupList,
+    })
+  }
+
+  const series = buildSeries(
+    input.seriesTransactions ? neutralizeSettlements(splitJointTransfers(input.seriesTransactions)) : transactions,
+    byCode,
+    granularity,
+  )
+  const indicators = computeIndicators(natures, series)
+
+  return { natures, indicators, series, orphanCount }
+}
+
+/** Total d'une nature dans l'arbre, ou zéro si elle n'y figure pas. */
+function natureTotal(natures: readonly AnalysisNatureNode[], nature: MovementNature): Cents {
+  return natures.find(n => n.nature === nature)?.totalCents ?? cents(0)
+}
+
+function computeIndicators(
+  natures: readonly AnalysisNatureNode[],
+  series: readonly AnalysisSeriesPoint[],
+): AnalysisIndicators {
+  const incomeCents = natureTotal(natures, 'income')
+  const expenseCents = natureTotal(natures, 'expense')
+  const internalCents = natureTotal(natures, 'internal_transfer')
+
+  // NFR4 : les mouvements internes n'entrent PAS dans le résultat. Un virement vers un livret
+  // n'appauvrit ni n'enrichit — le compter gonflerait les recettes et masquerait un déficit.
+  const resultCents = cents(incomeCents + expenseCents)
+
+  return {
+    incomeCents,
+    expenseCents,
+    internalCents,
+    resultCents,
+    // Cumul à la FIN de la fenêtre d'évolution : c'est ce que « trésorerie cumulée » veut
+    // dire — ce qui reste après tout ce qui précède, pas le résultat de la seule période.
+    cumulativeResultCents: series.at(-1)?.cumulativeResultCents ?? resultCents,
+    // Dénominateur nul → `null`, jamais zéro : un mois sans recette n'a pas un taux
+    // d'épargne nul, il n'en a pas (AR10).
+    //
+    // `-expenseCents` et NON `Math.abs` : D28 interdit la valeur absolue dans le moteur, et
+    // pour une raison qui se voit ici. Quand les remboursements d'un mois dépassent les achats,
+    // la nature `expense` a un net POSITIF ; la valeur absolue affichait alors « 6 % des
+    // recettes consommées » là où rien n'avait été consommé, et les deux taux ne totalisaient
+    // plus 1. La négation conserve le signe algébrique : `spendRate + savingsRate === 1` reste
+    // vrai dans tous les cas, y compris inversé.
+    spendRate: ratio(-expenseCents, incomeCents),
+    savingsRate: ratio(resultCents, incomeCents),
+  }
+}
+
+/** Cible d'un suivi dans le temps : une rubrique entière, ou un poste précis. */
+export interface SeriesTarget {
+  kind: 'group' | 'item'
+  code: string
+}
+
+/** Part d'un poste dans la tranche d'une rubrique suivie. */
+export interface CategorySeriesBreakdown {
+  itemCode: string
+  label: string
+  totalCents: Cents
+}
+
+export interface CategorySeriesPoint {
+  bucket: string
+  label: string
+  totalCents: Cents
+  transactionCount: number
+  /**
+   * Répartition par poste, sur une cible qui est une RUBRIQUE (demande du 2026-09-06).
+   *
+   * Une courbe d'Alimentation qui monte ne dit pas si ce sont les courses ou les restaurants :
+   * la même question que la répartition résout sur une période, posée sur une trajectoire.
+   * Vide sur une cible qui est déjà un poste — il n'y a rien à répartir.
+   *
+   * Triée par poids décroissant dans le sens du nœud : le poste qui explique la tranche vient
+   * en premier.
+   */
+  breakdown: CategorySeriesBreakdown[]
+}
+
+/**
+ * Trajectoire d'UNE rubrique ou d'UN poste dans le temps (FR31).
+ *
+ * C'est la question qui a fait construire ce produit — « est-ce que mon Alimentation
+ * dérive ? » — et à laquelle une courbe de résultat global ne répond pas.
+ *
+ * Les tranches sans mouvement sur la cible sont rendues à zéro plutôt qu'omises : un poste qui
+ * disparaît un mois est une information, et une série trouée se lirait comme une accélération.
+ * L'appelant fournit donc les tranches attendues.
+ */
+export function categorySeries(
+  rawTransactions: readonly AnalysisTransaction[],
+  referential: readonly AnalysisItemRef[],
+  granularity: Granularity,
+  target: SeriesTarget,
+  buckets: readonly string[],
+): CategorySeriesPoint[] {
+  // Une avance remboursée ne doit pas davantage peser sur la trajectoire d'une rubrique que
+  // sur son total (epic 19).
+  const transactions = neutralizeSettlements(splitJointTransfers(rawTransactions))
+  const byCode = new Map(referential.map(r => [r.code, r]))
+  const matches = (code: string) => {
+    const ref = byCode.get(code)
+    if (!ref) return false
+    return target.kind === 'item' ? ref.code === target.code : ref.groupCode === target.code
+  }
+
+  const totals = new Map<string, { cents: number, count: number }>()
+  /** Répartition par poste, par tranche. Peuplée uniquement sur une cible de type rubrique. */
+  const byItem = new Map<string, Map<string, number>>()
+
+  for (const tx of transactions) {
+    if (!matches(tx.categoryItemCode)) continue
+    const key = bucketOf(tx.transactionDate, granularity)
+    const entry = totals.get(key) ?? { cents: 0, count: 0 }
+    entry.cents += tx.amountCents
+    entry.count++
+    totals.set(key, entry)
+
+    if (target.kind === 'group') {
+      const items = byItem.get(key) ?? new Map<string, number>()
+      items.set(tx.categoryItemCode, (items.get(tx.categoryItemCode) ?? 0) + tx.amountCents)
+      byItem.set(key, items)
+    }
+  }
+
+  return buckets.map((bucket) => {
+    const items = byItem.get(bucket)
+    return {
+      bucket,
+      label: bucketLabel(bucket, granularity),
+      totalCents: cents(totals.get(bucket)?.cents ?? 0),
+      transactionCount: totals.get(bucket)?.count ?? 0,
+      // Tri par MAGNITUDE : sur une rubrique de dépense les montants sont négatifs, et un tri
+      // décroissant brut remonterait le poste le plus faible. On classe par poids, sans
+      // toucher au signe (D28).
+      breakdown: [...(items ?? new Map())]
+        .map(([itemCode, value]) => ({
+          itemCode,
+          label: byCode.get(itemCode)?.label ?? itemCode,
+          totalCents: cents(value),
+        }))
+        .sort((a, b) => Math.abs(b.totalCents) - Math.abs(a.totalCents)),
+    }
+  })
+}
+
+/**
+ * Série temporelle découpée selon la granularité.
+ *
+ * Les tranches sans aucune transaction ne sont pas inventées : le moteur ne connaît pas les
+ * bornes demandées, seulement les lignes reçues. C'est à l'appelant de compléter s'il veut
+ * une série continue — et il est le seul à savoir ce qu'il a demandé.
+ */
+function buildSeries(
+  transactions: readonly AnalysisTransaction[],
+  byCode: ReadonlyMap<string, AnalysisItemRef>,
+  granularity: Granularity,
+): AnalysisSeriesPoint[] {
+  const buckets = new Map<string, { income: number, expense: number }>()
+  for (const tx of transactions) {
+    const ref = byCode.get(tx.categoryItemCode)
+    if (!ref || ref.nature === 'internal_transfer') continue
+    const key = bucketOf(tx.transactionDate, granularity)
+    const entry = buckets.get(key) ?? { income: 0, expense: 0 }
+    if (ref.nature === 'income') entry.income += tx.amountCents
+    else entry.expense += tx.amountCents
+    buckets.set(key, entry)
+  }
+
+  let running = 0
+  return [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([bucket, { income, expense }]) => {
+      const result = income + expense
+      running += result
+      return {
+        bucket,
+        label: bucketLabel(bucket, granularity),
+        incomeCents: cents(income),
+        expenseCents: cents(expense),
+        resultCents: cents(result),
+        cumulativeResultCents: cents(running),
+      }
+    })
+}

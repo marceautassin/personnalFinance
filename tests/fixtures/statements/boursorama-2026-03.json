@@ -1,0 +1,367 @@
+{
+  "bank": "boursorama",
+  "source": "synthétique — aucune donnée réelle (décision Marceau, 2026-09-22)",
+  "flatText": "Boursorama SA - www.boursobank.com\nPériode du 28/02/2026 au 31/03/2026\nRELEVE DE COMPTE\nM JEAN DUPONT\n12 RUE DES LILAS\n75000 PARIS\nIBAN : FR76 1234 5678 9012 3456 7890 123\nBIC : BOUSFRPPXXX\nBoursorama SA - www.boursobank.com\nDate opération Libellé Valeur Débit Crédit\nSOLDE AU : 27/02/2026 1 000,00\n02/03/2026 VIRT SALAIRE SOCIETE FICTIVE 2 500,00\n03/03/2026 PRLV ABONNEMENT INTERNET FICTIF 39,99\n05/03/2026 CARTE ACHAT SUPERMARCHE FICTIF 87,50\n07/03/2026 CARTE RESTAURANT LE FICTIF 42,00\nRELEVE DE COMPTE\nM JEAN DUPONT\n12 RUE DES LILAS\n75000 PARIS\nIBAN : FR76 1234 5678 9012 3456 7890 123\nBIC : BOUSFRPPXXX\nBoursorama SA - www.boursobank.com\nDate opération Libellé Valeur Débit Crédit\n10/03/2026 VIR RECU AMI FICTIF 50,00\n15/03/2026 PRLV ASSURANCE HABITATION FICTIVE 65,00\n18/03/2026 CARTE ESSENCE STATION FICTIVE 60,00\n22/03/2026 VIR EPARGNE VERS LIVRET FICTIF 200,00\n25/03/2026 CARTE LOISIRS CINEMA FICTIF 15,00\n29/03/2026 REMBOURSEMENT ASSURANCE FICTIVE 30,00\nNouveau solde en EUR : Montant frais bancaires* : 0,00 3 070,51 0,00",
+  "pages": [
+    [
+      {
+        "text": "RELEVE DE COMPTE",
+        "x": 50,
+        "right": 133.2,
+        "y": 700
+      },
+      {
+        "text": "M JEAN DUPONT",
+        "x": 50,
+        "right": 117.60000000000001,
+        "y": 680
+      },
+      {
+        "text": "12 RUE DES LILAS",
+        "x": 50,
+        "right": 133.2,
+        "y": 660
+      },
+      {
+        "text": "75000 PARIS",
+        "x": 50,
+        "right": 107.2,
+        "y": 640
+      },
+      {
+        "text": "IBAN : FR76 1234 5678 9012 3456 7890 123",
+        "x": 50,
+        "right": 258,
+        "y": 620
+      },
+      {
+        "text": "BIC : BOUSFRPPXXX",
+        "x": 50,
+        "right": 138.4,
+        "y": 600
+      },
+      {
+        "text": "Boursorama SA - www.boursobank.com",
+        "x": 50,
+        "right": 226.8,
+        "y": 580
+      },
+      {
+        "text": "Date",
+        "x": 46,
+        "right": 66.8,
+        "y": 538
+      },
+      {
+        "text": "opération",
+        "x": 94,
+        "right": 140.8,
+        "y": 538
+      },
+      {
+        "text": "Libellé",
+        "x": 200,
+        "right": 236.4,
+        "y": 538
+      },
+      {
+        "text": "Valeur",
+        "x": 300,
+        "right": 331.2,
+        "y": 538
+      },
+      {
+        "text": "Débit",
+        "x": 442,
+        "right": 465,
+        "y": 538
+      },
+      {
+        "text": "Crédit",
+        "x": 506,
+        "right": 533,
+        "y": 538
+      },
+      {
+        "text": "SOLDE AU : 27/02/2026 1 000,00",
+        "x": 46,
+        "right": 202,
+        "y": 520
+      },
+      {
+        "text": "02/03/2026",
+        "x": 46,
+        "right": 98,
+        "y": 500
+      },
+      {
+        "text": "VIRT SALAIRE SOCIETE FICTIVE",
+        "x": 100,
+        "right": 245.6,
+        "y": 500
+      },
+      {
+        "text": "2 500,00",
+        "x": 491.4,
+        "right": 533,
+        "y": 500
+      },
+      {
+        "text": "03/03/2026",
+        "x": 46,
+        "right": 98,
+        "y": 480
+      },
+      {
+        "text": "PRLV ABONNEMENT INTERNET FICTIF",
+        "x": 100,
+        "right": 261.20000000000005,
+        "y": 480
+      },
+      {
+        "text": "39,99",
+        "x": 439,
+        "right": 465,
+        "y": 480
+      },
+      {
+        "text": "05/03/2026",
+        "x": 46,
+        "right": 98,
+        "y": 460
+      },
+      {
+        "text": "CARTE ACHAT SUPERMARCHE FICTIF",
+        "x": 100,
+        "right": 256,
+        "y": 460
+      },
+      {
+        "text": "87,50",
+        "x": 439,
+        "right": 465,
+        "y": 460
+      },
+      {
+        "text": "07/03/2026",
+        "x": 46,
+        "right": 98,
+        "y": 440
+      },
+      {
+        "text": "CARTE RESTAURANT LE FICTIF",
+        "x": 100,
+        "right": 235.20000000000002,
+        "y": 440
+      },
+      {
+        "text": "42,00",
+        "x": 439,
+        "right": 465,
+        "y": 440
+      }
+    ],
+    [
+      {
+        "text": "RELEVE DE COMPTE",
+        "x": 50,
+        "right": 133.2,
+        "y": 700
+      },
+      {
+        "text": "M JEAN DUPONT",
+        "x": 50,
+        "right": 117.60000000000001,
+        "y": 680
+      },
+      {
+        "text": "12 RUE DES LILAS",
+        "x": 50,
+        "right": 133.2,
+        "y": 660
+      },
+      {
+        "text": "75000 PARIS",
+        "x": 50,
+        "right": 107.2,
+        "y": 640
+      },
+      {
+        "text": "IBAN : FR76 1234 5678 9012 3456 7890 123",
+        "x": 50,
+        "right": 258,
+        "y": 620
+      },
+      {
+        "text": "BIC : BOUSFRPPXXX",
+        "x": 50,
+        "right": 138.4,
+        "y": 600
+      },
+      {
+        "text": "Boursorama SA - www.boursobank.com",
+        "x": 50,
+        "right": 226.8,
+        "y": 580
+      },
+      {
+        "text": "Date",
+        "x": 46,
+        "right": 66.8,
+        "y": 538
+      },
+      {
+        "text": "opération",
+        "x": 94,
+        "right": 140.8,
+        "y": 538
+      },
+      {
+        "text": "Libellé",
+        "x": 200,
+        "right": 236.4,
+        "y": 538
+      },
+      {
+        "text": "Valeur",
+        "x": 300,
+        "right": 331.2,
+        "y": 538
+      },
+      {
+        "text": "Débit",
+        "x": 442,
+        "right": 465,
+        "y": 538
+      },
+      {
+        "text": "Crédit",
+        "x": 506,
+        "right": 533,
+        "y": 538
+      },
+      {
+        "text": "10/03/2026",
+        "x": 46,
+        "right": 98,
+        "y": 518
+      },
+      {
+        "text": "VIR RECU AMI FICTIF",
+        "x": 100,
+        "right": 198.8,
+        "y": 518
+      },
+      {
+        "text": "50,00",
+        "x": 507,
+        "right": 533,
+        "y": 518
+      },
+      {
+        "text": "15/03/2026",
+        "x": 46,
+        "right": 98,
+        "y": 498
+      },
+      {
+        "text": "PRLV ASSURANCE HABITATION FICTIVE",
+        "x": 100,
+        "right": 271.6,
+        "y": 498
+      },
+      {
+        "text": "65,00",
+        "x": 439,
+        "right": 465,
+        "y": 498
+      },
+      {
+        "text": "18/03/2026",
+        "x": 46,
+        "right": 98,
+        "y": 478
+      },
+      {
+        "text": "CARTE ESSENCE STATION FICTIVE",
+        "x": 100,
+        "right": 250.8,
+        "y": 478
+      },
+      {
+        "text": "60,00",
+        "x": 439,
+        "right": 465,
+        "y": 478
+      },
+      {
+        "text": "22/03/2026",
+        "x": 46,
+        "right": 98,
+        "y": 458
+      },
+      {
+        "text": "VIR EPARGNE VERS LIVRET FICTIF",
+        "x": 100,
+        "right": 256,
+        "y": 458
+      },
+      {
+        "text": "200,00",
+        "x": 433.8,
+        "right": 465,
+        "y": 458
+      }
+    ],
+    [
+      {
+        "text": "25/03/2026",
+        "x": 46,
+        "right": 98,
+        "y": 750
+      },
+      {
+        "text": "CARTE LOISIRS CINEMA FICTIF",
+        "x": 100,
+        "right": 240.4,
+        "y": 750
+      },
+      {
+        "text": "15,00",
+        "x": 439,
+        "right": 465,
+        "y": 750
+      },
+      {
+        "text": "29/03/2026",
+        "x": 46,
+        "right": 98,
+        "y": 730
+      },
+      {
+        "text": "REMBOURSEMENT ASSURANCE FICTIVE",
+        "x": 100,
+        "right": 261.20000000000005,
+        "y": 730
+      },
+      {
+        "text": "30,00",
+        "x": 507,
+        "right": 533,
+        "y": 730
+      },
+      {
+        "text": "Nouveau solde en EUR : Montant frais bancaires* : 0,00 3 070,51 0,00",
+        "x": 46,
+        "right": 399.6,
+        "y": 690
+      }
+    ]
+  ],
+  "expected": {
+    "periodStart": "2026-02-28",
+    "periodEnd": "2026-03-31",
+    "openingCents": 100000,
+    "closingCents": 307051
+  }
+}

@@ -1,53 +1,28 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { H3Event } from 'h3'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-bootstrap-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
 process.env.DATABASE_URL = join(tmpDir, 'test.db')
 
 type DbModule = typeof import('~~/server/db/client')
-type SchemaModule = typeof import('~~/server/db/schema')
 
 let dbMod: DbModule
-let schema: SchemaModule
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sqlite: any
 
 beforeAll(async () => {
   dbMod = await import('~~/server/db/client')
-  schema = await import('~~/server/db/schema')
 
   // @ts-expect-error -- accès interne drizzle pour DDL de test
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE revenue_models (
-      id INTEGER PRIMARY KEY,
-      unemployment_benefit_monthly_cents INTEGER NOT NULL DEFAULT 0,
-      unemployment_benefit_end_date TEXT,
-      sas_monthly_rent_cents INTEGER NOT NULL DEFAULT 0,
-      expense_reimbursements_monthly_cents INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE sas_config (
-      id INTEGER PRIMARY KEY,
-      fiscal_year_end_date TEXT NOT NULL DEFAULT '12-31',
-      revenue_forecast_cents INTEGER NOT NULL DEFAULT 0,
-      expenses_forecast_cents INTEGER NOT NULL DEFAULT 0,
-      current_treasury_cents INTEGER NOT NULL DEFAULT 0,
-      is_rate_pct INTEGER NOT NULL DEFAULT 1500,
-      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-  `)
+  sqlite.exec(TEST_SCHEMA_DDL)
+  // Le référentiel aussi : une des sondes porte sur des DONNÉES — les postes du compte joint,
+  // dont l'absence ferait disparaître la moitié coupée des agrégats (story 21.1).
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 })
 
 afterAll(() => {
@@ -57,43 +32,67 @@ afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
-const fakeEvent = {} as H3Event
-
-/**
- * Importe une instance fraîche du middleware (flag `isBootstrapped` réinitialisé) et
- * l'exécute. Permet de simuler deux lancements indépendants du serveur sur la même DB.
- */
-async function runBootstrapFresh() {
-  vi.resetModules()
-  const mod = await import('./0.bootstrap')
-  await mod.default(fakeEvent)
-}
-
-describe('bootstrap — seed singletons (stories 5.3, 5.4)', () => {
-  it('seeds exactly one zero revenue_models row, idempotent across two runs', async () => {
-    await runBootstrapFresh()
-    await runBootstrapFresh()
-
-    const rows = dbMod.db.select().from(schema.revenueModels).all()
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.id).toBe(1)
-    expect(rows[0]!.unemploymentBenefitMonthlyCents).toBe(0)
-    expect(rows[0]!.unemploymentBenefitEndDate).toBeNull()
-    expect(rows[0]!.sasMonthlyRentCents).toBe(0)
-    expect(rows[0]!.expenseReimbursementsMonthlyCents).toBe(0)
+describe('assertSchemaUpToDate — refus d\'un schéma périmé', () => {
+  /**
+   * La sonde vérifiait la PRÉSENCE des tables de dette. Depuis la suppression du périmètre
+   * forecast (2026-09-04), elle vérifie l'INVERSE : une base antérieure, porteuse de ces
+   * tables, doit être refusée au démarrage plutôt que de laisser diverger le schéma déclaré
+   * et le schéma réel. Depuis D17 elle vérifie AUSSI la présence du référentiel à deux
+   * niveaux — le sens le plus utile, puisque c'est celui qui casse à l'usage.
+   */
+  it('accepte un schéma à jour', async () => {
+    const mod = await import('./0.bootstrap')
+    expect(() => mod.assertSchemaUpToDate()).not.toThrow()
   })
 
-  it('seeds exactly one default sas_config row, idempotent across two runs', async () => {
-    await runBootstrapFresh()
-    await runBootstrapFresh()
+  it('refuse une base portant encore les tables du forecast', async () => {
+    const mod = await import('./0.bootstrap')
+    sqlite.exec('CREATE TABLE debts (id INTEGER PRIMARY KEY AUTOINCREMENT, creditor TEXT NOT NULL)')
+    expect(() => mod.assertSchemaUpToDate()).toThrow(/schéma de base périmé/i)
+    sqlite.exec('DROP TABLE debts')
+    expect(() => mod.assertSchemaUpToDate()).not.toThrow()
+  })
 
-    const rows = dbMod.db.select().from(schema.sasConfig).all()
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.id).toBe(1)
-    expect(rows[0]!.fiscalYearEndDate).toBe('12-31')
-    expect(rows[0]!.revenueForecastCents).toBe(0)
-    expect(rows[0]!.expensesForecastCents).toBe(0)
-    expect(rows[0]!.currentTreasuryCents).toBe(0)
-    expect(rows[0]!.isRatePct).toBe(1500)
+  it('refuse une table transactions portant encore les colonnes de dette', async () => {
+    const mod = await import('./0.bootstrap')
+    sqlite.exec('ALTER TABLE transactions RENAME TO transactions_backup')
+    sqlite.exec(`
+      CREATE TABLE transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        statement_hash TEXT NOT NULL,
+        transaction_date TEXT NOT NULL,
+        label TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        category_item_code TEXT NOT NULL,
+        is_manual INTEGER NOT NULL DEFAULT 0,
+        debt_id INTEGER,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+      );
+    `)
+    expect(() => mod.assertSchemaUpToDate()).toThrow(/schéma de base périmé/i)
+    sqlite.exec('DROP TABLE transactions')
+    sqlite.exec('ALTER TABLE transactions_backup RENAME TO transactions')
+    expect(() => mod.assertSchemaUpToDate()).not.toThrow()
+  })
+
+  /**
+   * Le sens qui compte au quotidien : une base d'avant D17 démarrait sans bruit, puis
+   * échouait à l'usage sur `no such table: category_items`. Un schéma périmé doit se voir au
+   * démarrage.
+   */
+  it('refuse une base restée sur le référentiel plat', async () => {
+    const mod = await import('./0.bootstrap')
+    sqlite.exec('ALTER TABLE category_items RENAME TO category_definitions')
+    expect(() => mod.assertSchemaUpToDate()).toThrow(/référentiel à deux niveaux/i)
+    sqlite.exec('ALTER TABLE category_definitions RENAME TO category_items')
+    expect(() => mod.assertSchemaUpToDate()).not.toThrow()
+  })
+
+  it('refuse une table transactions restée sur `category_item_code` (story 27.1)', async () => {
+    const mod = await import('./0.bootstrap')
+    sqlite.exec('ALTER TABLE transactions RENAME COLUMN category_item_id TO category_item_code')
+    expect(() => mod.assertSchemaUpToDate()).toThrow(/category_item_id/)
+    sqlite.exec('ALTER TABLE transactions RENAME COLUMN category_item_code TO category_item_id')
+    expect(() => mod.assertSchemaUpToDate()).not.toThrow()
   })
 })

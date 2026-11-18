@@ -1,0 +1,338 @@
+<script setup lang="ts">
+import { useRules, type ClassificationRuleWithLabels } from '~/composables/useRules'
+import { useCategories, flattenReferential } from '~/composables/useCategories'
+import { useApiError } from '~/composables/useApiError'
+
+const { data: rules, pending, error, addRule, deleteRule, applyRuleToHistory } = useRules()
+const { data: groups } = useCategories()
+const { mapError } = useApiError()
+
+const groupsWithItems = computed(() => groups.value.filter(g => g.items.length > 0))
+const itemCount = computed(() => flattenReferential(groups.value).length)
+
+const pattern = ref('')
+const categoryItemCode = ref('')
+const saving = ref(false)
+const actionError = ref<string | null>(null)
+const pendingDelete = ref<ClassificationRuleWithLabels | null>(null)
+
+/** Règle dont l'application à l'historique attend confirmation (story 18.2). */
+const pendingApply = ref<ClassificationRuleWithLabels | null>(null)
+/** Règle en cours d'application — une seule à la fois, l'opération écrit en base. */
+const applyingId = ref<number | null>(null)
+/** Compte rendu de la dernière application, affiché tant qu'une autre ne l'a pas remplacé. */
+const applyReport = ref<string | null>(null)
+
+const fetchErrorMessage = computed(() => (error.value ? mapError(error.value) : null))
+
+async function onSubmit() {
+  // `aria-disabled` signale l'indisponibilité sans bloquer le clic (NFR18) : la garde de
+  // ré-entrance doit donc être ici, sinon un double-clic part deux fois et le second remonte
+  // un 409 affiché comme une erreur.
+  if (saving.value) return
+  actionError.value = null
+  const trimmed = pattern.value.trim()
+  if (trimmed.length < 2) {
+    actionError.value = 'Le motif doit faire au moins 2 caractères.'
+    return
+  }
+  if (!categoryItemCode.value) {
+    actionError.value = 'Choisis un poste de destination.'
+    return
+  }
+  saving.value = true
+  const outcome = await addRule({ pattern: trimmed, categoryItemCode: categoryItemCode.value })
+  saving.value = false
+  if (outcome.error) actionError.value = outcome.error
+  else {
+    pattern.value = ''
+    categoryItemCode.value = ''
+  }
+}
+
+/**
+ * Où en est une règle vis-à-vis de l'historique (story 18.9).
+ *
+ * Trois états, et non deux : « aucune ligne couverte » n'est pas « à jour ». Les confondre
+ * ferait passer une règle qui n'attrape rien — un motif mal écrit, typiquement — pour une
+ * règle en ordre.
+ */
+function stateOf(rule: ClassificationRuleWithLabels) {
+  const pending = rule.pendingCount ?? 0
+  // `pendingCount` absent avec des lignes couvertes : la réponse ne porte pas l'état. Le
+  // replier sur « à jour » afficherait une règle en ordre sans l'avoir vérifié.
+  if (rule.pendingCount === undefined && rule.matchCount > 0) {
+    return { kind: 'unknown' as const, icon: '?', label: 'état inconnu', pending: 0 }
+  }
+  if (rule.matchCount === 0) {
+    return { kind: 'empty' as const, icon: '—', label: 'aucune ligne couverte', pending }
+  }
+  if (pending === 0) {
+    return { kind: 'clean' as const, icon: '✓', label: `à jour · ${rule.matchCount} ligne(s)`, pending }
+  }
+  return {
+    kind: 'pending' as const,
+    icon: '⚠',
+    label: `${pending} à ranger sur ${rule.matchCount}`,
+    pending,
+  }
+}
+
+async function onConfirmApply() {
+  const rule = pendingApply.value
+  pendingApply.value = null
+  if (!rule || applyingId.value !== null) return
+  actionError.value = null
+  applyReport.value = null
+  applyingId.value = rule.id
+
+  const outcome = await applyRuleToHistory(rule.id)
+  applyingId.value = null
+
+  if (!('result' in outcome)) {
+    actionError.value = outcome.error ?? 'L\'application a échoué.'
+    return
+  }
+
+  const { updatedCount, unchangedCount, skippedManualCount } = outcome.result
+  const parts = [
+    updatedCount === 0
+      ? 'Aucune ligne reclassée'
+      : `${updatedCount} ligne(s) reclassée(s)`,
+  ]
+  if (unchangedCount > 0) parts.push(`${unchangedCount} déjà au bon poste`)
+  // La raison compte autant que le chiffre : sans elle, l'utilisateur croit la règle en panne.
+  if (skippedManualCount > 0) {
+    parts.push(`${skippedManualCount} laissée(s) de côté car corrigée(s) à la main`)
+  }
+  applyReport.value = `${parts.join(' · ')}.`
+}
+
+async function onConfirmDelete() {
+  const rule = pendingDelete.value
+  pendingDelete.value = null
+  if (!rule) return
+  actionError.value = null
+  const outcome = await deleteRule(rule.id)
+  if (outcome.error) actionError.value = outcome.error
+}
+</script>
+
+<template>
+  <section class="rules">
+    <header>
+      <h2 class="rules__title">
+        Règles de classement
+      </h2>
+      <p class="rules__lead">
+        Une règle range dans un poste tout libellé qui contient son motif. Elle s'applique à
+        l'ingestion, <strong>par-dessus la catégorisation automatique</strong>. « Appliquer »
+        la rejoue sur les relevés déjà importés ; les lignes corrigées à la main n'y sont
+        jamais touchées.
+      </p>
+      <p class="rules__lead">
+        Une règle naît le plus souvent d'une ligne mal rangée :
+        <NuxtLink to="/a-ranger">voir les lignes non catégorisées</NuxtLink>.
+      </p>
+    </header>
+
+    <p
+      v-if="actionError"
+      class="notice"
+      role="alert"
+    >
+      {{ actionError }}
+    </p>
+    <p
+      v-if="fetchErrorMessage"
+      class="notice"
+      role="alert"
+    >
+      {{ fetchErrorMessage }}
+    </p>
+
+    <form
+      class="rules__form"
+      @submit.prevent="onSubmit"
+    >
+      <label class="rules__field rules__field--grow">
+        <span>Si le libellé contient</span>
+        <input
+          v-model="pattern"
+          type="text"
+          class="input rules__pattern"
+          placeholder="Ex : SOCIETEX"
+          maxlength="120"
+        >
+      </label>
+      <label class="rules__field rules__field--grow">
+        <span>Ranger dans</span>
+        <select
+          v-model="categoryItemCode"
+          class="select"
+        >
+          <option
+            value=""
+            disabled
+          >
+            {{ itemCount === 0 ? 'Aucun poste' : 'Choisir…' }}
+          </option>
+          <!-- Groupé par rubrique : « Restaurant » existe sous plusieurs d'entre elles (FR19). -->
+          <optgroup
+            v-for="group in groupsWithItems"
+            :key="group.code"
+            :label="group.label"
+          >
+            <option
+              v-for="item in group.items"
+              :key="item.code"
+              :value="item.code"
+            >
+              {{ item.label }}
+            </option>
+          </optgroup>
+        </select>
+      </label>
+      <button
+        type="submit"
+        class="btn btn--primary rules__btn"
+        :aria-disabled="saving"
+      >
+        {{ saving ? 'Ajout…' : 'Ajouter la règle' }}
+      </button>
+    </form>
+
+    <p
+      v-if="pending && rules.length === 0"
+      class="rules__empty"
+    >
+      Chargement…
+    </p>
+    <p
+      v-else-if="rules.length === 0"
+      class="rules__empty"
+    >
+      Aucune règle. Les libellés qui reviennent — ta SASU, ton opérateur, ta salle de sport —
+      sont les meilleurs candidats.
+    </p>
+    <table
+      v-else
+      class="table table--framed rules__table"
+    >
+      <thead>
+        <tr>
+          <th>Si le libellé contient</th>
+          <th>Ranger dans</th>
+          <th class="rules__num">
+            Lignes couvertes
+          </th>
+          <th><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="rule in rules"
+          :key="rule.id"
+          :data-testid="`rule-row-${rule.id}`"
+        >
+          <td class="rules__pattern">
+            {{ rule.pattern }}
+          </td>
+          <td>{{ rule.groupLabel }} · {{ rule.itemLabel }}</td>
+          <td>
+            <span
+              class="rules__state"
+              :class="`rules__state--${stateOf(rule).kind}`"
+            >
+              <span aria-hidden="true">{{ stateOf(rule).icon }}</span>
+              {{ stateOf(rule).label }}
+            </span>
+          </td>
+          <td class="rules__actions">
+            <!-- `aria-disabled` et non `disabled` : le bouton reste focalisable et dit
+                 pourquoi il est indisponible (NFR18). -->
+            <button
+              type="button"
+              class="btn btn--sm"
+              :aria-disabled="applyingId !== null || stateOf(rule).kind !== 'pending'"
+              :aria-label="stateOf(rule).kind === 'pending'
+                ? `Appliquer la règle ${rule.pattern} aux ${stateOf(rule).pending} ligne(s) en retard`
+                : `Appliquer la règle ${rule.pattern} à l'historique — indisponible, ${stateOf(rule).label}`"
+              @click="stateOf(rule).kind === 'pending' && applyingId === null ? pendingApply = rule : null"
+            >
+              {{ applyingId === rule.id ? 'Application…' : 'Appliquer' }}
+            </button>
+            <button
+              type="button"
+              class="btn btn--danger btn--sm"
+              :aria-label="`Supprimer la règle ${rule.pattern}`"
+              @click="pendingDelete = rule"
+            >
+              Supprimer
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p
+      v-if="applyReport"
+      class="rules__report"
+      role="status"
+    >
+      {{ applyReport }}
+    </p>
+
+    <ConfirmDialog
+      :open="pendingApply !== null"
+      title="Appliquer la règle à l'historique"
+      :message="`Rejouer les règles sur les ${pendingApply ? stateOf(pendingApply).pending : 0} ligne(s) en retard que « ${pendingApply?.pattern} » couvre ? Elles iront dans ${pendingApply?.groupLabel} · ${pendingApply?.itemLabel}, sauf celles qu'une règle plus précise réclame. Les lignes corrigées à la main ne sont pas touchées.`"
+      confirm-label="Appliquer"
+      @confirm="onConfirmApply"
+      @cancel="pendingApply = null"
+    />
+
+    <ConfirmDialog
+      :open="pendingDelete !== null"
+      title="Supprimer la règle"
+      :message="`Supprimer la règle « ${pendingDelete?.pattern} » ? Les transactions déjà classées ne changent pas.`"
+      confirm-label="Supprimer"
+      @confirm="onConfirmDelete"
+      @cancel="pendingDelete = null"
+    />
+  </section>
+</template>
+
+<style scoped>
+.rules__state { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-sm); }
+.rules__state--clean { color: var(--color-success); }
+.rules__state--pending { color: var(--color-danger); }
+.rules__state--empty { color: var(--color-text-muted); }
+.rules__state--unknown { color: var(--color-text-muted); }
+
+.rules__report {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+.rules { display: flex; flex-direction: column; gap: var(--space-3); }
+.rules__lead { margin: 0; color: var(--color-text-muted); max-width: 88ch; font-size: var(--font-size-sm); }
+.rules__form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+}
+.rules__field { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-sm); }
+.rules__field--grow { flex: 1 1 20rem; }
+.rules__field span { color: var(--color-text-muted); }
+.rules__empty { color: var(--color-text-muted); max-width: 60ch; }
+/* Le motif est de la donnée saisie, pas de la prose : à chasse fixe, on voit les espaces. */
+.rules__pattern { font-family: var(--font-mono); font-size: var(--font-size-sm); }
+.rules__num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.rules__actions { text-align: right; }
+</style>

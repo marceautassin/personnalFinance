@@ -1,6 +1,5 @@
 # generated: 2026-04-30
-# last_updated: 2026-05-01
-# (story 2-5-service-reconciler passée in-progress)
+# last_updated: 2026-10-20
 # project: personnalFinance
 # project_key: NOKEY
 # tracking_system: file-system
@@ -23,6 +22,8 @@
 #   - in-progress: Developer actively working on implementation
 #   - review: Ready for code review (via Dev's code-review workflow)
 #   - done: Story completed
+#   - descoped: Story abandonnée sans livraison (statut hors gabarit BMad, usage local
+#     établi le 2026-05-31 sur 4-2)
 #
 # Retrospective Status:
 #   - optional: Can be completed but not required
@@ -35,22 +36,46 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PIVOT PRODUIT DU 2026-09-04
+# ══════════════════════════════════════════════════════════════════════════════
+# Le cadrage initial (forecast inverse + dividende SAS) a été invalidé par l'usage réel.
+# PRD réécrit, architecture amendée (D11-D16 retirées, D17-D27 ajoutées), périmètre mort
+# supprimé du code : 146 fichiers, −10 457 lignes.
+#
+# Conséquences sur ce fichier :
+#   • Epics 1-4 et 7 : restent `done`. Le travail A ÉTÉ livré ; une partie du code a ensuite
+#     été retirée par le pivot. Le statut décrit ce qui s'est passé, pas ce qui subsiste.
+#   • Epics 5-6 : passent à `descoped`. Ils n'ont jamais franchi la revue et leur code est parti.
+#   • Epics 8-11 (Phase 1.x multi-profils) : RETIRÉS de ce fichier. Jamais implémentés, et les
+#     décisions qui les portaient (D11-D16) sont explicitement retirées de l'architecture.
+#     Le multi-compte repasse en Vision au PRD. Trace : sprint-change-proposal-2026-07-12.md
+#     et epics-v1-forecast.md.
+#   • Epics 12-15 : nouveau découpage, source de vérité `planning-artifacts/epics.md`.
+#     Numérotés à partir de 12 pour ne pas entrer en collision avec les fichiers de stories
+#     1-1-*.md à 7-8-*.md, qui restent dans ce dossier.
+#
+# ⚠️ ÉCART DE CONVENTION VIGIE — signalé, non corrigé.
+# Vigie attend `planning-artifacts/<chantier>/` ↔ `implementation-artifacts/<chantier>/`.
+# Ce projet utilise une structure PLATE, sans sous-dossier de chantier, depuis son origine.
+# Les 39 fichiers de stories existants sont à la racine d'implementation-artifacts.
+# Introduire un sous-dossier maintenant scinderait le projet en deux chantiers aux yeux de
+# Vigie : un « en cadrage » côté planification, un sans titres côté implémentation.
+# À trancher explicitement avant la création des stories 12-1 et suivantes.
+# ══════════════════════════════════════════════════════════════════════════════
+
 generated: 2026-04-30
-last_updated: 2026-06-14
-# (stories 5-1, 5-2 : review → done ; reste epic-5 : 5-3..5-6 ready-for-dev)
-# (dev story 5-3 : ready-for-dev → in-progress → review)
-# (dev story 5-4 : ready-for-dev → in-progress → review)
-# (review epic-3 + apply patches : 3-1, 3-2, 3-3 → done ; epic-2 et epic-3 → done)
-# (création stories epic-4 : 4-1, 4-2, 4-3 → ready-for-dev ; epic-4 → in-progress)
-# (création stories epic-5 : 5-1..5-6 → ready-for-dev ; epic-5 → in-progress)
-# (dev story 5-1 : ready-for-dev → in-progress → review)
+last_updated: 2026-09-12
 project: personnalFinance
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
 development_status:
+  # ─────────────────────────── SOCLE LIVRÉ (epics 1-7) ───────────────────────────
+
   # Epic 1 — Foundation & primitives financières
+  # Intégralement conservé. `Cents`, erreurs normalisées, Zod, bootstrap : le socle actuel.
   epic-1: done
   1-1-initialiser-projet-nuxt-et-dependances: done
   1-2-configurer-typescript-eslint-tests: done
@@ -62,6 +87,8 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2 — Ingestion & catégorisation des relevés
+  # Intégralement conservé. C'est sur cette base que se greffent les epics 13 et 14.
+  # La boundary posée en 2-4 rend la bascule de fournisseur LLM (13-5) confinable à un fichier.
   epic-2: done
   2-1-schema-bank-statements-et-transactions: done
   2-2-service-pdf-extractor: done
@@ -76,6 +103,7 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3 — Réconciliation manuelle des écarts
+  # Intégralement conservé. FR10-FR14 du nouveau PRD sont tenus par ce code.
   epic-3: done
   3-1-endpoint-post-api-reconciliation: done
   3-2-ui-reconciliation-gap-add-manual-transaction: done
@@ -83,6 +111,7 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4 — Dashboard mensuel narratif
+  # Conservé, mais l'epic 15 le remplace fonctionnellement.
   epic-4: done
   4-1-endpoint-get-api-dashboard: done
   # descoped 2026-05-31 : refactor pur (déménagement des helpers déjà inlinés en 4.1).
@@ -92,31 +121,512 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5 — Modèles financiers (charges, revenus, SAS, fiscalité)
-  epic-5: in-progress
-  5-1-fixed-charges-crud-et-ui: done
-  5-2-charge-suggester-et-suggestions-ui: done
-  5-3-revenue-models-endpoints-et-ui: review
-  5-4-sas-config-dividend-capacity-et-ui: review
-  5-5-tax-settings-endpoints-et-ui: ready-for-dev
-  5-6-gestion-categories-crud-et-ui: ready-for-dev
+  # DESCOPED le 2026-09-04. Charges fixes déclaratives, revenus déclaratifs, config SAS et
+  # fiscalité supprimés du code. 5-5 et 5-6 n'avaient jamais franchi la revue.
+  # Deux survivances : `charge-suggester.ts` (5-2), découplé des charges déclaratives et
+  # repositionné en FR38 phase 2 ; le CRUD catégories (5-6), que l'epic 12 remplace.
+  epic-5: descoped
+  5-1-fixed-charges-crud-et-ui: descoped
+  5-2-charge-suggester-et-suggestions-ui: descoped
+  5-3-revenue-models-endpoints-et-ui: descoped
+  5-4-sas-config-dividend-capacity-et-ui: descoped
+  5-5-tax-settings-endpoints-et-ui: descoped
+  5-6-gestion-categories-crud-et-ui: descoped
   epic-5-retrospective: optional
 
   # Epic 6 — Dettes
-  epic-6: backlog
-  6-1-debts-schemas-crud-endpoints: backlog
-  6-2-ui-debts-page-card-form: backlog
-  6-3-marquage-transaction-remboursement-fr9: backlog
-  6-4-debt-projection-et-impact-ui: backlog
+  # DESCOPED le 2026-09-04. La revue du matin même avait conclu CHANGEMENTS REQUIS ;
+  # les stories de remédiation 6-5..6-8 ont été développées et corrigées, mais la recette
+  # visuelle n'a jamais eu lieu et le pivot a supprimé l'ensemble. Aucune story n'a été close.
+  # Le PRD réécrit acte que les remboursements de dette ne reçoivent aucun traitement
+  # particulier : une catégorie comme une autre.
+  epic-6: descoped
+  6-1-debts-schemas-crud-endpoints: descoped
+  6-2-ui-debts-page-card-form: descoped
+  6-3-marquage-transaction-remboursement-fr9: descoped
+  6-4-debt-projection-et-impact-ui: descoped
+  6-5-ledger-evenements-signes: descoped
+  6-6-corriger-biais-dividende: descoped
+  6-7-surete-donnees-dette: descoped
+  6-8-couverture-nfr18-et-specs: descoped
   epic-6-retrospective: optional
 
   # Epic 7 — Forecast inverse
-  epic-7: backlog
-  7-1-service-variable-projection: backlog
-  7-2-monthly-overrides-endpoints: backlog
-  7-3-forecast-engine-v1-et-snapshots: backlog
-  7-4-dividend-calculator-required-dividend: backlog
-  7-5-endpoint-get-api-forecast: backlog
-  7-6-frontend-forecast-page-chart-card: backlog
-  7-7-frontend-warnings-levers-overrides: backlog
-  7-8-recalcul-reactif-global-use-invalidate: backlog
+  # Livré et clos en juillet 2026, puis SUPPRIMÉ du code le 2026-09-04.
+  # Le statut `done` décrit le travail effectué. Le principe de 7-3 — moteur = fonction pure,
+  # aucun cache serveur — est reconduit sous D19 et porté par la story 15-1.
+  epic-7: done
+  7-1-service-variable-projection: done
+  7-2-monthly-overrides-endpoints: done
+  7-3-forecast-engine-v1-et-snapshots: done
+  7-4-dividend-calculator-required-dividend: done
+  7-5-endpoint-get-api-forecast: done
+  7-6-frontend-forecast-page-chart-card: done
+  7-7-frontend-warnings-levers-overrides: done
+  7-8-recalcul-reactif-global-use-invalidate: done
   epic-7-retrospective: optional
+
+  # ──────────────────── NOUVEAU DÉCOUPAGE (epics 12-15, 2026-09-04) ────────────────────
+  # Chaîne strictement linéaire : 12 → 13 → 14 → 15.
+  # Aucun fichier de story n'existe encore : tout est en `backlog`.
+
+  # Epic 12 — Référentiel hiérarchique et natures de mouvement
+  # FR15-FR19. Sa story 12-1 vide les transactions (D18) ; les PDF de _data/raw/ sont conservés.
+  epic-12: done
+  12-1-schema-du-referentiel-a-deux-niveaux: done
+  12-2-consultation-du-referentiel: done
+  12-3-creation-renommage-suppression-rubrique: done
+  12-4-creation-renommage-suppression-poste: done
+  epic-12-retrospective: optional
+
+  # Epic 13 — Catégorisation fiable sur le nouveau référentiel
+  # FR20-FR24. Ordre volontaire : la mesure (13-3) existe AVANT la ré-ingestion (13-4),
+  # et la bascule de fournisseur (13-5) vient après une première mesure de référence.
+  # Deux mesures encadrent le changement de modèle : les causes restent séparables.
+  epic-13: done
+  13-1-prompt-de-categorisation-hierarchique: done
+  13-2-reclassement-transaction-vers-autre-nature: done
+  13-3-taux-de-correction-manuelle-par-releve: done
+  13-4-reingestion-historique-court: done
+  13-5-bascule-fournisseur-mistral-glm: done
+
+  # Stories NÉES DE LA MESURE, hors découpage initial (2026-09-05).
+  # Chacune vient d'un défaut constaté sur les données réelles, pas d'une intention de cadrage.
+  # 13-6 : le texte plat du PDF perdait les colonnes Débit/Crédit ; le modèle devinait le signe
+  #        et donnait deux signes opposés au même libellé récurrent. Écarts de 2 187 € et
+  #        1 764 € sur deux relevés, ramenés à zéro sur les vingt.
+  # 13-7 : « non fiable » confondait l'écart CONSTATÉ et l'écart ASSUMÉ ; deux relevés à
+  #        2 187 € et 1 764 € d'écart s'affichaient « fiables ».
+  # 13-8/13-9 : règles de classement déterministes (FR40-FR43, amendement PRD du 2026-09-05).
+  13-6-extraction-du-signe-par-colonne: done
+  13-7-modele-de-fiabilite-a-trois-etats: done
+  13-8-regles-de-classement-deterministes: done
+  13-9-apprentissage-depuis-les-corrections: done
+  epic-13-retrospective: optional
+
+  # Epic 14 — Ingestion de l'historique complet
+  # FR1-FR9. ⚠️ SE TERMINE PAR UN JALON DE DÉCISION, PAS PAR UNE LIVRAISON.
+  # 14-4 mesure le taux de correction manuelle réel sur les ~24 relevés.
+  # SEUIL : ≤ 10 %. Au-dessus, l'epic 15 NE DÉMARRE PAS — on ajuste modèle, prompt ou
+  # finesse du référentiel avant de construire des écrans sur une donnée mal rangée.
+  epic-14: in-progress
+  14-1-depot-multiple-avec-progression: done
+  14-2-echec-isole-et-rapport-par-fichier: done
+  14-3-suppression-d-un-releve-ingere: backlog
+  # JALON MESURÉ le 2026-09-05, mais NON FRANCHI et volontairement dépassé.
+  # 20 relevés ingérés, 1 855 transactions, 0 écart de réconciliation (critère technique tenu).
+  # Taux de repli : 16,8 % — au-dessus du seuil de 10 %. L'utilisateur a décidé de poursuivre
+  # sur les écrans en prenant les corrections manuelles à sa charge (décision tracée, 2026-09-05).
+  # Le taux de correction MANUELLE reste à 0 % : il ne mesure rien tant qu'aucune correction
+  # n'a été faite. À remesurer après la passe de correction.
+  14-4-jalon-ingestion-historique-et-mesure: in-progress
+  epic-14-retrospective: optional
+
+  # Epic 15 — Analyse : répartition, évolution, indicateurs, traçabilité
+  # FR12, FR25-FR36. ⚠️ CONDITIONNÉ AU FRANCHISSEMENT DU JALON 14-4.
+  # C'est le produit : ne pas démarrer tant que les lignes ne sont pas dans les bonnes cases.
+  # Démarré malgré le jalon non franchi — décision de l'utilisateur du 2026-09-05.
+  epic-15: done
+  15-1-moteur-analyse-arbre-et-indicateurs: done
+  15-2-endpoint-analyse-fiabilite-solde: done
+  15-3-page-analyse-selecteur-et-indicateurs: done
+  15-4-repartition-par-rubrique-et-poste: done
+  15-5-descente-agregat-vers-transactions: done
+  15-6-evolution-entre-periodes: done
+  epic-15-retrospective: optional
+
+  # Epic 16 — Système de design et refonte du front
+  # Aucune fonctionnalité nouvelle : ni moteur, ni endpoint, ni schéma touchés.
+  # Ouvert le 2026-09-05 après validation du canevas de conception par l'utilisateur.
+  # Les quatre stories sont implémentées et passées en revue (agent `pr-reviewer`, 2026-09-05,
+  # contexte neuf) : trois bloquants levés — en-tête collant neutralisé par un `overflow` sur
+  # deux tableaux, et un `disabled` natif sur un contrôle porteur d'information.
+  epic-16: done
+  16-1-fondations-tokens-fontes-reset: done
+  16-2-primitives-partagees: done
+  16-3-barre-application-et-compteurs: done
+  16-4-refonte-des-six-ecrans: done
+  # Conçue et validée, non implémentée : demande une capacité d'API nouvelle (filtre par
+  # rubrique sur GET /api/transactions). Signalée plutôt que faite en passant — scope verrouillé.
+  # Fermée par la story 18-13 le 2026-09-06 : la capacité d'API qui lui manquait — filtrer
+  # `GET /api/transactions` par RUBRIQUE — est livrée avec elle.
+  16-5-descente-depuis-la-trajectoire: done
+  epic-16-retrospective: optional
+
+  # ─────────────────── AUDIT DU 2026-09-06 (epics 17-18) ───────────────────
+  # Audit complet sur quatre axes : services back, front, tests/outillage, conformité PRD.
+  # Base réelle au moment de l'audit : 1 855 transactions, 20 relevés, 13 règles.
+  # Socle sain (510 tests verts, lint et typecheck propres). Trois défauts sérieux :
+  #   • NFR6 non respectée — le texte INTÉGRAL du relevé part au fournisseur, IBAN et
+  #     adresse compris. La doc (PRD, architecture, CLAUDE.md) décrit une garantie absente.
+  #   • Regex de soldes cassées dès qu'un séparateur de milliers apparaît. Latent : ça ne
+  #     tient que parce qu'`unpdf` aplatit sans séparateur.
+  #   • L'écart accepté est inséré en DÉPENSE manuelle : il fausse le résultat de la période
+  #     et le taux de correction du jalon 14.4.
+
+  # Epic 17 — Correctifs de l'audit. Aucune fonctionnalité nouvelle.
+  # Ordre = gravité décroissante : 17-1 à 17-3 avant tout le reste.
+  epic-17: in-progress
+  17-1-texte-transmis-limite-aux-operations: done
+  17-2-lecture-des-soldes-robuste: done
+  17-3-ecart-accepte-neutre: done
+  17-4-dates-bornees-a-la-periode: done
+  17-5-relance-transitoire-et-ordre-des-etapes: done
+  17-6-descente-par-poste-rechargement-et-course: done
+  17-7-erreurs-de-chargement-et-invalidation: done
+  17-8-index-de-poste-et-echappement-like: done
+  17-9-suppression-du-forecast-residuel: done
+  17-10-sauvegarde-et-restauration: done
+  # PARTIELLE : la CI est livrée, le seuil de couverture NON.
+  # La mesure est cassée dans ce dépôt — avec `v8` comme avec `istanbul`, les onze fichiers du
+  # périmètre sont instrumentés puis rapportés à 0/N statements alors que les 497 tests les
+  # traversent. Poser un seuil non nul sur cette mesure ferait échouer la CI sur un artefact
+  # d'outillage. Le gap G4 reste OUVERT. Détail dans `vitest.config.ts`.
+  17-11-integration-continue-et-couverture: in-progress
+  # REVUE `pr-reviewer` du 2026-09-06 (contexte neuf, validation visuelle Playwright FAITE sur
+  # la base réelle) : 1 BLOQUANT, 2 MAJEURS, 8 mineurs — tous traités.
+  #   • BLOQUANT — `useItemTransactions.setRange` déduisait les postes à recharger de `byItem`,
+  #     qu'il vide AVANT l'arrivée des réponses : deux changements de période rapprochés
+  #     reperdaient les postes ouverts, soit le défaut même que 17.6 corrige. Corrigé par un
+  #     `openCodes` tenu à part, avec un test de non-régression vérifié rouge sans le correctif.
+  #   • MAJEUR — une clé d'API invalide sortait en « fournisseur indisponible » et l'UI
+  #     proposait « Réessayer ». Code métier dédié `llm_config_error`, hors des codes relançables.
+  #   • MAJEUR — le repli texte plat ne coupait qu'UN bloc d'identité : les pages 2..N d'un
+  #     relevé multipage aplati passaient entières. Coupe à chaque ancre, tranche tronquée
+  #     après son dernier montant.
+  # Vérifications finales : 505 tests unitaires verts, 20 E2E verts (7 skipped, fixtures PDF
+  # absentes du dépôt), lint et typecheck propres.
+  epic-17-retrospective: optional
+
+  # Epic 18 — Améliorations issues de l'audit. AUCUNE N'EST IMPLÉMENTÉE.
+  # Consignées pour arbitrage : plusieurs demandent un amendement du PRD (périmètre verrouillé).
+  # Constat qui les ordonne : 311 des 1 855 lignes au poste de repli, ~13 900 €, devant les
+  # courses alimentaires. 18-1 et 18-2 attaquent ce bloc, le reste vient après.
+  # 18-1 et 18-2 SORTIES du backlog le 2026-09-06, à la demande de l'utilisateur.
+  # Deux arbitrages pris à cette occasion :
+  #   • 18-1 : filtres sur la vue mensuelle existante, PAS d'écran de revue dédié. La
+  #     requalification se fait mois par mois ; le passage à l'échelle vient de 18-2.
+  #   • 18-2 : les lignes reclassées par une règle NE COMPTENT PAS comme corrections manuelles.
+  #     Le taux du jalon 14.4 mesure la corvée résiduelle, et une règle en est l'échappatoire.
+  epic-18: in-progress
+  # REVUE `pr-reviewer` du 2026-09-06 (contexte neuf, validation visuelle Playwright FAITE) :
+  # 2 BLOQUANTS, 2 MAJEURS, 4 mineurs — tous traités.
+  #   • BLOQUANT — `@keyup.enter="onAcceptSuggestion"` passait l'ÉVÉNEMENT clavier comme
+  #     `applyToHistory` : appuyer sur Entrée créait la règle ET l'appliquait à tout
+  #     l'historique, sans confirmation. Seule erreur de `nuxt typecheck`, invisible à
+  #     `tsc --noEmit` qui ne contrôle pas les templates Vue. Leçon : `yarn typecheck`.
+  #   • BLOQUANT — le comptage et la présélection passaient par un `LIKE` SQL sur
+  #     `LOWER(label)`. Le motif est stocké SANS accents et `LOWER()` de SQLite est ASCII :
+  #     un motif `creche` ne trouvait jamais `CRÈCHE`. Faux NÉGATIFS silencieux — moins de
+  #     lignes que le moteur. Les quatre comptages passent en mémoire via `patternCovers`,
+  #     et `server/utils/sql-like.ts` (story 17.8) disparaît, sans consommateur.
+  #   • MAJEURS — le chapeau de `/regles` affirmait encore qu'une règle ne touche pas
+  #     l'existant ; `skippedManualCount` comptait des lignes qu'aucune règle n'aurait bougées.
+  18-1-filtres-de-requalification: done
+  18-2-reapplication-d-une-regle-a-l-historique: done
+  18-3-rubriques-classees-par-variation: backlog
+  18-4-releve-source-et-fiabilite-partout: backlog
+  18-5-comparaison-moyenne-douze-tranches: backlog
+  18-6-recherche-plein-texte: backlog
+  18-7-export-csv-d-une-periode: backlog
+  18-8-objectifs-de-depense-par-rubrique: backlog
+  # Nées du test en situation réelle, le 2026-09-06 au soir.
+  #   • 18-9 : après application, le tableau des règles ne disait pas si une règle était en
+  #     retard sur l'historique. L'utilisateur proposait un interrupteur ; arbitré en ÉTAT
+  #     DÉRIVÉ — un interrupteur promet de défaire ce qu'on ne sait pas défaire, le poste
+  #     d'origine d'une ligne n'étant conservé nulle part.
+  #   • 18-10 : l'arbitrage de 18-1 (filtres plutôt qu'écran dédié) est INVERSÉ à l'usage —
+  #     « pénible de refaire le filtre quand on repasse sur la page ». Les filtres restent.
+  # REVUE `pr-reviewer` du 2026-09-06 (contexte neuf, validation visuelle FAITE) : 0 bloquant,
+  # 5 majeurs, 11 mineurs. Tous les majeurs traités.
+  #   • Le sélecteur de poste s'affichait VIDE : `choice[key]` valant `undefined`, aucune
+  #     option ne correspondait et le placeholder ne s'affichait pas.
+  #   • L'échec d'application d'une règle était AVALÉ — message « règle créée » alors que
+  #     l'historique n'était pas rejoué (règle d'or de CLAUDE.md).
+  #   • La liste n'était pas rechargée après application : les lignes sorties du repli par la
+  #     règle restaient affichées et le compteur mentait.
+  #   • L'invariant « clé de groupe == motif de règle » ne tenait PAS sur le repli : un chèque
+  #     proposait `chq. n.7925088` comme motif, une règle qui ne se déclenche jamais deux fois.
+  #     Le groupe porte désormais un `rulePattern` distinct, nul quand rien n'est exploitable.
+  #   • `formatEuros(tx.amountCents as never)` contournait le type branded : `RangeTransaction`
+  #     porte maintenant `Cents`, et les casts disparaissent en amont.
+  # Vérifications : 525 tests unitaires, 20 E2E, lint et typecheck propres.
+  18-9-etat-d-application-d-une-regle: done
+  18-10-ecran-des-non-categorises: done
+  # Née de l'usage réel, 2026-09-06 : le bloc des mouvements internes ne dit pas le SENS des
+  # flux, et son net les cache — « Virement entre comptes » affiche -651,40 € sur 2026 quand
+  # 4 512 € sont sortis et 3 861 € rentrés. Le code couleur n'est pas la réponse : ailleurs il
+  # signale la VARIATION, pas le sens. Arbitrage : flux bruts par nœud ET phrase de lecture.
+  18-11-sens-des-mouvements-internes: done
+  # Demandée le 2026-09-06 : ouvrir l'analyse d'une tranche depuis le tableau d'évolution.
+  18-12-descente-evolution-vers-analyse: done
+  # Née de l'usage réel : le suivi d'une cible était caché en bas de page et sans issue vers
+  # les lignes. Il passe en tête, ses tranches s'ouvrent sur leurs transactions, et l'infobulle
+  # donne la répartition par poste. Son tableau ne redirige PLUS vers l'analyse (18-12 amendée).
+  # Ferme au passage la story 16-5, en backlog depuis l'epic 16.
+  18-13-suivi-de-cible-au-coeur-de-l-evolution: done
+  # LE manque de fond, formule le 2026-09-06 : « est-ce que mon patrimoine a augmente ou
+  # baisse ». Le chiffre existait deja - recettes + depenses, internes exclus - sous le nom
+  # comptable « Tresorerie de la periode », dans lequel l'utilisateur ne reconnaissait pas sa
+  # question. Sur l'historique reel : compte courant -2 646 EUR, patrimoine -10 412 EUR.
+  # L'ecart, 7 766 EUR, est ce qui a ete tire de l'epargne pour tenir le compte a flot.
+  18-14-variation-du-patrimoine: done
+  18-15-transactions-groupees-par-poste: done
+  # Le selecteur de l'evolution designait le PAS, la fenetre valant douze tranches de ce pas :
+  # « Annee » donnait douze ANNEES. Il designe desormais la PERIODE regardee, decoupee en mois.
+  18-16-evolution-par-periode: done
+  18-17-tri-par-colonne-des-transactions: review
+  18-18-filtre-multi-categories: review
+  18-19-moyenne-mensuelle-de-la-cible: review
+
+  # Epic 19 - Avances remboursees : neutraliser sans effacer
+  # Capacite NOUVELLE, hors perimetre verrouille du 2026-09-04 : amendement PRD a porter.
+  # Ampleur mesuree : 47 lignes de recettes ressemblant a des remboursements, ~8 700 EUR,
+  # soit 8 % des recettes de l'historique.
+  # Cadrage arrete avec l'utilisateur le 2026-09-07 : les deux cotes sont ECARTES des agregats
+  # (aucun n'est reduit - c'est le seul modele qui ne deplace rien entre les mois), le reste
+  # non couvert demeure une depense dans SON mois, imputation sur les avances les plus
+  # anciennes d'abord, lignes visibles et tracables, neutralisation retroactive assumee.
+  epic-19: in-progress
+  19-1-grouper-des-transactions: review
+  19-2-neutraliser-les-lignes-couvertes: review
+  19-3-voir-et-gerer-ses-groupes: review
+  # Nee de l'usage reel, 2026-09-08 : « la couleur des badges rembourse n'est pas tres visible »
+  # et « dans la partie analyse on ne voit pas ces lignes qui ne font pas partie du total ».
+  # L'investigation a trouve deux defauts derriere la demande cosmetique :
+  #   • le pied de la descente d'analyse sommait les montants BRUTS sous un total qui neutralise
+  #     — l'ecart valait exactement l'avance remboursee, rupture de NFR2 ;
+  #   • l'etat de reconciliation se calculait sur les lignes DEJA filtrees par poste : une avance
+  #     rangee en « Alimentation » et remboursee par un virement range ailleurs s'affichait
+  #     « a rembourser » alors que le moteur ne la comptait deja plus.
+  # L'endpoint expose desormais `effectiveAmountCents` et calcule l'etat sur la PERIODE entiere.
+  # REVUE du 2026-09-08 (4 relecteurs en contexte neuf, validation visuelle FAITE sur une COPIE
+  # de la base reelle) : 1 BLOQUANT, 3 MAJEURS, plusieurs mineurs. Tous traites.
+  #   • BLOQUANT — la descente de /evolution violait la regle meme de la story : `categorySeries`
+  #     neutralise sur la FENETRE entiere puis repartit par tranche, la descente n'interrogeait
+  #     qu'une tranche. Point d'aout = -183,50 EUR, descente = -241,50 EUR. L'endpoint accepte
+  #     desormais `settlementFrom`/`settlementTo`, et refuse une portee plus etroite que ses
+  #     lignes. Le meme mois se lit donc « a rembourser » sur l'analyse et « rembourse » sur
+  #     l'evolution : deux portees, deux verites, chacune fidele a SON total.
+  #   • MAJEURS — colonnes en `auto` : une colonne vide s'effondre et decalait la colonne des
+  #     montants de 70 a 90 px d'une ligne a l'autre ; sous 1 000 px les pistes fixes faisaient
+  #     disparaitre le libelle ; le pied de l'evolution ne portait pas « dont N neutralisee(s) ».
+  #   • L'ordre des lignes passees au moteur est desormais EXPLICITE des deux cotes : son tri est
+  #     stable, deux avances du meme jour etaient departagees par le hasard du plan SQL.
+  # Reporte : l'excedent de remboursement porte en bloc par une seule ligne peut lui faire
+  # afficher un montant superieur au sien. Corriger demande de toucher `neutralizeSettlements`.
+  # Verifications : 595 tests unitaires, 22 E2E (7 skipped), lint et typecheck propres.
+  19-4-lisibilite-des-lignes-neutralisees: done
+  # Deux pieges rencontres a l'implementation, tous deux corriges :
+  #   • ALTER TABLE de SQLite ne porte PAS d'action de cle etrangere : la migration 0007 a
+  #     produit une contrainte nue la ou le schema declarait `ON DELETE SET NULL`. Le DDL de
+  #     test, lui, la declarait — les tests passaient donc la ou la production levait
+  #     « FOREIGN KEY constraint failed ». Le endpoint libere desormais les lignes lui-meme,
+  #     le schema et le DDL de test disent la verite, et la migration 0008 aligne la base.
+  #   • Le tableau calculait la selection depuis sa prop : deux cases cochees coup sur coup
+  #     lisaient la meme valeur, pas encore rafraichie, et la seconde ecrasait la premiere.
+  #     Le composant n'emet plus qu'une INTENTION, la page tient l'etat.
+  # Verifie de bout en bout sur une COPIE de la base reelle (jamais sur l'originale) :
+  # liaison -> badges -> suppression -> retour a l'etat initial. Sur avril 2026, une avance de
+  # 318,50 EUR et un virement de 410 EUR : depenses -4 112,40 -> -3 793,90, recettes
+  # 2 486,30 -> 2 167,80, et le PATRIMOINE inchange a -1 625,60 EUR.
+  epic-19-retrospective: optional
+  # REVUE `pr-reviewer` du 2026-09-07 sur les 22 commits non relus (contexte neuf, validation
+  # visuelle FAITE) : 1 BLOQUANT, 4 MAJEURS, 11 mineurs. Tous traites.
+  #   • BLOQUANT — la derive de la cible se mesurait contre la DERNIERE tranche de la serie,
+  #     or la vue annee contient les mois a venir, a zero. Alimentation affichait -964 EUR
+  #     en neutre quand elle avait AUGMENTE de 361 EUR, signal de couleur inverse.
+  #   • MAJEURS — sous-titres et caption restes sur l'ancien modele (« douze tranches »,
+  #     « tresorerie cumulee »), et aucun etat vide quand l'historique ne porte rien.
+  #   • Trouve en verifiant les correctifs : un index de survol survivait au changement de vue
+  #     et faisait planter le rendu du graphique. La serie n'ayant plus une longueur fixe,
+  #     c'est un defaut introduit par 18.16 elle-meme.
+  # E2E NON joues par le relecteur (port occupe par le serveur de dev) : joues ensuite, 22 verts.
+
+  # Epic 20 — Navigation et confort d'usage. Ouvert le 2026-09-08 : l'epic 16 a refondu
+  # l'APPARENCE des ecrans, jamais leur ORGANISATION. Ne touche ni aux calculs ni aux donnees.
+  # Demande de l'utilisateur : « ranger les onglets de maniere logique ».
+  # Sept liens de meme poids -> quatre entrees, dont deux menus. Aucune URL ne change.
+  epic-20: done
+  # REVUE du 2026-09-08 (4 relecteurs en contexte neuf, validation visuelle FAITE par
+  # `pr-reviewer` sur une COPIE de la base) : 0 bloquant, 4 majeurs, une dizaine de mineurs.
+  # Tous traites. Le defaut central etait invisible a l'oeil ET aux tests :
+  #   • `.bar__link` vit dans le style SCOPE d'`AppBar` : il n'atteignait pas le bouton de
+  #     `AppBarMenu`, donc la section courante n'etait jamais surlignee. La classe, elle, etait
+  #     bien posee — les assertions `toHaveClass` passaient sur un ecran faux. La regle passe en
+  #     primitive partagee dans `components.css`, et le test compare desormais la COULEUR
+  #     CALCULEE des deux declencheurs.
+  #   • `overflow: hidden` sur `.bar` en faisait un conteneur de DEFILEMENT : il rognait le menu
+  #     ouvert et faisait defiler la barre sur elle-meme au focus. `overflow-x: clip` rogne sans
+  #     ce travers, et rend la garantie d'origine y compris en fenetre etroite.
+  #   • L'ecouteur clavier pose sur le document confisquait les fleches a TOUTE la page tant
+  #     qu'un menu etait ouvert. Fleches sur la racine, `Escape` sur le document.
+  #   • `Tab` au-dela de la derniere entree laissait le menu ouvert : fermeture sur `focusout`.
+  # Couverture : 15 cas E2E (7 au depart), dont `/reconciliation/<hash>` — la seule logique dont
+  # la forme change — qui n'etait exercee par rien.
+  # Verifications : 595 tests unitaires, 37 E2E (7 skipped), lint et typecheck propres.
+  20-1-navigation-en-deux-menus: done
+
+  # Epic 21 — Compte joint : ne compter que ma moitie. Ouvert le 2026-09-08.
+  # 33 virements recus du joint (+8 264,70 EUR) etaient exclus de tout, alors que les
+  # contributions VERS le joint sont deja comptees en depense : la moitie de chaque virement
+  # etait donc comptee deux fois, ~3 980 EUR sur l'historique.
+  # Arbitrages : pas d'appariement (coupe automatique), et la moitie qui rembourse est une
+  # DEPENSE EN MOINS et non une recette — meme resultat, mais « ou part l'argent » ne doit pas
+  # compter de l'argent qu'on n'a pas depense.
+  epic-21: in-progress
+  21-1-part-du-compte-joint: review
+
+  # ─────────── RÉGULARISATION DES STATUTS DU 2026-10-20 ───────────
+  # Les stories ci-dessus restaient en `review` alors que leur code est sur master depuis
+  # septembre. Passées en `done` quand une revue est tracée : commit b74f353 (epics 13-15),
+  # notes de revue ci-dessus (16, 17, 18-1/2, 18-9/10, lot du 2026-09-07 pour 18-11..18-16,
+  # 19-4, 20-1). RESTENT en `review`, faute de trace de relecture : 18-17, 18-18, 18-19,
+  # 19-1, 19-2, 19-3, 21-1 — à faire passer par `pr-reviewer`.
+  # Restent ouverts : 14-3 (backlog), 14-4 (jalon non franchi), 17-11 (G4).
+  # =========================================================================
+  # CHANTIERS CADRES LE 2026-09-12 — ORDRE DE LIVRAISON, PAS ORDRE DE NUMERO
+  # =========================================================================
+  # Les epics ci-dessous sont listes dans l'ordre ou ils seront CONSTRUITS :
+  #   26 (agent)  ->  22 -> 23 -> 24 -> 25 (foyer)  ->  forecast (non cadre)
+  # Les numeros disent l'ordre d'ECRITURE. Le foyer a ete decoupe en premier
+  # (epics 22-25), puis l'utilisateur a arbitre que l'agent passait devant :
+  # il coute moins cher, sert des le premier jour, et ne depend de rien.
+  # Renumeroter ferait diverger ce fichier du PRD et de epics.md.
+  #
+  # Aucun fichier de story n'existe encore : tout est en backlog.
+
+  # =========================================================================
+  # CHANTIER CADRE LE 2026-09-22 — PROFILS ET BANQUES. RANG 1.
+  # =========================================================================
+  # Ordre de livraison revise :
+  #   27 -> 28 (profils et banques)  ->  26 (agent)  ->  22-25 (foyer)  ->  forecast
+  # Les donnees appartiennent a des PROFILS avant toute authentification
+  # (PRD FR73-FR81, architecture D37-D43). La story 22.2 est absorbee.
+  # /!\ NFR35 : aucune exposition hors reseau local tant que 22.1 n'est pas
+  # livree. Choisir un profil n'est pas s'identifier.
+
+  # --- Epic 27 — Deux profils, chacun ses donnees. ------------------------
+  # 27-1 est la story la plus risquee du chantier : rebuild de six tables
+  # plus transactions, sur des donnees que les PDF ne reconstruisent pas.
+  # Sauvegarde VERIFIEE RESTAURABLE avant, comptages et sommes avant/apres.
+  epic-27: done
+  27-1-tout-mon-historique-m-appartient: done
+  27-2-chaque-requete-se-limite-au-profil-courant: done
+  27-3-creer-un-profil-et-basculer: done
+  epic-27-retrospective: optional
+
+  # --- Epic 28 — Les releves Credit Mutuel. -------------------------------
+  # 28-1 demarre APRES 27-3 (prefill depuis le profil courant : requireProfile
+  # et useProfiles). Chaine lineaire 27-1 -> 27-2 -> 27-3 -> 28-1 -> 28-2 -> 28-3.
+  # /!\ 28-2 et 28-3 BLOQUEES par AR41 : il faut 3 a 5 releves Credit Mutuel
+  # de plus (solde debiteur, remboursement carte, deux cartes, detail preleve
+  # hors periode). 28-1 ne l'est pas. Fichiers de story rediges le 2026-09-22 :
+  # 28-2 et 28-3 portent un bandeau NE PAS DEMARRER tant qu'AR41 n'est pas leve.
+  epic-28: in-progress
+  28-1-choisir-la-banque-d-un-releve: done
+  # 2026-10-20 : AR41 LEVEE pour 28-2. Corpus de six releves reels (5 mensuels 2021-22,
+  # 1 extrait oct. 2026) dans _data/samples/credit-mutuel/. Regle : on code ce qu'on a vu,
+  # on refuse en statement_format_unrecognized ce qu'on n'a pas vu (solde debiteur...).
+  # Story amendee : raccord avec l'export (AC 12, FR83) ajoute. 28-3 reste bloquee.
+  # Revue pr-reviewer (deux passes, 2026-10-20) : bloquants leves, 871 tests verts.
+  28-2-lire-le-compte-courant-credit-mutuel: done
+  28-3-voir-mes-achats-par-carte-un-par-un: ready-for-dev
+  # 28-4 ajoutee le 2026-09-26 : aucun releve PDF CM pour l'annee ecoulee, seul
+  # l'export Excel de la banque en ligne existe. Passe AVANT 28-2 : le premier
+  # releve PDF d'octobre servira d'echantillon a 28-2 ET de preuve de continuite
+  # pour l'historique importe (FR83, D44).
+  28-4-importer-l-historique-credit-mutuel-depuis-l-export: done
+  epic-28-retrospective: optional
+
+  # --- Epic 26 — L'agent conversationnel. DEUXIEME CHANTIER (rang 1 jusqu'au 2026-09-22). ---
+  # L'utilisateur pose une question en francais, obtient une reponse, et peut
+  # la verifier. L'agent interroge le moteur et RAPPORTE.
+  # Trois frontieres non negociables :
+  #   - il ne calcule pas (NFR31 : aucun nombre qui ne figure tel quel dans
+  #     ce qu'il a recu ; forme verifiable de NFR15)
+  #   - il ne touche pas la base (NFR32 : endpoints d'analyse uniquement)
+  #   - il n'agit pas (aucun reclassement, aucune regle, aucun marquage)
+  # FR72 (cloisonnement) est satisfaite PAR CONSTRUCTION : le cloisonnement
+  # est pose dans les endpoints par la story 27.2 (ex-22.2), donc l'agent y sera
+  # conforme sans etre retouche. C'est le retour sur investissement de NFR32.
+  epic-26: backlog
+  # /!\ 26-1 est un JALON DE DECISION, pas une livraison ordinaire.
+  # D20 a etabli que les sorties structurees du fournisseur sont INJECTEES
+  # DANS LE PROMPT et non contraintes au decodage : si le schema n'est qu'une
+  # instruction, le choix de la periode l'est aussi. Mesure a faire sur une
+  # serie de questions reelles : a quelle frequence la requete retenue est-elle
+  # celle attendue ? Si le taux est mauvais, ajuster le prompt ou restreindre
+  # la grammaire des questions AVANT d'ecrire l'ecran de conversation.
+  # Un agent qui se trompe de periode est plus dangereux qu'un agent absent.
+  26-1-comprendre-la-question-avant-d-y-repondre: backlog
+  26-2-obtenir-une-reponse-verifiable: backlog
+  26-3-quand-il-ne-sait-pas-il-le-dit: backlog
+  26-4-enchainer-sans-tout-reexpliquer: backlog
+  26-5-retrouver-reprendre-supprimer-une-conversation: backlog
+  epic-26-retrospective: optional
+
+  # --- Epic 22 — Le foyer et son second membre. TROISIEME CHANTIER. --------
+  # 22-2 ABSORBEE le 2026-09-22 par 27-1 et 27-2 : ne pas l'implementer.
+  # 22-1 rattache une identite a un profil existant (requireProfile lit la
+  # session au lieu du cookie pf_profile).
+  # Deux personnes, deux espaces, aucune ne voit les donnees de l'autre.
+  # /!\ AR5 NE S'APPLIQUE PLUS : la migration par vidage et re-ingestion etait
+  # sure tant que NFR12 garantissait la reconstruction depuis les PDF. NFR12
+  # est INVERSEE depuis le 2026-09-12 : la migration de propriete PRESERVE les
+  # donnees. C'est la contrainte la plus structurante du chantier.
+  epic-22: backlog
+  22-1-se-connecter-avec-un-compte-existant: backlog
+  22-2-chaque-donnee-a-un-proprietaire: descoped
+  22-3-inviter-quelqu-un-a-rejoindre-le-foyer: backlog
+  22-4-voir-les-membres-et-en-retirer-un: backlog
+  epic-22-retrospective: optional
+
+  # --- Epic 23 — Joignable depuis l'exterieur, et sauvegardee. -------------
+  # /!\ PORTE D'EXPOSITION. Ne s'ouvre qu'une fois le cloisonnement de
+  # l'epic 22 verifie PAR TEST. Le serveur est chez l'utilisateur, mais
+  # l'application est ouverte sur Internet et sera trouvee par des balayages
+  # automatiques en quelques heures : aucune page ne repond sans identification.
+  # Sauvegarde quotidienne, retention 30 jours, sur une machine du reseau
+  # local DISTINCTE de l'hote, restauration eprouvee et non supposee.
+  epic-23: backlog
+  23-1-la-base-est-sauvegardee-et-restaurable: backlog
+  23-2-rien-ne-repond-sans-etre-identifie: backlog
+  epic-23-retrospective: optional
+
+  # --- Epic 24 — Les depenses communes. ------------------------------------
+  # FLUX contre STOCK, doctrine arbitree le 2026-09-12 : une depense commune
+  # de 80 EUR pese 80 EUR dans l'analyse du payeur (ce qui est sorti du compte)
+  # et 40 EUR au decompte du foyer (ce qui est du). Les deux sont justes.
+  # Ce n'est PAS l'arbitrage de la story 21.1 : la il y avait un vrai double
+  # comptage, ici il y a une depense d'un cote et une creance de l'autre.
+  # /!\ Marquer une depense comme commune, c'est LA MONTRER (FR64) : seule
+  # exception au cloisonnement, enumeree et close. L'interface doit le dire
+  # au moment du geste.
+  # La story 21.1 n'est PAS retouchee.
+  epic-24: backlog
+  24-1-marquer-une-depense-comme-commune: backlog
+  24-2-defaire-un-marquage-pose-par-erreur: backlog
+  24-3-saisir-une-depense-reglee-en-especes: backlog
+  24-4-reconnaitre-d-ou-vient-une-ligne: backlog
+  24-5-corriger-ou-supprimer-une-saisie: backlog
+  epic-24-retrospective: optional
+
+  # --- Epic 25 — Qui doit combien a qui. -----------------------------------
+  # /!\ COLLISION DE NOM : /api/settlements existe DEJA et designe les groupes
+  # de transactions qui se compensent (epic 19). Le reglement entre membres du
+  # foyer est une autre notion et doit porter un autre nom.
+  # 25-5 ne se reporte pas : sans rattachement du reglement a sa ligne
+  # bancaire, chaque remboursement gonfle les recettes et le solde ne retombe
+  # jamais a zero. Un decompte qui ne se solde pas ne remplace pas l'outil
+  # tiers, il s'y ajoute.
+  # 25-5 et 25-6 REUTILISENT le mecanisme de groupes de l'epic 19 : un groupe,
+  # un geste, deux effets coherents. Deux mecanismes paralleles divergeraient.
+  epic-25: backlog
+  25-1-reprendre-le-decompte-tenu-jusqu-ici: backlog
+  25-2-voir-qui-doit-combien-a-qui: backlog
+  25-3-descendre-du-solde-jusqu-aux-depenses: backlog
+  25-4-enregistrer-un-reglement-entre-nous: backlog
+  25-5-rattacher-le-reglement-au-virement: backlog
+  25-6-ce-que-le-joint-a-rembourse-ne-reste-pas-du: backlog
+  epic-25-retrospective: optional

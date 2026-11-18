@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "statusMessage": "Review de la story avant clôture…",
+            "timeout": 300,
+            "prompt": "Une tâche vient d'être marquée terminée. Données du hook : $ARGUMENTS\n\nLis /home/marceautassin/.claude/hooks/review-gate.md et applique-le intégralement, étape par étape (0 à 3). Ce fichier est la procédure complète du gate : ne l'improvise pas et ne réinvente pas ses critères."
+          }
+        ]
+      }
+    ]
+  }
+}

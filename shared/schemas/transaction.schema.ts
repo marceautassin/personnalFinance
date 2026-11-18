@@ -25,44 +25,25 @@ export const LabelSchema = z.string().trim().min(1, 'Libellé requis').max(200, 
 /** Hash SHA-256 hex lowercase (canonique : `crypto.digest('hex')` produit du lowercase). */
 export const HashSha256Schema = z.string().regex(/^[a-f0-9]{64}$/, 'Hash SHA-256 attendu (lowercase hex)')
 
-/** Une transaction marquée `isDebtRepayment` doit référencer une dette (`debtId !== null`). */
-const debtRepaymentRefine = (
-  t: { isDebtRepayment: boolean, debtId: number | null },
-) => !t.isDebtRepayment || t.debtId !== null
+export const TransactionSchema = z.object({
+  id: z.number().int().positive(),
+  statementHash: HashSha256Schema,
+  transactionDate: DateIsoSchema,
+  label: LabelSchema,
+  amountCents: z.number().int(),
+  categoryItemCode: z.string().min(1),
+  isManual: z.boolean(),
+  createdAt: z.number().int(),
+})
 
-export const TransactionSchema = z
-  .object({
-    id: z.number().int().positive(),
-    statementHash: HashSha256Schema,
-    transactionDate: DateIsoSchema,
-    label: LabelSchema,
-    amountCents: z.number().int(),
-    categoryCode: z.string().min(1),
-    isManual: z.boolean(),
-    isDebtRepayment: z.boolean(),
-    debtId: z.number().int().positive().nullable(),
-    createdAt: z.number().int(),
-  })
-  .refine(debtRepaymentRefine, {
-    message: 'isDebtRepayment=true exige un debtId non-null',
-    path: ['debtId'],
-  })
-
-export const NewTransactionSchema = z
-  .object({
-    statementHash: HashSha256Schema,
-    transactionDate: DateIsoSchema,
-    label: LabelSchema,
-    amountCents: z.number().int(),
-    categoryCode: z.string().min(1),
-    isManual: z.boolean().default(false),
-    isDebtRepayment: z.boolean().default(false),
-    debtId: z.number().int().positive().nullable().default(null),
-  })
-  .refine(debtRepaymentRefine, {
-    message: 'isDebtRepayment=true exige un debtId non-null',
-    path: ['debtId'],
-  })
+export const NewTransactionSchema = z.object({
+  statementHash: HashSha256Schema,
+  transactionDate: DateIsoSchema,
+  label: LabelSchema,
+  amountCents: z.number().int(),
+  categoryItemCode: z.string().min(1),
+  isManual: z.boolean().default(false),
+})
 
 /**
  * Transaction en sortie de catégorisation LLM, avant association au statement (Story 2.6).
@@ -71,15 +52,66 @@ export const ExtractedTransactionSchema = z.object({
   transactionDate: DateIsoSchema,
   label: LabelSchema,
   amountCents: z.number().int(),
-  categoryCode: z.string().min(1),
+  categoryItemCode: z.string().min(1),
 })
 
 /**
  * Query string de `GET /api/transactions?month=YYYY-MM`.
  */
-export const TransactionListQuerySchema = z.object({
-  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Format mois attendu: YYYY-MM'),
-})
+/**
+ * Deux façons de demander des transactions, exclusives l'une de l'autre :
+ *
+ *  - `month=YYYY-MM` — la vue mensuelle historique ;
+ *  - `from`/`to` (+ `item` OU `group` optionnel) — la DESCENTE depuis un agrégat (AR8, NFR2).
+ *
+ * La descente est ce qui rend NFR2 satisfaisable sans précalcul : l'arbre d'analyse ne
+ * transporte aucune ligne, il porte de quoi construire cette requête.
+ *
+ * `group` a été ajouté le 2026-09-06 pour la trajectoire d'une rubrique : la suivre sur douze
+ * tranches sans pouvoir en ouvrir une seule laissait un graphique qu'on ne pouvait pas
+ * vérifier. Les deux filtres sont exclusifs — cumuler un poste et une rubrique n'aurait qu'un
+ * sens : le poste, si tant est qu'il appartienne à la rubrique. Autant le refuser.
+ */
+export const TransactionListQuerySchema = z.union([
+  z.object({
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Format mois attendu: YYYY-MM'),
+  }).strict(),
+  z.object({
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD'),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD'),
+    item: z.string().trim().min(1).optional(),
+    group: z.string().trim().min(1).optional(),
+    /**
+     * Portée sur laquelle l'état de réconciliation se calcule, quand elle DÉBORDE les lignes
+     * demandées (story 19.4).
+     *
+     * La trajectoire d'une cible neutralise sur la FENÊTRE entière puis répartit par tranche :
+     * une avance de janvier remboursée en mars ne pèse pas sur le point de janvier. Ouvrir ce
+     * point ne demande que les lignes de janvier — sans ces bornes, l'écran y remettrait
+     * l'avance et le total de la tranche cesserait de valoir le point qu'on vient d'ouvrir.
+     *
+     * Absentes, la portée est `[from, to]` : c'est le cas de la page d'analyse, dont l'agrégat
+     * a exactement les bornes de sa descente.
+     */
+    settlementFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD').optional(),
+    settlementTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format attendu: YYYY-MM-DD').optional(),
+  }).strict()
+    .refine(q => q.from <= q.to, { message: 'from doit précéder to', path: ['from'] })
+    .refine(q => !(q.item && q.group), {
+      message: 'item et group sont exclusifs',
+      path: ['group'],
+    })
+    .refine(q => (q.settlementFrom === undefined) === (q.settlementTo === undefined), {
+      message: 'settlementFrom et settlementTo vont par paire',
+      path: ['settlementTo'],
+    })
+    // Une portée plus ÉTROITE que les lignes demandées neutraliserait des lignes affichées en
+    // se fondant sur un groupe amputé : c'est le défaut que la story corrige, pas une option.
+    .refine(q => q.settlementFrom === undefined || (q.settlementFrom <= q.from && q.to <= q.settlementTo!), {
+      message: 'la portée de réconciliation doit contenir [from, to]',
+      path: ['settlementFrom'],
+    }),
+])
 
 /**
  * Body du `PATCH /api/transactions/[id]`.
@@ -87,15 +119,10 @@ export const TransactionListQuerySchema = z.object({
  */
 export const TransactionPatchSchema = z
   .object({
-    categoryCode: z.string().trim().min(1).optional(),
-    isDebtRepayment: z.boolean().optional(),
-    debtId: z.number().int().positive().nullable().optional(),
+    categoryItemCode: z.string().trim().min(1).optional(),
   })
   .refine(
-    data =>
-      data.categoryCode !== undefined
-      || data.isDebtRepayment !== undefined
-      || data.debtId !== undefined,
+    data => data.categoryItemCode !== undefined,
     { message: 'Au moins un champ doit être fourni' },
   )
 
@@ -103,4 +130,12 @@ export type Transaction = z.infer<typeof TransactionSchema>
 export type NewTransaction = z.infer<typeof NewTransactionSchema>
 export type ExtractedTransaction = z.infer<typeof ExtractedTransactionSchema>
 export type TransactionListQuery = z.infer<typeof TransactionListQuerySchema>
+
+/**
+ * Requête mensuelle seule, pour les endpoints qui n'acceptent QUE cette forme (le dashboard).
+ * Les faire dépendre de l'union les obligerait à écarter une branche qu'ils ne servent pas.
+ */
+export const MonthQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Format mois attendu: YYYY-MM'),
+})
 export type TransactionPatch = z.infer<typeof TransactionPatchSchema>

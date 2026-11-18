@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { H3Event } from 'h3'
+import { eq } from 'drizzle-orm'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
+import { TEST_SCHEMA_DDL, TEST_REFERENTIAL_DDL } from '~~/tests/fixtures/test-schema'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'pf-reconc-api-'))
 const previousDatabaseUrl = process.env.DATABASE_URL
@@ -25,43 +27,8 @@ beforeAll(async () => {
 
   // @ts-expect-error -- accès interne drizzle pour DDL de test
   sqlite = dbMod.db.$client ?? dbMod.db.session?.client
-  sqlite.exec(`
-    CREATE TABLE category_definitions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      is_variable INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE bank_statements (
-      hash_sha256 TEXT PRIMARY KEY,
-      period_start TEXT NOT NULL,
-      period_end TEXT NOT NULL,
-      opening_balance_cents INTEGER NOT NULL,
-      closing_balance_cents INTEGER NOT NULL,
-      reliability TEXT NOT NULL DEFAULT 'reliable',
-      ingested_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      statement_hash TEXT NOT NULL REFERENCES bank_statements(hash_sha256) ON DELETE CASCADE,
-      transaction_date TEXT NOT NULL,
-      label TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      category_code TEXT NOT NULL REFERENCES category_definitions(code) ON DELETE RESTRICT,
-      is_manual INTEGER NOT NULL DEFAULT 0,
-      is_debt_repayment INTEGER NOT NULL DEFAULT 0,
-      debt_id INTEGER,
-      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-    );
-    CREATE INDEX transactions_period_idx ON transactions(transaction_date);
-    CREATE INDEX transactions_statement_idx ON transactions(statement_hash);
-  `)
-
-  dbMod.db.insert(schema.categoryDefinitions).values([
-    { code: 'courses', label: 'Courses' },
-    { code: 'divers', label: 'Divers / Inconnu' },
-  ]).run()
+  sqlite.exec(TEST_SCHEMA_DDL)
+  sqlite.exec(TEST_REFERENTIAL_DDL)
 
   handler = (await import('./[hash].post')).default as Handler
 })
@@ -80,19 +47,26 @@ beforeEach(() => {
 
 const HASH_A = 'a'.repeat(64)
 
+/** Résout un code de poste vers son id, dans le profil de test (story 27.1, D37). */
+function itemId(code: string): number {
+  return (sqlite.prepare('SELECT id FROM category_items WHERE code = ? AND profile_id = 1').get(code) as { id: number }).id
+}
+
 function seedStatementWithGap(opts: {
   opening: number
   closing: number
   txAmounts: number[]
-  reliability?: 'reliable' | 'unreliable'
+  gapAccepted?: boolean
 }) {
   dbMod.db.insert(schema.bankStatements).values({
     hashSha256: HASH_A,
+    profileId: 1,
+    bank: 'boursorama',
     periodStart: '2026-04-01',
     periodEnd: '2026-04-30',
     openingBalanceCents: opts.opening,
     closingBalanceCents: opts.closing,
-    reliability: opts.reliability ?? 'reliable',
+    gapAccepted: opts.gapAccepted ?? false,
   }).run()
   if (opts.txAmounts.length > 0) {
     dbMod.db.insert(schema.transactions).values(
@@ -101,7 +75,7 @@ function seedStatementWithGap(opts: {
         transactionDate: `2026-04-${String(10 + i).padStart(2, '0')}`,
         label: `Tx${i}`,
         amountCents: a,
-        categoryCode: 'courses',
+        categoryItemId: itemId('alimentation-courses'),
       })),
     ).run()
   }
@@ -133,7 +107,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Carrefour',
           amountCents: -20_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { isBalanced: boolean, gapCents: number, reliability: string }
 
@@ -158,7 +132,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Remboursement',
           amountCents: 150,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { isBalanced: boolean, gapCents: number }
 
@@ -175,18 +149,23 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Partial',
           amountCents: -10_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { isBalanced: boolean, gapCents: number, reliability: string }
 
       expect(result.isBalanced).toBe(false)
       // gap = (80_000 - 100_000) - (-10_000) = -20_000 + 10_000 = -10_000
       expect(result.gapCents).toBe(-10_000)
-      expect(result.reliability).toBe('reliable')
+      expect(result.reliability).toBe('gap_unreviewed')
     })
 
-    it('does not flip reliability back to reliable when gap closes on an unreliable statement', async () => {
-      seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [], reliability: 'unreliable' })
+    /**
+     * Accepter un écart insère une transaction d'équilibrage : l'écart courant retombe donc
+     * à zéro immédiatement. C'est la DÉCISION, et non l'écart, qui maintient le relevé
+     * signalé — sans quoi le trou assumé disparaîtrait de l'écran.
+     */
+    it('garde l\'état « écart accepté » quand un ajout referme l\'écart', async () => {
+      seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [], gapAccepted: true })
 
       const result = (await handler(makeEvent(HASH_A, {
         action: 'add_transaction',
@@ -194,14 +173,14 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Tx',
           amountCents: -20_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { reliability: string }
 
-      expect(result.reliability).toBe('unreliable')
+      expect(result.reliability).toBe('gap_accepted')
     })
 
-    it('rejects unknown categoryCode with 422 and writes nothing', async () => {
+    it('rejects unknown categoryItemCode with 422 and writes nothing', async () => {
       seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [] })
 
       await expect(handler(makeEvent(HASH_A, {
@@ -210,7 +189,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Tx',
           amountCents: -20_000,
-          categoryCode: 'nope',
+          categoryItemCode: 'nope',
         },
       }))).rejects.toMatchObject({
         statusCode: 422,
@@ -223,7 +202,7 @@ describe('POST /api/reconciliation/[hash]', () => {
   })
 
   describe('accept_gap', () => {
-    it('inserts a divers transaction matching the gap and flips reliability to unreliable', async () => {
+    it('insère une transaction de repli du montant de l\'écart et pose la décision', async () => {
       // opening 100_000, closing 80_000, sum = -19_990 → gap = -20_000 - (-19_990) = -10
       seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [-19_990] })
 
@@ -235,18 +214,25 @@ describe('POST /api/reconciliation/[hash]', () => {
 
       expect(result.isBalanced).toBe(true)
       expect(result.gapCents).toBe(0)
-      expect(result.reliability).toBe('unreliable')
+      expect(result.reliability).toBe('gap_accepted')
 
       const rows = dbMod.db.select().from(schema.transactions).all()
       expect(rows).toHaveLength(2)
       const accepted = rows.find(r => r.label === 'Écart accepté (réconciliation)')!
       expect(accepted.amountCents).toBe(-10)
-      expect(accepted.categoryCode).toBe('divers')
+      // Story 17.3 : poste dédié de nature `internal_transfer`, pas le repli en dépense.
+      expect(accepted.categoryItemId).toBe(itemId('internes-ecart-accepte'))
       expect(accepted.isManual).toBe(true)
       expect(accepted.transactionDate).toBe('2026-04-30')
 
+      // La nature du poste décide de tout : un écart en `expense` viendrait, s'il est positif,
+      // DIMINUER les dépenses de la période. En mouvement interne, il sort du résultat.
+      const item = dbMod.db.select().from(schema.categoryItems)
+        .where(eq(schema.categoryItems.id, accepted.categoryItemId)).get()!
+      expect(item.nature).toBe('internal_transfer')
+
       const stmt = dbMod.db.select().from(schema.bankStatements).all()
-      expect(stmt[0]!.reliability).toBe('unreliable')
+      expect(stmt[0]!.gapAccepted).toBe(true)
     })
 
     it('returns 400 reconciliation_failed when statement is already balanced', async () => {
@@ -260,12 +246,12 @@ describe('POST /api/reconciliation/[hash]', () => {
       const rows = dbMod.db.select().from(schema.transactions).all()
       expect(rows).toHaveLength(1)
       const stmt = dbMod.db.select().from(schema.bankStatements).all()
-      expect(stmt[0]!.reliability).toBe('reliable')
+      expect(stmt[0]!.gapAccepted).toBe(false)
     })
 
     it('refuses accept_gap on an already-unreliable statement (one-shot remediation)', async () => {
       // Une seconde acceptation après un add_transaction qui re-déséquilibre serait sinon possible.
-      seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [-19_990], reliability: 'unreliable' })
+      seedStatementWithGap({ opening: 100_000, closing: 80_000, txAmounts: [-19_990], gapAccepted: true })
 
       await expect(handler(makeEvent(HASH_A, { action: 'accept_gap' }))).rejects.toMatchObject({
         statusCode: 400,
@@ -287,7 +273,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-03-31', // hors période 2026-04-01..2026-04-30
           label: 'Tx',
           amountCents: -20_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))).rejects.toMatchObject({
         statusCode: 422,
@@ -307,7 +293,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-05-01',
           label: 'Tx',
           amountCents: -20_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))).rejects.toMatchObject({
         statusCode: 422,
@@ -324,7 +310,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-01',
           label: 'Tx',
           amountCents: -10_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { isBalanced: boolean }
       expect(r1.isBalanced).toBe(false)
@@ -335,7 +321,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-30',
           label: 'Tx',
           amountCents: -10_000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))) as { isBalanced: boolean }
       expect(r2.isBalanced).toBe(true)
@@ -352,7 +338,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-04-15',
           label: 'Tx',
           amountCents: 0,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))).rejects.toMatchObject({
         statusCode: 422,
@@ -394,7 +380,7 @@ describe('POST /api/reconciliation/[hash]', () => {
           transactionDate: '2026-02-30', // date inexistante
           label: 'Tx',
           amountCents: -1000,
-          categoryCode: 'courses',
+          categoryItemCode: 'alimentation-courses',
         },
       }))).rejects.toMatchObject({
         statusCode: 422,

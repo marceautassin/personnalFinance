@@ -1,6 +1,6 @@
 # Story 5.4: Schéma `sas_config` + endpoints + service `dividend-calculator` (capacité) + UI
 
-Status: review
+Status: done
 
 ## Story
 
@@ -108,7 +108,8 @@ so that I have all the inputs ready for the inverse forecast (Epic 7).
 - [x] **Task 3 — Service pur `dividend-capacity`** (AC: #5, #6, #8, #9)
   - [x] **Décision archi** : placé dans `shared/services/dividend-capacity.ts` (réimportable côté UI)
   - [x] Tests unitaires (cas AC#9) — co-localisés (6 cas)
-  - [ ] Mise à jour `architecture.md` non bloquante — laissée à la passe doc (cf. note)
+  - [x] Mise à jour `architecture.md` : ajout de `shared/services/dividend-capacity.ts` à
+        l'arborescence, correction des 2 tables de mapping FR23-28 (fait à la revue 2026-08-04)
 
 - [x] **Task 4 — Endpoints** (AC: #4)
   - [x] `server/api/sas-config.get.ts`
@@ -206,7 +207,7 @@ Cette story crée :
 
 ### Agent Model Used
 
-claude-opus-4-8[1m] (Amelia / bmad-dev-story)
+Agent de développement.
 
 ### Debug Log References
 
@@ -264,4 +265,26 @@ claude-opus-4-8[1m] (Amelia / bmad-dev-story)
   composable `useSasConfig`, page `/sas` (config + clôture + card live recalc). Tests unit +
   E2E. Status → review.
 
+- 2026-08-04 — Revue de code (lot 1) : hypothèse trésorerie explicitée (« report à nouveau »), `02-29` rejeté, `isRatePct` validé, card « indisponible » sur saisie invalide, bornes et bords couverts, `architecture.md` mis à jour. Status → done.
+
 ### Review Findings
+
+**Revue du 2026-08-04 (lot 1 : stories 5.3 + 5.4) — 3 couches : Blind Hunter, Edge Case Hunter, Acceptance Auditor.**
+
+- [x] [Review][Decision] Trésorerie ajoutée au résultat après IS — double comptage possible — `capacity = max(0, profitAfterTax + treasury)` (`shared/services/dividend-capacity.ts:57-60`) suppose que `currentTreasuryCents` ne contient **aucune** part du résultat de l'exercice en cours. Si l'utilisateur saisit sa trésorerie réelle en cours d'exercice, le même euro est compté deux fois (une fois via `revenue - expenses`, une fois via la trésorerie) et la capacité dividendable est surestimée. La liste « V1 ne gère PAS » n'énonce pas cette hypothèse et aucun libellé UI ne la porte. Trancher : documenter l'hypothèse (libellé « trésorerie hors résultat de l'exercice ») ou changer la formule.
+- [x] [Review][Decision] `fiscalYearEndDate = '02-29'` accepté sans règle de résolution — le schéma valide contre l'année bissextile 2000 (`shared/schemas/sas-config.schema.ts`), mais le format est décrit comme récurrent chaque année : 3 années sur 4, `année + '-02-29'` ne correspond à aucune date, et aucun repli (28/02 ? 01/03 ?) n'est défini ni testé. Trancher : interdire `02-29` à la saisie, ou fixer et tester la règle de repli.
+- [x] [Review][Patch] GET/PUT singleton retournent `undefined` → 200 à corps vide, contredit l'AC#4 « pas de 404 possible » qui n'est pas matérialisé dans le code [server/api/sas-config.get.ts:9, server/api/sas-config.put.ts]
+- [x] [Review][Patch] `SasConfigForm` : `parseEurosToCents(...) ?? 0` et `parseRatePct(...) ?? 0` convertissent une saisie invalide en 0 et alimentent la carte de capacité — un montant financier faux s'affiche comme une estimation valide, sans erreur avant soumission [app/components/sas/SasConfigForm.vue]
+- [x] [Review][Patch] `liveInput` non borné : au-delà du plafond `1e12` du schéma, `computeDividendCapacity` sort de son domaine d'exactitude prouvé et la carte affiche un montant faux ; la garde `> 1e12` n'existe que dans `onSubmit` [app/components/sas/SasConfigForm.vue]
+- [x] [Review][Patch] `computeDividendCapacity` ne valide pas `isRatePct` : `15.5` produit des centimes fractionnaires (invariant `Cents` rompu), `-5` gonfle la capacité via une taxe négative [shared/services/dividend-capacity.ts:50-54]
+- [x] [Review][Patch] Taux IS à 0 indiscernable d'un champ non renseigné (`props.isRatePct > 0 ? ... : ''`) : le champ s'affiche vide avec le placeholder `15` et la carte annonce « IS 0,00 € » sans signal [app/components/sas/SasConfigForm.vue]
+- [x] [Review][Patch] NFR18 : bords `profit == 0` (frontière stricte `> 0`) et `profitAfterTax + treasury == 0` (bord du `Math.max`) jamais assertés [shared/services/dividend-capacity.test.ts]
+- [x] [Review][Patch] Bornes hautes des schémas jamais testées (`isRatePct: 10001`, montant `1e12 + 1`), et `currentTreasuryCents` n'est muté dans aucun test [server/api/sas-config.test.ts]
+- [x] [Review][Patch] Test « champs non fournis inchangés » assertée sur le retour du handler et non sur une relecture, contrairement à son homologue de 5.3 [server/api/sas-config.test.ts]
+- [x] [Review][Patch] E2E : `getByRole('button', {name: 'Enregistrer'}).first()` dépend de l'ordre de rendu de deux formulaires — un réagencement visuel fait soumettre le mauvais [tests/e2e/sas.spec.ts]
+- [x] [Review][Patch] Conversion pct ↔ pct × 100 inline et dupliquée dans le composant, alors que la story 5.5 réutilisera la même convention [app/components/sas/SasConfigForm.vue]
+- [x] [Review][Patch] `SasConfigSchema` défini (AC#3) mais jamais utilisé ; contrat de lecture redéclaré à la main [app/composables/useSasConfig.ts]
+- [x] [Review][Patch] `architecture.md` non mis à jour : il référence toujours `server/services/dividend-calculator.ts` alors que le service pur vit dans `shared/services/` (sous-tâche Task 3 restée décochée) [_bmad-output/planning-artifacts/architecture.md]
+- [x] [Review][Patch] `savingPanel` / `actionError` mono-slot : deux enregistrements rapprochés écrasent l'erreur du premier [app/pages/sas.vue]
+- [x] [Review][Defer] Écart documenté à la formule littérale de l'AC#6 : décomposition `q·rate + floor(r·rate/10000)` pour rester exacte au plafond `1e12` — mathématiquement identique, vérifiée contre une référence BigInt [shared/services/dividend-capacity.ts:50-54] — deferred, écart bénéfique, l'AC mériterait d'être amendé
+- [x] [Review][Defer] DDL des tests recréé à la main au lieu des migrations Drizzle [server/api/sas-config.test.ts] — deferred, pre-existing (déjà consigné depuis la story 2.10)

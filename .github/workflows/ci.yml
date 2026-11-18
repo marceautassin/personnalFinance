@@ -1,0 +1,38 @@
+# Intégration continue — story 17.11.
+#
+# L'audit du 2026-09-06 a constaté qu'aucune CI n'existait : `playwright.config.ts` lisait
+# `process.env.CI` sans que rien ne le pose jamais. Rien ne garantissait qu'un commit poussé
+# compilait encore.
+#
+# Les tests E2E ne sont PAS joués ici : leurs fixtures sont de vrais relevés bancaires,
+# volontairement absents du dépôt (`.gitignore`). Les jouer à vide donnerait un vert sans
+# contenu, ce qui est pire que pas de CI du tout.
+name: CI
+
+on:
+  push:
+    branches-ignore: []
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+
+      - name: Installer les dépendances
+        run: yarn install --frozen-lockfile
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Tests unitaires
+        run: yarn test:run

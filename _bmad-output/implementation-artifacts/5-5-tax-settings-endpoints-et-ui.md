@@ -1,6 +1,6 @@
 # Story 5.5: Schéma `tax_settings` + endpoints + UI (flat tax, mode imposition)
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -50,7 +50,8 @@ so that the forecast (Epic 7) can compute net amounts correctly from the gross d
 6. **Given** la page `app/pages/parametres.vue`,
    **When** elle se charge,
    **Then** elle affiche `TaxSettingsForm` :
-   - **Slider OU input number** pour `dividendTaxRatePct` : range `0-10000`, step `100` (= 1 %), affichage `30,00 %` (formaté `value / 100` avec 2 décimales — V1 simple, peut être un input number `0-100` pas pct×100 si plus ergonomique → faire la conversion à la soumission)
+   - **Input texte fr-FR** pour `dividendTaxRatePct` : saisie en pourcentage (`"30"`, `"15,5"`), `inputmode="decimal"`, conversion en pct×100 à la soumission via le helper partagé `app/utils/rate-pct.ts` (`parseRatePct` / `ratePctToInput`). Bornes [0, 100] % et 2 décimales max validées en JS puis côté serveur par le schéma Zod.
+     *Amendé le 2026-09-03 (décision de revue lot 2).* Rédaction initiale : « slider OU input number, range 0-10000, step 100 ». Le projet a convergé depuis sur une convention de saisie fr-FR unanime — `grep type="number"` sur `app/components/` renvoie zéro occurrence, les 10+ formulaires financiers (`DebtForm`, `SasConfigForm`, `FixedChargeForm`, `ArePanel`…) sont en `type="text"`. Un `input type="number"` récupérerait les bornes natives `min`/`max`/`step` mais interdirait la virgule décimale et ferait de cet écran le seul divergent. L'AC a vieilli, pas le code.
    - **Select** pour `dividendTaxMode` : 2 options `flat_tax` (libellé FR *« Flat tax PFU (30 %) »*) et `progressive` (libellé FR *« Barème progressif IR »*)
    - **Note FR** sous le select : *« Le mode "barème progressif" est déclaratif en V1 : aucune simulation détaillée n'est appliquée. »* (FR36)
    - Bouton *Enregistrer* unique pour les 2 champs
@@ -85,39 +86,39 @@ so that the forecast (Epic 7) can compute net amounts correctly from the gross d
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Constantes fiscales** (AC: #3)
-  - [ ] Créer `shared/constants/fiscal-defaults.ts`
-  - [ ] Pas de logique, juste des `export const`. Test minimal de présence (ou skip — c'est un fichier de constantes)
+- [x] **Task 1 — Constantes fiscales** (AC: #3)
+  - [x] Créer `shared/constants/fiscal-defaults.ts`
+  - [x] Pas de logique, juste des `export const`. Test minimal de présence (ou skip — c'est un fichier de constantes)
 
-- [ ] **Task 2 — Schéma DB + bootstrap seed** (AC: #1, #2)
-  - [ ] Ajouter `taxSettings` à `server/db/schema.ts`
-  - [ ] Étendre `0.bootstrap.ts`
-  - [ ] `yarn db:push`
+- [x] **Task 2 — Schéma DB + bootstrap seed** (AC: #1, #2)
+  - [x] Ajouter `taxSettings` à `server/db/schema.ts`
+  - [x] Étendre `0.bootstrap.ts`
+  - [x] `yarn db:push`
 
-- [ ] **Task 3 — Schéma Zod** (AC: #4)
-  - [ ] `shared/schemas/tax-settings.schema.ts`
+- [x] **Task 3 — Schéma Zod** (AC: #4)
+  - [x] `shared/schemas/tax-settings.schema.ts`
 
-- [ ] **Task 4 — Endpoints** (AC: #5)
-  - [ ] `server/api/tax-settings.get.ts`
-  - [ ] `server/api/tax-settings.put.ts`
-  - [ ] Tests unitaires (AC#9)
+- [x] **Task 4 — Endpoints** (AC: #5)
+  - [x] `server/api/tax-settings.get.ts`
+  - [x] `server/api/tax-settings.put.ts`
+  - [x] Tests unitaires (AC#9)
 
-- [ ] **Task 5 — Composable** (AC: #8)
-  - [ ] `app/composables/useTaxSettings.ts`
+- [x] **Task 5 — Composable** (AC: #8)
+  - [x] `app/composables/useTaxSettings.ts`
 
-- [ ] **Task 6 — UI** (AC: #6, #7)
-  - [ ] `app/components/parametres/TaxSettingsForm.vue`
-  - [ ] `app/pages/parametres.vue`
-  - [ ] Lien `/parametres` dans `AppNav.vue`
+- [x] **Task 6 — UI** (AC: #6, #7)
+  - [x] `app/components/parametres/TaxSettingsForm.vue`
+  - [x] `app/pages/parametres.vue`
+  - [x] Lien `/parametres` dans `AppNav.vue`
 
-- [ ] **Task 7 — E2E** (AC: #10)
-  - [ ] `tests/e2e/parametres.spec.ts`
+- [x] **Task 7 — E2E** (AC: #10)
+  - [x] `tests/e2e/parametres.spec.ts`
 
-- [ ] **Task 8 — Sanity check final**
-  - [ ] `yarn typecheck`, `yarn lint`, `yarn test:run`, `yarn test:e2e` verts
-  - [ ] **Audit** : grep que aucun `30` / `0.30` / `0.3` n'apparaît dans le code de calcul (forecast/dividend) — `FLAT_TAX_DEFAULT_PCT` ou lecture DB uniquement
-  - [ ] Aucun nouveau code d'erreur
-  - [ ] Commit unique
+- [x] **Task 8 — Sanity check final**
+  - [x] `yarn typecheck`, `yarn lint`, `yarn test:run` verts ; `yarn test:e2e` OK sur chromium (firefox non installé dans l'env — hors périmètre)
+  - [x] **Audit** : aucun taux fiscal hardcodé dans un calcul (aucune fonction de calcul touchée par cette story ; défauts uniquement dans `fiscal-defaults.ts` + seed)
+  - [x] Aucun nouveau code d'erreur (réutilise `validation_failed`)
+  - [x] Commit unique
 
 ## Dev Notes
 
@@ -192,12 +193,58 @@ Cette story crée :
 
 ### Agent Model Used
 
+Agent de développement.
+
 ### Debug Log References
+
+- `yarn db:push` requiert un TTY → appliqué via `npx drizzle-kit push --force` (nouvelle table, aucun data-loss).
+- E2E firefox échoue sur `ENOENT firefox-1511` (navigateur non installé dans l'env). Chromium ✓.
 
 ### Completion Notes List
 
+- Singleton `tax_settings` (id=1) : taux dividende `pct×100` + mode (`flat_tax`/`progressive`) avec CHECK DB, cohérent avec `sas_config` (5.4).
+- Mode `progressive` déclaratif (FR36) : note FR permanente sous le select, aucune logique métier V1.
+- Pattern singleton GET/PUT partiel identique à `sas-config` ; `useTaxSettings` réutilise `mapMutationError` + invalidations forecast/dashboard (no-op jusqu'à 7.8).
+- `fiscal-defaults.ts` créé comme source de vérité des défauts/fallback (incl. `IS_REDUCED_THRESHOLD_CENTS`, non éditable).
+- Lien `/parametres` activé dans `AppNav`.
+- Aucune fonction de calcul financier touchée → aucun taux hardcodé introduit.
+- 271 tests unitaires verts (dont 7 nouveaux endpoints + 1 seed bootstrap).
+
 ### File List
+
+- `shared/constants/fiscal-defaults.ts` (nouveau)
+- `shared/schemas/tax-settings.schema.ts` (nouveau)
+- `server/db/schema.ts` (modifié — table `taxSettings` + import `check`/`sql`)
+- `server/middleware/0.bootstrap.ts` (modifié — seed `tax_settings`)
+- `server/middleware/bootstrap.test.ts` (modifié — fixture + test seed)
+- `server/api/tax-settings.get.ts` (nouveau)
+- `server/api/tax-settings.put.ts` (nouveau)
+- `server/api/tax-settings.test.ts` (nouveau)
+- `app/composables/useTaxSettings.ts` (nouveau)
+- `app/components/parametres/TaxSettingsForm.vue` (nouveau)
+- `app/pages/parametres.vue` (nouveau)
+- `app/components/shared/AppNav.vue` (modifié — lien `/parametres`)
+- `tests/e2e/parametres.spec.ts` (nouveau)
 
 ### Change Log
 
+- 2026-07-07 : Implémentation story 5.5 — `tax_settings` singleton (schéma + seed + endpoints GET/PUT + composable + UI `/parametres` + tests). Status → review.
+
 ### Review Findings
+
+**Revue du 2026-08-04 (lot 2 : stories 5.5 + 5.6) — 3 couches : Blind Hunter, Edge Case Hunter, Acceptance Auditor.**
+
+- [x] [Review][Decision] **Tranché le 2026-09-03 → on garde `type="text"`, l'AC#6 est amendé.** Zéro `type="number"` dans `app/components/` : la convention de saisie fr-FR est unanime dans le projet, cet écran ne devient pas l'exception. Les bornes [0,100] restent portées par `parseRatePct` (helper partagé) puis par le schéma Zod côté serveur. Contrôle de saisie du taux : `type="text"` vs l'AC#6 (« slider OU input number ») — `TaxSettingsForm.vue` utilise un `input type="text"` avec parsing fr-FR, cohérent avec tous les autres formulaires du projet (virgule décimale, espaces de milliers), mais qui perd les bornes natives `min`/`max`/`step` : la borne 0-100 n'existe qu'en JS. Trancher : rester en `text` (cohérence fr-FR, on amende l'AC#6) ou passer en `input type="number"` (conforme à la lettre de l'AC, perd la virgule décimale).
+- [x] [Review][Patch] *(vérifié 2026-09-03 : `SingletonMissing` levé en 500 dans les deux handlers)* `GET`/`PUT /api/tax-settings` retournent `undefined` si le singleton manque → 200 à corps vide, page `/parametres` bloquée sur « Chargement… », et `{ok:true}` alors que rien n'est écrit. Le précédent `SingletonMissing` (revue 5.3/5.4) n'a pas été appliqué ici, contrairement à l'AC#5 « cohérent stories 5.3/5.4 » [server/api/tax-settings.get.ts:10, server/api/tax-settings.put.ts:14]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : passe par `apiMutate`)* `useTaxSettings` appelle `$fetch` directement au lieu d'`apiMutate`, contrairement au pattern invoqué par l'AC#8 et suivi par `useCategoryAdmin` dans le même lot [app/composables/useTaxSettings.ts:31]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : type importé de `tax-settings.schema`)* `TaxSettingsData` redéclare à la main un contrat déjà porté par `TaxSettingsSchema` (AC#4) — deux sources de vérité [app/composables/useTaxSettings.ts:8-13]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : libellé sans taux figé)* `MODE_LABELS.flat_tax = 'Flat tax PFU (30 %)'` : taux figé en dur dans le libellé alors que la story rend le taux éditable — l'écran peut afficher « Taux : 17 » à côté de « Flat tax PFU (30 %) » [app/components/parametres/TaxSettingsForm.vue:299]
+- [x] [Review][Patch] *(vérifié 2026-09-03 : helper partagé `~/utils/rate-pct`)* `parseRatePct` local supprime tous les espaces (`"3 0"` → 30 %) et duplique le helper `app/utils/rate-pct.ts` extrait au lot 1 [app/components/parametres/TaxSettingsForm.vue:306]
+- [x] [Review][Patch] *(fait 2026-09-04 : 4 cas ajoutés — 0, 10000, négatif, non entier)* Bornes du taux jamais testées : ni `0`, ni `10000` (100 %, borne acceptée), ni négatif, ni non entier — seul `12000` l'est. Le taux à 100 % propage `requiredGrossCents: null` dans `dividend-calculator.ts`, chemin jamais atteint depuis un PUT réel [server/api/tax-settings.test.ts]
+- [x] [Review][Defer] `updated_at` en secondes, aucun contrôle de version optimiste [server/api/tax-settings.put.ts] — deferred, pre-existing (même constat qu'au lot 1)
+- [x] [Review][Defer] DDL des tests recréé à la main au lieu des migrations Drizzle [server/api/tax-settings.test.ts] — deferred, pre-existing (déjà consigné depuis la story 2.10)
+
+**Revue `pr-reviewer` du 2026-09-04 (contexte neuf).**
+
+- [x] [Review][MINEUR] `ratePctToInput` réaffichait `"15.5"` avec un **point** dans un champ dont toute la justification (AC#6 amendé) est la saisie fr-FR à la virgule : l'utilisateur tapait `15,5` et l'app lui rendait `15.5`. Corrigé, avec un test d'aller-retour `parseRatePct(ratePctToInput(x)) === x` [app/utils/rate-pct.ts]
+- [ ] [Review][Defer] `markPristine()` est appelé AVANT de connaître l'issue du PUT : en cas d'échec, le formulaire redevient « pristine » alors qu'il porte une saisie non persistée, qu'une resynchro de props écraserait. **Non corrigé ici volontairement** : le motif est identique dans tous les panneaux financiers (lot 1) — le traiter sur ce seul écran le rendrait divergent. À reprendre comme correction transverse de `useDirtyForm`, sur toutes les stories concernées.

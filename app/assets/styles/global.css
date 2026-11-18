@@ -14,9 +14,30 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
 }
 
-h1 { font-size: var(--font-size-3xl); }
-h2 { font-size: var(--font-size-2xl); }
-h3 { font-size: var(--font-size-xl); }
+h1 { font-size: var(--font-size-lg); }
+h2 { font-size: var(--font-size-lg); }
+h3 { font-size: var(--font-size-md); }
 
 p { color: var(--color-text); line-height: var(--line-height-normal); }
 small { color: var(--color-text-muted); font-size: var(--font-size-sm); }
+
+/* Tout montant est tabulaire : c'est ce qui permet de comparer une colonne en glissant l'œil
+   verticalement au lieu de lire chaque nombre. */
+.tabular { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/*
+ * Visible du seul lecteur d'écran.
+ *
+ * Une colonne d'actions n'a pas d'intitulé visible, mais elle en a besoin d'un pour être
+ * annoncée : c'est là que sert cette classe. Transverse par nature — la définir dans une page
+ * garantissait que la suivante la redéfinisse.
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

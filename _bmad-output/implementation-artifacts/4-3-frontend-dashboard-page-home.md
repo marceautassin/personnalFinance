@@ -227,7 +227,7 @@ Modifie :
 
 ### Agent Model Used
 
-Claude Opus 4.8 (1M context)
+Agent de développement.
 
 ### Debug Log References
 

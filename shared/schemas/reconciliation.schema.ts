@@ -27,7 +27,7 @@ export const AddManualTransactionInputSchema = z.object({
     .min(-1e11, 'Montant trop grand')
     .max(1e11, 'Montant trop grand')
     .refine(n => n !== 0, 'Le montant ne peut pas être 0'),
-  categoryCode: z.string().trim().min(1),
+  categoryItemCode: z.string().trim().min(1),
 })
 
 export const ReconciliationActionSchema = z.discriminatedUnion('action', [

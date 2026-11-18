@@ -2,30 +2,42 @@
  * POST /api/reconciliation/[hash] — réconciliation manuelle (Story 3.1).
  *
  * Deux actions, validées par discriminated union (cf. shared/schemas/reconciliation.schema.ts) :
- *  - add_transaction : insère une transaction `is_manual: true`, recompute le gap.
- *                      `reliability` n'est PAS dégradée ici (elle reste à sa valeur courante) ;
- *                      le passage `unreliable` se fait exclusivement via `accept_gap`.
- *  - accept_gap : insère une transaction `divers` du montant exact du gap résiduel,
- *                 marque `bank_statements.reliability = 'unreliable'`. Refusé si déjà équilibré
- *                 ou si le statement est déjà `unreliable` (one-shot remediation).
+ *  - add_transaction : insère une transaction `is_manual: true`, recompute l'écart. Aucune
+ *                      décision n'est prise ici : si l'ajout referme l'écart, le relevé
+ *                      redevient fiable de lui-même, puisque la fiabilité est dérivée.
+ *  - accept_gap : insère une transaction de repli du montant exact de l'écart résiduel et
+ *                 pose `gap_accepted`. Refusé si déjà équilibré, ou si l'écart a déjà été
+ *                 accepté (sinon des « Écart accepté » s'empilent après un add_transaction
+ *                 qui re-déséquilibre).
  *
  * Convention de signe (cf. server/services/reconciler.ts) :
  *   gap = (closing - opening) - sum(transactions.amountCents)
  *   La transaction d'écart accepté a `amountCents = gapCents` (sans inversion de signe).
  */
-import { defineEventHandler, getRouterParam } from 'h3'
-import { eq, asc } from 'drizzle-orm'
+import { defineEventHandler, getRouterParam, isError } from 'h3'
+import { and, eq, asc } from 'drizzle-orm'
 import { db } from '~~/server/db/client'
-import { bankStatements, transactions, categoryDefinitions } from '~~/server/db/schema'
+import { bankStatements, transactions } from '~~/server/db/schema'
+import { ACCEPT_GAP_ITEM_CODE } from '~~/shared/constants/default-referential'
 import { reconcile } from '~~/server/services/reconciler'
 import { validateBody } from '~~/server/utils/validation'
+import { resolveItemId } from '~~/server/utils/category-fk'
+import { requireProfile } from '~~/server/utils/current-profile'
 import { domainError, notFound } from '~~/server/utils/errors'
 import { ApiErrorCode } from '~~/shared/schemas/api-errors'
 import { ReconciliationActionSchema } from '~~/shared/schemas/reconciliation.schema'
 import { HashSha256Schema } from '~~/shared/schemas/transaction.schema'
 import { cents } from '~~/shared/types/money'
+import { deriveReliability } from '~~/shared/types/statement-reliability'
 
-const ACCEPT_GAP_CATEGORY = 'divers'
+/**
+ * Poste de repli d'un écart accepté. Défini une seule fois, dans le référentiel : un
+ * littéral local ici divergerait silencieusement du poste protégé le jour où il changerait.
+ */
+// Poste dédié de nature `internal_transfer` (story 17.3). Auparavant le repli
+// `divers-non-categorise`, de nature `expense` : un écart POSITIF venait alors diminuer les
+// dépenses de la période, et la ligne comptait dans le taux de correction manuelle du jalon.
+const ACCEPT_GAP_CATEGORY = ACCEPT_GAP_ITEM_CODE
 const ACCEPT_GAP_LABEL = 'Écart accepté (réconciliation)'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -37,11 +49,12 @@ export default defineEventHandler(async (event) => {
   }
 
   const action = await validateBody(event, ReconciliationActionSchema)
+  const profileId = requireProfile(event)
 
   const [statement] = await db
     .select()
     .from(bankStatements)
-    .where(eq(bankStatements.hashSha256, hash))
+    .where(and(eq(bankStatements.hashSha256, hash), eq(bankStatements.profileId, profileId)))
     .limit(1)
   if (!statement) {
     throw notFound(ApiErrorCode.NotFound, { resource: 'bank_statement', hash })
@@ -65,19 +78,8 @@ export default defineEventHandler(async (event) => {
       )
     }
 
-    // FK pre-check sur categoryCode (cf. pattern transactions/[id].patch.ts:28-41)
-    const cat = await db
-      .select({ code: categoryDefinitions.code })
-      .from(categoryDefinitions)
-      .where(eq(categoryDefinitions.code, tx.categoryCode))
-      .limit(1)
-    if (cat.length === 0) {
-      throw domainError(
-        ApiErrorCode.ValidationFailed,
-        { reason: 'unknown categoryCode', value: tx.categoryCode },
-        422,
-      )
-    }
+    // FK pre-check + résolution code → id, toujours dans le profil (D37).
+    const categoryItemId = await resolveItemId(profileId, tx.categoryItemCode)
 
     // Atomicité : insertion + recompute dans la même transaction → pas de TOCTOU
     // si un autre handler insère entre l'insert et le recompute.
@@ -87,10 +89,8 @@ export default defineEventHandler(async (event) => {
         transactionDate: tx.transactionDate,
         label: tx.label,
         amountCents: tx.amountCents,
-        categoryCode: tx.categoryCode,
+        categoryItemId,
         isManual: true,
-        isDebtRepayment: false,
-        debtId: null,
       }).run()
       return recomputeReconciliation(trx, statement.openingBalanceCents, statement.closingBalanceCents, hash)
     })
@@ -98,13 +98,18 @@ export default defineEventHandler(async (event) => {
     return {
       isBalanced: reconciliation.isBalanced,
       gapCents: reconciliation.gapCents,
-      reliability: statement.reliability,
+      reliability: deriveReliability({
+        gapCents: reconciliation.gapCents,
+        gapAccepted: statement.gapAccepted,
+        source: statement.source,
+        continuityGapCents: statement.continuityGapCents,
+      }),
     }
   }
 
-  // accept_gap : one-shot. Refusé si déjà unreliable (sinon des "Écart accepté"
-  // peuvent s'empiler après un add_transaction qui re-déséquilibre).
-  if (statement.reliability === 'unreliable') {
+  // accept_gap : one-shot. Refusé si un écart a déjà été accepté sur ce relevé (sinon des
+  // « Écart accepté » peuvent s'empiler après un add_transaction qui re-déséquilibre).
+  if (statement.gapAccepted) {
     throw domainError(
       ApiErrorCode.ReconciliationFailed,
       { reason: 'already_unreliable' },
@@ -112,18 +117,26 @@ export default defineEventHandler(async (event) => {
     )
   }
 
-  // Vérifier que la catégorie 'divers' existe (seedée par bootstrap, défense en profondeur)
-  const cat = await db
-    .select({ code: categoryDefinitions.code })
-    .from(categoryDefinitions)
-    .where(eq(categoryDefinitions.code, ACCEPT_GAP_CATEGORY))
-    .limit(1)
-  if (cat.length === 0) {
-    throw domainError(
-      ApiErrorCode.ReconciliationFailed,
-      { reason: 'missing_default_category', value: ACCEPT_GAP_CATEGORY },
-      500,
-    )
+  // Le poste d'écart accepté doit exister (seedé au bootstrap, posé par la migration 0005 sur
+  // les bases antérieures). Défense en profondeur : sans ce contrôle, son absence sortirait en
+  // violation de clé étrangère, c'est-à-dire un 500 opaque au lieu d'un motif lisible.
+  let acceptGapItemId: number
+  try {
+    acceptGapItemId = await resolveItemId(profileId, ACCEPT_GAP_CATEGORY)
+  }
+  catch (err) {
+    // Seule l'erreur DOMAINE que `resolveItemId` rend explicitement (poste inconnu, 422
+    // `validation_failed`) est reconvertie ici. Tout le reste — panne DB, bug imprévu — doit
+    // remonter tel quel plutôt que d'être avalé sous un même message trompeur (revue de la
+    // story 27.1, cf. règle d'or CLAUDE.md « pas de try/catch qui mange une erreur »).
+    if (isError(err) && err.statusCode === 422 && err.statusMessage === ApiErrorCode.ValidationFailed) {
+      throw domainError(
+        ApiErrorCode.ReconciliationFailed,
+        { reason: 'missing_default_category', value: ACCEPT_GAP_CATEGORY },
+        500,
+      )
+    }
+    throw err
   }
 
   // Atomicité : recompute + insertion + update reliability dans la même transaction
@@ -138,14 +151,12 @@ export default defineEventHandler(async (event) => {
       transactionDate: statement.periodEnd,
       label: ACCEPT_GAP_LABEL,
       amountCents: current.gapCents,
-      categoryCode: ACCEPT_GAP_CATEGORY,
+      categoryItemId: acceptGapItemId,
       isManual: true,
-      isDebtRepayment: false,
-      debtId: null,
     }).run()
     trx.update(bankStatements)
-      .set({ reliability: 'unreliable' })
-      .where(eq(bankStatements.hashSha256, hash))
+      .set({ gapAccepted: true })
+      .where(and(eq(bankStatements.hashSha256, hash), eq(bankStatements.profileId, profileId)))
       .run()
     return recomputeReconciliation(trx, statement.openingBalanceCents, statement.closingBalanceCents, hash)
   })
@@ -153,7 +164,9 @@ export default defineEventHandler(async (event) => {
   return {
     isBalanced: result.isBalanced,
     gapCents: result.gapCents,
-    reliability: 'unreliable' as const,
+    // L'insertion d'équilibrage vient de ramener l'écart à zéro : c'est la DÉCISION, et non
+    // l'écart courant, qui maintient le relevé signalé.
+    reliability: 'gap_accepted' as const,
   }
 })
 

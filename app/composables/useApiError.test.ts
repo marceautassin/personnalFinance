@@ -58,11 +58,44 @@ describe('useApiError.mapError', () => {
     expect(mapError({ statusMessage: { nested: true } })).toContain('Une erreur est survenue')
   })
 
+  it('nomme la banque reconnue sur bank_mismatch (data.detected)', () => {
+    expect(mapError({
+      statusMessage: 'Bad Request',
+      data: { statusMessage: ApiErrorCode.BankMismatch, data: { expected: 'boursorama', detected: 'credit_mutuel' } },
+    })).toBe('Ce relevé semble être un relevé Crédit Mutuel — sélectionne cette banque et redépose le fichier.')
+  })
+
+  it('signale l\'absence de reconnaissance sur bank_mismatch (detected: null)', () => {
+    expect(mapError({
+      statusMessage: 'Bad Request',
+      data: { statusMessage: ApiErrorCode.BankMismatch, data: { expected: 'boursorama', detected: null } },
+    })).toContain('n\'a pas pu être reconnue')
+  })
+
   it('couvre tous les codes définis dans ApiErrorCode', () => {
     for (const code of Object.values(ApiErrorCode)) {
       const msg = mapError({ statusMessage: code })
       expect(msg).not.toBe('Une erreur est survenue. Réessaie ou recharge la page.')
       expect(msg.length).toBeGreaterThan(0)
     }
+  })
+
+  describe('statement_format_unrecognized (relevé PDF, story 28.2)', () => {
+    it('nomme le solde débiteur refusé', () => {
+      const msg = mapError({ data: { statusMessage: ApiErrorCode.StatementFormatUnrecognized, data: { reason: 'unsupported_balance_line', label: 'SOLDE DEBITEUR AU' } } })
+      expect(msg).toBe('Relevé Crédit Mutuel non pris en charge : solde débiteur (SOLDE DEBITEUR AU) jamais rencontré jusqu\'ici.')
+    })
+
+    it('explique une raison de structure connue', () => {
+      const msg = mapError({ data: { statusMessage: ApiErrorCode.StatementFormatUnrecognized, data: { reason: 'multiple_current_accounts', count: 2 } } })
+      expect(msg).toContain('plusieurs comptes courants')
+    })
+
+    it('garde le message générique sans détail, pour une raison d\'export ou un label douteux', () => {
+      const generic = 'Ce fichier n\'est ni un relevé PDF ni un export Excel reconnu.'
+      expect(mapError({ statusMessage: ApiErrorCode.StatementFormatUnrecognized })).toBe(generic)
+      expect(mapError({ data: { statusMessage: ApiErrorCode.StatementFormatUnrecognized, data: { reason: 'sheet_not_found' } } })).toBe(generic)
+      expect(mapError({ data: { statusMessage: ApiErrorCode.StatementFormatUnrecognized, data: { reason: 'unsupported_balance_line', label: '<b>x</b>' } } })).toBe(generic)
+    })
   })
 })

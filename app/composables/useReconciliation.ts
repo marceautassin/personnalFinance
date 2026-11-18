@@ -1,8 +1,10 @@
 import { computed, type Ref } from 'vue'
 import type { Cents } from '~~/shared/types/money'
-import type { ReliabilityValue } from '~~/server/db/schema'
+import type { StatementReliability } from '~~/shared/types/statement-reliability'
+import type { StatementSource } from '~~/shared/types/statement-source'
 import type { TransactionListItem } from './useTransactions'
 import type { AddManualTransactionInput } from '~~/shared/schemas/reconciliation.schema'
+import type { MutationOutcome } from './useApiError'
 
 export interface StatementDetailResponse {
   hash: string
@@ -10,15 +12,11 @@ export interface StatementDetailResponse {
   periodEnd: string
   openingBalanceCents: Cents
   closingBalanceCents: Cents
-  reliability: ReliabilityValue
+  reliability: StatementReliability
+  /** Origine du relevé (D44, story 28.4) — un export « équilibré » ne le prouve pas. */
+  source: StatementSource
   transactions: TransactionListItem[]
   reconciliation: { isBalanced: boolean, gapCents: Cents }
-}
-
-export interface ReconciliationActionOutcome {
-  ok?: true
-  error?: string
-  errorCode?: string
 }
 
 /**
@@ -34,6 +32,7 @@ function emptyStatementDetail(): StatementDetailResponse {
     openingBalanceCents: 0 as Cents,
     closingBalanceCents: 0 as Cents,
     reliability: 'reliable',
+    source: 'pdf',
     transactions: [],
     reconciliation: { isBalanced: true, gapCents: 0 as Cents },
   }
@@ -64,11 +63,11 @@ export function useReconciliation() {
   async function addManualTransaction(
     hash: string,
     transaction: AddManualTransactionInput,
-  ): Promise<ReconciliationActionOutcome> {
+  ): Promise<MutationOutcome> {
     return await postAction(hash, { action: 'add_transaction', transaction })
   }
 
-  async function acceptGap(hash: string): Promise<ReconciliationActionOutcome> {
+  async function acceptGap(hash: string): Promise<MutationOutcome> {
     return await postAction(hash, { action: 'accept_gap' })
   }
 
@@ -76,13 +75,12 @@ export function useReconciliation() {
     = | { action: 'add_transaction', transaction: AddManualTransactionInput }
       | { action: 'accept_gap' }
 
-  async function postAction(hash: string, body: ActionBody): Promise<ReconciliationActionOutcome> {
+  async function postAction(hash: string, body: ActionBody): Promise<MutationOutcome> {
     try {
       await $fetch(`/api/reconciliation/${hash}`, { method: 'POST', body })
       // Story 3.3 — propager la nouvelle fiabilité sur /import (cache `statements-list`)
       await invalidate.invalidateStatementsList()
-      invalidate.invalidateForecast()
-      invalidate.invalidateDashboard()
+      await invalidate.invalidateAnalysis()
       return { ok: true }
     }
     catch (err) {
